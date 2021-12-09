@@ -540,7 +540,6 @@ class iso_cube:
     def read_database_files_sequentially(self, sub_db_boxes, user_single_db_boxes, \
                                          x_min, y_min, z_min, x_range, y_range, z_range, \
                                          num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder):
-        
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
         for database_file_disk in sub_db_boxes:
@@ -777,10 +776,11 @@ def convert_to_0_based_ranges(x_range, y_range, z_range):
     return updated_x_range, updated_y_range, updated_z_range
     
 def retrieve_data_for_point(X, Y, Z, output_data, x_range, y_range, z_range):
-    # convert the 1-based index values to 0-based index values.
-    X_shift = X - 1
-    Y_shift = Y - 1
-    Z_shift = Z - 1
+    # convert the 1-based index values to 0-based index values. this is turned off because the code was refactored such that
+    # x_range, y_range, and z_range that are passed to this function are 1-based indices.
+    #X_shift = X - 1
+    #Y_shift = Y - 1
+    #Z_shift = Z - 1
     
     # finds the indices corresponding the to the (X, Y, Z) datapoint that the user is asking for and returns the stored data.
     # minimum values along each axis for the user-specified box.
@@ -794,19 +794,19 @@ def retrieve_data_for_point(X, Y, Z, output_data, x_range, y_range, z_range):
     z_max = z_range[1]
 
     # checks if the X, Y, and Z datapoints are inside of the user-specified box that data was retrieved for.
-    if not (x_min <= X_shift <= x_max):
-        raise IndexError(f'X datapoint, {X}, must be in the range of [{x_min + 1}, {x_max + 1}]')
+    if not (x_min <= X <= x_max):
+        raise IndexError(f'X datapoint, {X}, must be in the range of [{x_min}, {x_max}]')
 
-    if not (y_min <= Y_shift <= y_max):
-        raise IndexError(f'Y datapoint, {Y}, must be in the range of [{y_min + 1}, {y_max + 1}]')
+    if not (y_min <= Y <= y_max):
+        raise IndexError(f'Y datapoint, {Y}, must be in the range of [{y_min}, {y_max}]')
 
-    if not (z_min <= Z_shift <= z_max):
-        raise IndexError(f'Z datapoint, {Z}, must be in the range of [{z_min + 1}, {z_max + 1}]')
+    if not (z_min <= Z <= z_max):
+        raise IndexError(f'Z datapoint, {Z}, must be in the range of [{z_min}, {z_max}]')
 
     # converts the X, Y, and Z datapoints to their corresponding indices in the output_data array.
-    x_index = X_shift - x_min
-    y_index = Y_shift - y_min
-    z_index = Z_shift - z_min
+    x_index = X - x_min
+    y_index = Y - y_min
+    z_index = Z - z_min
 
     # retrieves the values stored in the output_data array for the (X, Y, Z) datapoint.
     # note: output_data is ordered as (Z, Y, X).
@@ -998,6 +998,9 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         output_data[result[1][2] - z_min : result[2][2] - z_min + 1, \
                     result[1][1] - y_min : result[2][1] - y_min + 1, \
                     result[1][0] - x_min : result[2][0] - x_min + 1] = result[0]
+        
+        # clear result to free up memory.
+        result = None
         
     # clear result_output_data to free up memory.
     result_output_data = None
