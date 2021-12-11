@@ -4,11 +4,12 @@ import h5py
 import math
 #import time
 #import psutil
+import shutil
 #import struct
 #import tracemalloc
 import numpy as np
 import SciServer.CasJobs as cj
-from dask.distributed import Client
+from dask.distributed import Client, LocalCluster
 # installs morton-py if necessary.
 try:
     import morton
@@ -560,9 +561,34 @@ class iso_cube:
     def read_database_files_in_parallel_with_dask(self, sub_db_boxes, user_single_db_boxes, \
                                                   x_min, y_min, z_min, x_range, y_range, z_range, \
                                                   num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder, \
-                                                  num_processes):
+                                                  num_processes, dask_cluster_ip):
         # start the dask client for parallel processing.
-        client = Client(n_workers = num_processes, processes = True)
+        if dask_cluster_ip != '':
+            # using a premade distributed cluster.
+            client = Client(dask_cluster_ip)
+            # get the current working directory for saving the zip file of turbulence processing functions to.
+            data_dir = os.getcwd() + '/'
+            try:
+                # upload the turbulence processing functions in the giverny folder to the workers.
+                shutil.make_archive(data_dir + 'giverny', 'zip', root_dir = data_dir, base_dir = 'giverny/')
+                client.upload_file(data_dir + 'giverny.zip')
+            except:
+                # close the dask client.
+                client.close()
+                
+                # delete the giverny.zip file if using a premade cluster.
+                if os.path.exists(data_dir + 'giverny.zip'):
+                    os.remove(data_dir + 'giverny.zip')
+                
+                # raise an Exception, informing the user of how to fix the issue.
+                raise Exception('one of the python files in the "giverny" folder was modified. please shutdown the dask cluster and create a new one.')
+        else:
+            # using a local cluster.
+            cluster = LocalCluster(n_workers = num_processes, threads_per_worker = 1, processes = True)
+            client = Client(cluster)
+        
+            # old client method. this version is deprecated.
+            #client = Client(n_workers = num_processes, processes = True)
         
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
@@ -587,6 +613,14 @@ class iso_cube:
         
         # close the dask client.
         client.close()
+        
+        if dask_cluster_ip != '':
+            # delete the giverny.zip file if using a premade cluster.
+            if os.path.exists(data_dir + 'giverny.zip'):
+                os.remove(data_dir + 'giverny.zip')
+        else:
+            # close the cluster if a local cluster was created.
+            cluster.close()
         
         return result_output_data
     

@@ -61,7 +61,7 @@ def retrieve_data_for_point(X, Y, Z, output_data, x_range, y_range, z_range):
 
     return data_value
     
-def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint):
+def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
     
@@ -238,7 +238,7 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         result_output_data = iso_data.read_database_files_in_parallel_with_dask(sub_db_boxes, user_single_db_boxes, \
                                                                                 x_min, y_min, z_min, x_range, y_range, z_range, \
                                                                                 num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
-                                                                                missing_value_placeholder, num_processes)
+                                                                                missing_value_placeholder, num_processes, dask_cluster_ip)
     
     # iterate over the results to fill output_data.
     for result in result_output_data:
@@ -336,7 +336,7 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
 convert indices to 0-based and start the processing of the isotropic cube data.
 """
 def turbulence_cube_processing(cube_num, cube_dimensions, cube_title, dir_path, output_folder_name, \
-                               x_range, y_range, z_range, var, timepoint):
+                               x_range, y_range, z_range, var, timepoint, dask_cluster_ip):
     # converts the 1-based axes ranges above to 0-based axes ranges.
     x_range, y_range, z_range = convert_to_0_based_ranges(x_range, y_range, z_range)
 
@@ -349,8 +349,11 @@ def turbulence_cube_processing(cube_num, cube_dimensions, cube_title, dir_path, 
     output_path = dir_path + output_folder_name + '/'
     if not os.path.exists(output_path):
         os.mkdir(output_path)
+        
+    # remove any leading and trailing white spaces from dask_cluster_ip.
+    dask_cluster_ip = dask_cluster_ip.strip()
 
     # parse the database files, generate the output_data matrix, and write the matrix to an hdf5 file.
-    output_data = process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint)
+    output_data = process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip)
     
     return output_data
