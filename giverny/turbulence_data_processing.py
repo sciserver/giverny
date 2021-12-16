@@ -293,7 +293,7 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
     dataset_name += '_' + str(timepoint + 1).zfill(4)
     
     # writes the output file.
-    iso_data.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
+    #iso_data.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
     
     # calculate how much time it takes to run step 4.
     end_time_step4 = time.perf_counter()
