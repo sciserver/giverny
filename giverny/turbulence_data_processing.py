@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import time
 #import tracemalloc
 import numpy as np
@@ -14,11 +15,32 @@ def convert_to_0_based_value(value):
     
     return updated_value
 
-def convert_to_0_based_ranges(x_range, y_range, z_range):
-    # convert the 1-based axes ranges to 0-based axes ranges.
-    updated_x_range = list(np.array(x_range) - 1)
-    updated_y_range = list(np.array(y_range) - 1)
-    updated_z_range = list(np.array(z_range) - 1)
+def check_axis_range_num_datapoints(axis_range):
+    # number of datapoints in the axis range.
+    axis_length = axis_range[1] - axis_range[0] + 1
+    
+    return axis_length
+
+def update_axis_range(axis_range, axis_length, cube_num):
+    # convert the 1-based axis range to a 0-based axis range.
+    updated_axis_range = list(np.array(axis_range) - 1)
+    
+    # truncate the axis range if necessary.
+    if axis_length > cube_num:
+        updated_axis_range = [updated_axis_range[0], updated_axis_range[0] + cube_num - 1]
+    
+    return updated_axis_range
+
+def convert_to_0_based_ranges(x_range, y_range, z_range, cube_num):
+    # calculate the number of datapoints along each axis range.
+    x_axis_length = check_axis_range_num_datapoints(x_range)
+    y_axis_length = check_axis_range_num_datapoints(y_range)
+    z_axis_length = check_axis_range_num_datapoints(z_range)
+    
+    # convert the 1-based axes ranges to 0-based axes ranges and truncate the axis range if necessary.
+    updated_x_range = update_axis_range(x_range, x_axis_length, cube_num)
+    updated_y_range = update_axis_range(y_range, y_axis_length, cube_num)
+    updated_z_range = update_axis_range(z_range, z_axis_length, cube_num)
     
     return updated_x_range, updated_y_range, updated_z_range
     
@@ -61,7 +83,8 @@ def retrieve_data_for_point(X, Y, Z, output_data, x_range, y_range, z_range):
 
     return data_value
     
-def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip):
+def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip, 
+                 x_range_original, y_range_original, z_range_original):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
     
@@ -100,14 +123,20 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
     x_min = x_range[0]
     y_min = y_range[0]
     z_min = z_range[0]
+    
+    # number of original datapoints along each axis specified by the user. used for checking that the user did not request
+    # too much data.
+    x_axis_original_length = x_range_original[1] - x_range_original[0] + 1
+    y_axis_original_length = y_range_original[1] - y_range_original[0] + 1
+    z_axis_original_length = z_range_original[1] - z_range_original[0] + 1
 
-    # used for creating the 3-D output array using numpy, and also checking that the user did not request too much data.
+    # used for creating the 3-D output array using numpy.
     x_axis_length = x_range[1] - x_range[0] + 1
     y_axis_length = y_range[1] - y_range[0] + 1
     z_axis_length = z_range[1] - z_range[0] + 1
 
     # total number of datapoints, used for checking if the user requested too much data.
-    num_datapoints = x_axis_length * y_axis_length * z_axis_length
+    num_datapoints = x_axis_original_length * y_axis_original_length * z_axis_original_length
     # total size of data, in GBs, requested by the user's box.
     requested_data_size = (num_datapoints * bytes_per_datapoint * num_values_per_datapoint) / float(1024**3)
     # maximum number of datapoints that can be read in. currently set to 3 GBs worth of datapoints.
@@ -170,17 +199,32 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         # create a new dictionary for all of the database files that are stored on this disk.
         if database_file_disk not in sub_db_boxes:
             sub_db_boxes[database_file_disk] = {}
+            # keeping track of the original user-specified box ranges in case the user specifies a box outside of the dataset cube.
+            sub_db_boxes[database_file_disk][db_file] = {}
+        elif db_file not in sub_db_boxes[database_file_disk]:
+            sub_db_boxes[database_file_disk][db_file] = {}
         
-        user_db_box = user_single_db_boxes[db_file][0]
+        for user_db_box_data in user_single_db_boxes[db_file]:
+            user_db_box = user_db_box_data[0]
+            user_db_box_minLim = user_db_box_data[1]
+            # convert the user_db_box list of lists to a tuple of tuples so that it can be used as a key, along with user_db_box_minLim 
+            # in the sub_db_boxes dictionary.
+            user_db_box_key = (tuple([tuple(user_db_box_range) for user_db_box_range in user_db_box]), user_db_box_minLim)
 
-        #%time sub_boxes, read_byte_sequences = iso_data.identify_sub_boxes_in_file(user_db_box, var, timepoint, voxel_side_length)
-        morton_voxels_to_read = iso_data.identify_sub_boxes_in_file(user_db_box, var, timepoint, voxel_side_length)
-        
-        # update sub_db_boxes with the information for reading in the database files.
-        sub_db_boxes[database_file_disk][db_file] = morton_voxels_to_read
+            #%time sub_boxes, read_byte_sequences = iso_data.identify_sub_boxes_in_file(user_db_box, var, timepoint, voxel_side_length)
+            morton_voxels_to_read = iso_data.identify_sub_boxes_in_file(user_db_box, var, timepoint, voxel_side_length)
+
+            # update sub_db_boxes with the information for reading in the database files.
+            sub_db_boxes[database_file_disk][db_file][user_db_box_key] = morton_voxels_to_read
     
-    min_file_boxes = np.min([len(sub_db_boxes[database_file_disk][db_file]) for database_file_disk in sub_db_boxes for db_file in sub_db_boxes[database_file_disk]])
-    max_file_boxes = np.max([len(sub_db_boxes[database_file_disk][db_file]) for database_file_disk in sub_db_boxes for db_file in sub_db_boxes[database_file_disk]])
+    min_file_boxes = np.min([len(sub_db_boxes[database_file_disk][db_file][user_db_box_key]) 
+                             for database_file_disk in sub_db_boxes 
+                             for db_file in sub_db_boxes[database_file_disk] 
+                             for user_db_box_key in sub_db_boxes[database_file_disk][db_file]])
+    max_file_boxes = np.max([len(sub_db_boxes[database_file_disk][db_file][user_db_box_key]) 
+                             for database_file_disk in sub_db_boxes 
+                             for db_file in sub_db_boxes[database_file_disk] 
+                             for user_db_box_key in sub_db_boxes[database_file_disk][db_file]])
     
     print('sub-box statistics for the database file(s):\n-')
     print(f'minimum number of sub-boxes to read in a database file:\n{min_file_boxes}')
@@ -221,7 +265,7 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         print('Database files are being read sequentially...')
         sys.stdout.flush()
         
-        result_output_data = iso_data.read_database_files_sequentially(sub_db_boxes, user_single_db_boxes, \
+        result_output_data = iso_data.read_database_files_sequentially(sub_db_boxes, \
                                                                        x_min, y_min, z_min, x_range, y_range, z_range, \
                                                                        num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
                                                                        missing_value_placeholder)
@@ -235,7 +279,7 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         print(f'Database files are being read in parallel ({num_processes} processes utilized)...')
         sys.stdout.flush()
         
-        result_output_data = iso_data.read_database_files_in_parallel_with_dask(sub_db_boxes, user_single_db_boxes, \
+        result_output_data = iso_data.read_database_files_in_parallel_with_dask(sub_db_boxes, \
                                                                                 x_min, y_min, z_min, x_range, y_range, z_range, \
                                                                                 num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
                                                                                 missing_value_placeholder, num_processes, dask_cluster_ip)
@@ -251,6 +295,19 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
         
     # clear result_output_data to free up memory.
     result_output_data = None
+    
+    # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
+    # exceeds cube_num. note: no copies of the data values should be made, hence data_value_multiplier equals 1.
+    x_axis_multiplier = int(math.ceil(float(x_axis_original_length) / float(cube_num)))
+    y_axis_multiplier = int(math.ceil(float(y_axis_original_length) / float(cube_num)))
+    z_axis_multiplier = int(math.ceil(float(z_axis_original_length) / float(cube_num)))
+    data_value_multiplier = 1
+    
+    # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than cube_num along any axis.
+    if x_axis_multiplier > 1 or y_axis_multiplier > 1 or z_axis_multiplier > 1:
+        output_data = np.tile(output_data, (z_axis_multiplier, y_axis_multiplier, x_axis_multiplier, data_value_multiplier))
+        # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
+        output_data = np.copy(output_data[0 : z_axis_original_length, 0 : y_axis_original_length, 0 : x_axis_original_length, :])
     
     # checks to make sure that data was read in for all points.
     if missing_value_placeholder in output_data:
@@ -336,9 +393,11 @@ def process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_
 convert indices to 0-based and start the processing of the isotropic cube data.
 """
 def turbulence_cube_processing(cube_num, cube_dimensions, cube_title, dir_path, output_folder_name, \
-                               x_range, y_range, z_range, var, timepoint, dask_cluster_ip):
-    # converts the 1-based axes ranges above to 0-based axes ranges.
-    x_range, y_range, z_range = convert_to_0_based_ranges(x_range, y_range, z_range)
+                               x_range_original, y_range_original, z_range_original, var, timepoint, dask_cluster_ip):
+    # converts the 1-based axes ranges above to 0-based axes ranges, and truncates the ranges if they are longer than cube_num since 
+    # the boundaries are periodic. output_data will be filled in with the duplicate data for the truncated data points after processing
+    # so that the data files are not read redundantly.
+    x_range, y_range, z_range = convert_to_0_based_ranges(x_range_original, y_range_original, z_range_original, cube_num)
 
     # converts the 1-based timepoint above to a 0-based timepoint.
     timepoint = convert_to_0_based_value(timepoint)
@@ -354,6 +413,7 @@ def turbulence_cube_processing(cube_num, cube_dimensions, cube_title, dir_path, 
     dask_cluster_ip = dask_cluster_ip.strip()
 
     # parse the database files, generate the output_data matrix, and write the matrix to an hdf5 file.
-    output_data = process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip)
+    output_data = process_data(cube_num, cube_dimensions, cube_title, output_path, x_range, y_range, z_range, var, timepoint, dask_cluster_ip, 
+                               x_range_original, y_range_original, z_range_original)
     
     return output_data
