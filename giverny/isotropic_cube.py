@@ -2,28 +2,23 @@ import os
 import sys
 import h5py
 import math
-#import time
-#import psutil
 import shutil
-#import struct
-#import tracemalloc
+import subprocess
 import numpy as np
 import SciServer.CasJobs as cj
 from dask.distributed import Client, LocalCluster
 # installs morton-py if necessary.
 try:
     import morton
-except ImportError as e:
-    import subprocess
+except ImportError:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'morton-py'])
-    #%pip install morton-py
 finally:
     import morton
 
 class iso_cube:
-    def __init__(self, cube_num, cube_dimensions = 3, cube_title = ''):
+    def __init__(self, cube_resolution, cube_title = '', cube_dimensions = 3):
         # cube size.
-        self.N = cube_num
+        self.N = cube_resolution
         
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
         self.cube_title = cube_title
@@ -35,7 +30,7 @@ class iso_cube:
         self.init_cache()
         
     def init_cache(self):
-        # read SQL metadata for all of the turbulence data files into the cache
+        # read SQL metadata for all of the turbulence data files into the cache.
         sql = f"""
         select dbm.ProductionMachineName
         , dbm.ProductionDatabaseName
@@ -173,9 +168,6 @@ class iso_cube:
 
         if num_db_files == 1 and x_multiples == 1 and y_multiples == 1 and z_multiples == 1:
             unique_db_file = list(set(db_files))[0]
-            # this if statement is deprecated.
-            #if unique_db_file in single_file_boxes:
-            #    raise Exception(f'{unique_db_file} is already in single_file_boxes')
             
             # stores the minLim of the box for use later when reading in the data.
             box_info = self.get_file_for_point(box[0][0], box[1][0], box[2][0], var, timepoint)
@@ -194,10 +186,10 @@ class iso_cube:
             # along this axis.
 
             # this value is specified as 0 because the x-axis index is 0.  this is used for determing which 
-            # point (X, Y, or Z) the midpoint is going to be tested for.  in this case, this section of code
+            # point (x, y, or z) the midpoint is going to be tested for.  in this case, this section of code
             # is adjusting only the x-axis.
             axis_position = 0
-            # stores the c1 corner point (X, Y, Z) of the box to be used for finding the first box end point
+            # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point
             # when shrinking the x-axis into sub-boxes.
             datapoint = [box[0][0], box[1][0], box[2][0]]
             # which axis is sub-divided, in this case it is the x-axis.
@@ -222,10 +214,10 @@ class iso_cube:
             # along this axis.
 
             # this value is specified as 1 because the y-axis index is 1.  this is used for determing which 
-            # point (X, Y, or Z) the midpoint is going to be tested for.  in this case, this section of code
+            # point (x, y, or z) the midpoint is going to be tested for.  in this case, this section of code
             # is adjusting only the y-axis.
             axis_position = 1
-            # stores the c1 corner point (X, Y, Z) of the box to be used for finding the first box end point 
+            # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point 
             # when shrinking the y-axis into sub-boxes.
             datapoint = [box[0][0], box[1][0], box[2][0]]
             # which axis is sub-divided, in this case it is the y-axis.
@@ -250,10 +242,10 @@ class iso_cube:
             # along this axis.
 
             # this value is specified as 2 because the z-axis index is 2.  this is used for determing which 
-            # point (X, Y, or Z) the midpoint is going to be tested for.  in this case, this section of code
+            # point (x, y, or z) the midpoint is going to be tested for.  in this case, this section of code
             # is adjusting only the z-axis.
             axis_position = 2
-            # stores the c1 corner point (X, Y, Z) of the box to be used for finding the first box end point 
+            # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point 
             # when shrinking the z-axis into sub-boxes.
             datapoint = [box[0][0], box[1][0], box[2][0]]
             # which axis is sub-divided, in this case it is the z-axis.
@@ -304,8 +296,8 @@ class iso_cube:
     def determine_min_overlap_point(self, voxel, user_box, axis):
         min_point = None
         
-        # checks if the user-specified box minimum value along the given axis is <= the voxel minimum value along the same axis.  if so, then the minimum
-        # value is stored as voxel minimum value.  otherwise, the minimum value is stored as the user-specified box minimum value.
+        # checks if the user-specified box minimum value along the given axis is <= the voxel minimum value along the same axis.  if so, then the 
+        # minimum value is stored as voxel minimum value.  otherwise, the minimum value is stored as the user-specified box minimum value.
         if user_box[axis][0] <= voxel[axis][0]:
             min_point = voxel[axis][0]
         else:
@@ -316,8 +308,8 @@ class iso_cube:
     def determine_max_overlap_point(self, voxel, user_box, axis):
         max_point = None
         
-        # checks if the user-specified box maximum value along the given axis is >= the voxel maximum value along the same axis.  if so, then the maximum
-        # value is stored as voxel maximum value.  otherwise, the maximum value is stored as the user-specified box maximum value.
+        # checks if the user-specified box maximum value along the given axis is >= the voxel maximum value along the same axis.  if so, then the 
+        # maximum value is stored as voxel maximum value.  otherwise, the maximum value is stored as the user-specified box maximum value.
         if user_box[axis][1] >= voxel[axis][1]:
             max_point = voxel[axis][1]
         else:
@@ -326,7 +318,8 @@ class iso_cube:
         return max_point
     
     def voxel_ranges_in_user_box(self, voxel, user_box):
-        # determine the minimum and maximum values of the overlap, along each axis, between voxel and the user-specified box for a partially overlapped voxel.
+        # determine the minimum and maximum values of the overlap, along each axis, between voxel and the user-specified box 
+        # for a partially overlapped voxel.
         # axis 0 corresponds to the x-axis.
         # axis 1 corresponds to the y-axis.
         # axis 2 corresponds to the z-axis.
@@ -360,7 +353,7 @@ class iso_cube:
         # that will be used when reading in data from the database file. if a sub-box is fully inside the user-box before getting down 
         # to the voxel level, then the information is stored for this box without shrinking further to save time.
         if box_fully_contained:
-            # converts the box (X, Y, Z) minimum and maximum points to morton indices for the database file.
+            # converts the box (x, y, z) minimum and maximum points to morton indices for the database file.
             morton_index_min = self.mortoncurve.pack(box[0][0], box[1][0], box[2][0])
             morton_index_max = self.mortoncurve.pack(box[0][1], box[1][1], box[2][1])
             
@@ -374,7 +367,8 @@ class iso_cube:
             # whether the voxel type is fully contained in the user-box ('f') or partially contained ('p') for each voxel.
             voxel_type = ['f'] * num_voxels
             
-            # stores the morton indices for reading from the database file efficiently and voxel type information for parsing out the voxel information.
+            # stores the morton indices for reading from the database file efficiently and voxel type information for parsing out the 
+            # voxel information.
             if morton_voxels_to_read == list():
                 morton_voxel_info = [[morton_index_min, morton_index_max], num_voxels, voxel_type]
                 morton_voxels_to_read.append(morton_voxel_info)
@@ -394,7 +388,7 @@ class iso_cube:
             return
         elif sub_box_axes_length == voxel_side_length:
             if box_fully_contained or box_partially_contained:
-                # converts the box (X, Y, Z) minimum and maximum points to morton indices for the database file.
+                # converts the box (x, y, z) minimum and maximum points to morton indices for the database file.
                 morton_index_min = self.mortoncurve.pack(box[0][0], box[1][0], box[2][0])
                 morton_index_max = self.mortoncurve.pack(box[0][1], box[1][1], box[2][1])
                 
@@ -439,26 +433,42 @@ class iso_cube:
                 box_z_range_midpoint = math.floor((box_z_range[0] + box_z_range[1]) / 2)
                 
                 # ordering sub-boxes 1-8 below in this order maintains the morton-curve index structure, such that 
-                # the minimum (X, Y, Z) morton index for a new box only needs to be compared to the last 
-                # sub-boxes' maximum (X, Y, Z) morton index to see if they can be stitched together.
+                # the minimum (x, y, z) morton index for a new box only needs to be compared to the last 
+                # sub-boxes' maximum (x, y, z) morton index to see if they can be stitched together.
                 
                 # new_sub_box_1 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_min, z_midpoint]
                 # new_sub_box_2 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_min, z_midpoint]
                 # new_sub_box_3 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
                 # new_sub_box_4 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
-                new_sub_box_1 = [[box_x_range[0], box_x_range_midpoint], [box_y_range[0], box_y_range_midpoint], [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_2 = [[box_x_range_midpoint + 1, box_x_range[1]], [box_y_range[0], box_y_range_midpoint], [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_3 = [[box_x_range[0], box_x_range_midpoint], [box_y_range_midpoint + 1, box_y_range[1]], [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_4 = [[box_x_range_midpoint + 1, box_x_range[1]], [box_y_range_midpoint + 1, box_y_range[1]], [box_z_range[0], box_z_range_midpoint]]
+                new_sub_box_1 = [[box_x_range[0], box_x_range_midpoint], 
+                                 [box_y_range[0], box_y_range_midpoint], 
+                                 [box_z_range[0], box_z_range_midpoint]]
+                new_sub_box_2 = [[box_x_range_midpoint + 1, box_x_range[1]], 
+                                 [box_y_range[0], box_y_range_midpoint], 
+                                 [box_z_range[0], box_z_range_midpoint]]
+                new_sub_box_3 = [[box_x_range[0], box_x_range_midpoint], 
+                                 [box_y_range_midpoint + 1, box_y_range[1]], 
+                                 [box_z_range[0], box_z_range_midpoint]]
+                new_sub_box_4 = [[box_x_range_midpoint + 1, box_x_range[1]], 
+                                 [box_y_range_midpoint + 1, box_y_range[1]], 
+                                 [box_z_range[0], box_z_range_midpoint]]
                 
                 # new_sub_box_5 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
                 # new_sub_box_6 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
                 # new_sub_box_7 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
                 # new_sub_box_8 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
-                new_sub_box_5 = [[box_x_range[0], box_x_range_midpoint], [box_y_range[0], box_y_range_midpoint], [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_6 = [[box_x_range_midpoint + 1, box_x_range[1]], [box_y_range[0], box_y_range_midpoint], [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_7 = [[box_x_range[0], box_x_range_midpoint], [box_y_range_midpoint + 1, box_y_range[1]], [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_8 = [[box_x_range_midpoint + 1, box_x_range[1]], [box_y_range_midpoint + 1, box_y_range[1]], [box_z_range_midpoint + 1, box_z_range[1]]]
+                new_sub_box_5 = [[box_x_range[0], box_x_range_midpoint], 
+                                 [box_y_range[0], box_y_range_midpoint], 
+                                 [box_z_range_midpoint + 1, box_z_range[1]]]
+                new_sub_box_6 = [[box_x_range_midpoint + 1, box_x_range[1]], 
+                                 [box_y_range[0], box_y_range_midpoint], 
+                                 [box_z_range_midpoint + 1, box_z_range[1]]]
+                new_sub_box_7 = [[box_x_range[0], box_x_range_midpoint], 
+                                 [box_y_range_midpoint + 1, box_y_range[1]], 
+                                 [box_z_range_midpoint + 1, box_z_range[1]]]
+                new_sub_box_8 = [[box_x_range_midpoint + 1, box_x_range[1]], 
+                                 [box_y_range_midpoint + 1, box_y_range[1]], 
+                                 [box_z_range_midpoint + 1, box_z_range[1]]]
 
                 new_sub_boxes = []
                 new_sub_boxes.append(new_sub_box_1)
@@ -507,36 +517,12 @@ class iso_cube:
 
         return morton_voxels_to_read
         
-    def get_velocities_for_all_points(self, x_range, y_range, z_range, min_step = 1):
-        # manually retrieves the velocities for all points inside the box. this is computationally expensive and not efficient, and 
-        # this function is deprecated.
-        x_min = x_range[0]; x_max = x_range[1];
-        y_min = y_range[0]; y_max = y_range[1];
-        z_min = z_range[0]; z_max = z_range[1];
-        
-        current_x_max = x_max
-        current_y_max = y_max
-        current_z_max = z_max
-        
-        velocity_map = {}
-        velocity_data = np.array([-1, -1, -1])
-        for x_point in np.arange(x_min, x_max + 1, min_step):
-            for y_point in np.arange(y_min, y_max + 1, min_step):
-                for z_point in np.arange(z_min, z_max + 1, min_step):
-                    velocity_data = self.getISO_Point(x_point, y_point, z_point, var = 'vel', timepoint = 0, verbose = False)
-                    
-                    velocity_map[(x_point, y_point, z_point)] = velocity_data
-                    #print(x_point)
-                    #print(cornercode, offset)
-        
-        return velocity_map
-        
-    def get_offset(self, X, Y, Z):
+    def get_offset(self, x, y, z):
         """
-        TODO is this code correct for velocity as well?  YES
+        todo: is this code correct for velocity as well?  yes.
         """
-        # morton curve index corresponding to the user specified X, Y, and Z values
-        code = self.mortoncurve.pack(X, Y, Z)
+        # morton curve index corresponding to the user specified x, y, and z values
+        code = self.mortoncurve.pack(x, y, z)
         # always looking at an 8 x 8 x 8 box around the grid point, so the shift is always 9 bits to determine 
         # the bottom left corner of the box. the cornercode (bottom left corner of the 8 x 8 x 8 box) is always 
         # in the same file as the user-specified grid point.
@@ -544,26 +530,26 @@ class iso_cube:
         cornercode = (code >> 9) << 9
         corner = np.array(self.mortoncurve.unpack(cornercode))
         # calculates the offset between the grid point and corner of the box and converts it to a 4-byte float.
-        offset = np.sum((np.array([X, Y, Z]) - corner) * np.array([1, 8, 64]))
+        offset = np.sum((np.array([x, y, z]) - corner) * np.array([1, 8, 64]))
         
         return cornercode, offset
     
-    def get_file_for_point(self, X, Y, Z, var = 'pr', timepoint = 0):
+    def get_file_for_point(self, x, y, z, var = 'pr', timepoint = 0):
         """
         querying the cached SQL metadata for the file for the user specified grid point
         """
-        # use periodic boundary conditions to adjust the X, Y, and Z values if they are outside the range of the whole dataset cube.
-        if X < 0 or X > (self.N - 1):
-            X = X % self.N
+        # use periodic boundary conditions to adjust the x, y, and z values if they are outside the range of the whole dataset cube.
+        if x < 0 or x > (self.N - 1):
+            x = x % self.N
         
-        if Y < 0 or Y > (self.N - 1):
-            Y = Y % self.N
+        if y < 0 or y > (self.N - 1):
+            y = y % self.N
             
-        if Z < 0 or Z > (self.N - 1):
-            Z = Z % self.N
+        if z < 0 or z > (self.N - 1):
+            z = z % self.N
         
         # query the cached SQL metadata for the user-specified grid point.
-        cornercode, offset = self.get_offset(X, Y, Z)
+        cornercode, offset = self.get_offset(x, y, z)
         t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
         t = t.iloc[0]
         dataN = t.path.split("/")
@@ -572,7 +558,8 @@ class iso_cube:
         
     def read_database_files_sequentially(self, sub_db_boxes, \
                                          x_min, y_min, z_min, x_range, y_range, z_range, \
-                                         num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder):
+                                         num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
+                                         missing_value_placeholder):
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
         for database_file_disk in sub_db_boxes:
@@ -586,60 +573,70 @@ class iso_cube:
             
             result_output_data += disk_result_output_data
             
-            # clear disk_result_output_data to free up memory.
-            disk_result_output_data = None
-            
         return result_output_data
         
     def read_database_files_in_parallel_with_dask(self, sub_db_boxes, \
                                                   x_min, y_min, z_min, x_range, y_range, z_range, \
-                                                  num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder, \
-                                                  num_processes, dask_cluster_ip):
+                                                  num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
+                                                  missing_value_placeholder, num_processes):
         # start the dask client for parallel processing.
-        if dask_cluster_ip != '':
+        # -----
+        # flag specifying if the cluster is a premade distributed cluster. assumed to be True to start.
+        distributed_cluster = True
+        try:
             # using a premade distributed cluster.
-            client = Client(dask_cluster_ip)
+            import SciServer.Dask
+            
+            # attached cluster (when a cluster is created together with a new container).
+            client = SciServer.Dask.getClient()
+            # deletes data on the network and restarts the workers.
+            client.restart()
+            
             # get the current working directory for saving the zip file of turbulence processing functions to.
             data_dir = os.getcwd() + '/'
-            try:
-                # upload the turbulence processing functions in the giverny folder to the workers.
-                shutil.make_archive(data_dir + 'giverny', 'zip', root_dir = data_dir, base_dir = 'giverny/')
-                client.upload_file(data_dir + 'giverny.zip')
-            except:
-                # close the dask client.
-                client.close()
-                
-                # delete the giverny.zip file if using a premade cluster.
-                if os.path.exists(data_dir + 'giverny.zip'):
-                    os.remove(data_dir + 'giverny.zip')
-                
-                # raise an Exception, informing the user of how to fix the issue.
-                raise Exception('one of the python files in the "giverny" folder was modified. please shutdown the dask cluster and create a new one.')
-        else:
-            # using a local cluster.
+            
+            # upload the turbulence processing functions in the giverny folder to the workers.
+            shutil.make_archive(data_dir + 'giverny', 'zip', root_dir = data_dir, base_dir = 'giverny/')
+            client.upload_file(data_dir + 'giverny.zip')
+        except FileNotFoundError:
+            # update the distributed_cluster flag to False.
+            distributed_cluster = False
+            
+            # using a local cluster if there is no premade distributed cluster.
             cluster = LocalCluster(n_workers = num_processes, processes = True)
             client = Client(cluster)
         
-            # old client method. this version is deprecated.
-            #client = Client(n_workers = num_processes, processes = True)
+        # number of hard disks that the database files being read are stored on.
+        num_db_disks = len(sub_db_boxes)
+        
+        # available workers.
+        workers = list(client.scheduler_info()['workers'])
+        num_workers = len(workers)
+        
+        # determine how many workers will be utilized for processing the data.
+        utilized_workers = num_workers
+        if utilized_workers > num_db_disks:
+            utilized_workers = num_db_disks
+        
+        print(f'Database files are being read in parallel ({utilized_workers} workers utilized)...')
+        sys.stdout.flush()
         
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
-        for database_file_disk in sub_db_boxes:
+        for file_disk_index, database_file_disk in enumerate(sub_db_boxes):
             sub_db_boxes_disk_data = sub_db_boxes[database_file_disk]
+            worker = workers[file_disk_index % num_workers]
             
             # scatter the data across the distributed workers.
-            sub_db_boxes_disk_data_scatter = client.scatter(sub_db_boxes_disk_data)
+            sub_db_boxes_disk_data_scatter = client.scatter(sub_db_boxes_disk_data, workers = worker)
             # read in the voxel data from all of the database files on this disk.
             disk_result_output_data = client.submit(self.get_iso_points, sub_db_boxes_disk_data_scatter, \
                                                     x_min, y_min, z_min, x_range, y_range, z_range, \
                                                     num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder, \
-                                                    verbose = False)
+                                                    verbose = False, \
+                                                    workers = worker)
             
             result_output_data.append(disk_result_output_data)
-            
-            # clear disk_result_output_data to free up memory.
-            disk_result_output_data = None
         
         # gather all of the results once they are finished being run in parallel by dask.
         result_output_data = client.gather(result_output_data)
@@ -649,8 +646,8 @@ class iso_cube:
         # close the dask client.
         client.close()
         
-        if dask_cluster_ip != '':
-            # delete the giverny.zip file if using a premade cluster.
+        if distributed_cluster:
+            # delete the giverny.zip file if using a premade distributed cluster.
             if os.path.exists(data_dir + 'giverny.zip'):
                 os.remove(data_dir + 'giverny.zip')
         else:
@@ -661,14 +658,11 @@ class iso_cube:
     
     def get_iso_points(self, sub_db_boxes_disk_data, \
                        x_min, y_min, z_min, x_range, y_range, z_range, \
-                       num_values_per_datapoint = 1, bytes_per_datapoint = 4, voxel_side_length = 8, missing_value_placeholder = -999.9, verbose = False):
+                       num_values_per_datapoint = 1, bytes_per_datapoint = 4, voxel_side_length = 8, missing_value_placeholder = -999.9, \
+                       verbose = False):
         """
         retrieve the values for the specified var(iable) in the user-specified box and at the specified timepoint.
         """
-        # used to check the memory usage so that it could be minimized.
-        #process = psutil.Process(os.getpid())
-        #print(f'memory usage 1 (gigabytes) = {(process.memory_info().rss) / (1024**3)}')  # in bytes. 
-
         # volume of the voxel cube.
         voxel_cube_size = voxel_side_length**3
         
@@ -686,7 +680,7 @@ class iso_cube:
             
                 morton_voxels_to_read = sub_db_boxes_disk_data[db_file][user_box_key]
 
-                # retrieve the minimum and maximum (X, Y, Z) coordinates of the morton sub-box that is going to be read in.
+                # retrieve the minimum and maximum (x, y, z) coordinates of the morton sub-box that is going to be read in.
                 min_xyz = [user_box_ranges[0][0], user_box_ranges[1][0], user_box_ranges[2][0]]
                 max_xyz = [user_box_ranges[0][1], user_box_ranges[1][1], user_box_ranges[2][1]]
                 
@@ -705,8 +699,8 @@ class iso_cube:
                 for morton_data in morton_voxels_to_read:
                     # the continuous range of morton indices compiled from adjacent voxels that can be read in from the file at the same time.
                     morton_index_range = morton_data[0]
-                    # the voxels that will be parsed out from the data that is read in. the voxels need to be parsed separately because the data is sequentially
-                    # ordered within a voxel as opposed to morton ordered outside a voxel.
+                    # the voxels that will be parsed out from the data that is read in. the voxels need to be parsed separately because the data 
+                    # is sequentially ordered within a voxel as opposed to morton ordered outside a voxel.
                     num_voxels = morton_data[1]
 
                     # morton_index_min is equivalent to "cornercode + offset" because morton_index_min is defined as the corner of a voxel.
@@ -717,29 +711,15 @@ class iso_cube:
                     # the point to seek to in order to start reading the file for this morton index range.
                     seek_distance = num_values_per_datapoint * bytes_per_datapoint * (morton_index_min - db_minLim)
                     # number of bytes to read in from the database file.
-                    read_length = num_values_per_datapoint * bytes_per_datapoint * morton_index_diff
-
-                    # read the data. this method is deprecated because it is slow.
-                    #with open(db_file, 'rb') as b:
-                    #    b.seek(seek_distance)
-                    #    xraw = b.read(read_length)
-                    #
-                    # unpack the data as 4-byte floats.
-                    #l = struct.unpack('f' * num_values_per_datapoint * morton_index_diff, xraw)
-
-                    # used to check the memory usage so that it could be minimized.
-                    #print(f'memory usage 1a (gigabytes) = {(process.memory_info().rss) / (1024**3)}')  # in bytes. 
+                    read_length = num_values_per_datapoint * bytes_per_datapoint * morton_index_diff 
 
                     # read the data efficiently.
                     l = np.fromfile(db_file, dtype = 'f', count = read_length, offset = seek_distance)
-                    l = l[np.arange(0, l.size - num_values_per_datapoint + 1, num_values_per_datapoint)[:, None] + np.arange(num_values_per_datapoint)]
-
-                    # used to check the memory usage so that it could be minimized.
-                    #print(f'memory usage 1b (gigabytes) = {(process.memory_info().rss) / (1024**3)}')  # in bytes. 
+                    l = l[np.arange(0, l.size - num_values_per_datapoint + 1, num_values_per_datapoint)[:, None] + np.arange(num_values_per_datapoint)] 
 
                     # iterate over each voxel in voxel_data.
                     for voxel_count in np.arange(0, num_voxels, 1):
-                        # get the origin point (X, Y, Z) for the voxel.
+                        # get the origin point (x, y, z) for the voxel.
                         voxel_origin_point = self.mortoncurve.unpack(morton_index_min + (voxel_count * voxel_cube_size))
 
                         # voxel axes ranges.
@@ -747,8 +727,8 @@ class iso_cube:
                                         [voxel_origin_point[1] + cube_y_multiple, voxel_origin_point[1] + cube_y_multiple + voxel_side_length - 1], \
                                         [voxel_origin_point[2] + cube_z_multiple, voxel_origin_point[2] + cube_z_multiple + voxel_side_length - 1]]
 
-                        # assumed to be a voxel that is fully inside the user-specified box. if the box was only partially contained inside the user-specified
-                        # box, then the voxel ranges are corrected to the edges of the user-specified box.
+                        # assumed to be a voxel that is fully inside the user-specified box. if the box was only partially contained inside the 
+                        # user-specified box, then the voxel ranges are corrected to the edges of the user-specified box.
                         voxel_type = morton_data[2][voxel_count]
                         if voxel_type == 'p':
                             voxel_ranges = self.voxel_ranges_in_user_box(voxel_ranges, [x_range, y_range, z_range])
@@ -764,8 +744,6 @@ class iso_cube:
                         # reshape the sub_l array into a voxel matrix.
                         sub_l_array = sub_l_array.reshape(voxel_side_length, voxel_side_length, voxel_side_length, num_values_per_datapoint)
                         
-                        # swap the x- and z- axes to maintain the correct structure. turned this off to leave as (Z, Y, X) for hdf5 file format.
-                        #sub_l_array = np.swapaxes(sub_l_array, 0, 2)
                         # remove parts of the voxel that are outside of the user-specified box.
                         if voxel_type == 'p':
                             sub_l_array = sub_l_array[voxel_z_range[0] % voxel_side_length : (voxel_z_range[1] % voxel_side_length) + 1, \
@@ -777,55 +755,17 @@ class iso_cube:
                                            voxel_y_range[0] - min_xyz[1] : voxel_y_range[1] - min_xyz[1] + 1, \
                                            voxel_x_range[0] - min_xyz[0] : voxel_x_range[1] - min_xyz[0] + 1] = sub_l_array
 
-                        # clear sub_l_array to free up memory.
-                        sub_l_array = None
-
-                    # clear l to free up memory.
-                    l = None
-
                 # checks to make sure that data was read in for all points.
                 if missing_value_placeholder in local_output_array:
                     raise Exception(f'local_output_array was not filled correctly')
                 
                 # append the filled local_output_array into local_output_data.
-                local_output_data.append((local_output_array, min_xyz, max_xyz))
-
-                # clear local_output_array to free up memory.
-                local_output_array = None
-        
-        # used to check the memory usage so that it could be minimized.
-        #print(f'memory usage 2 (gigabytes) = {(process.memory_info().rss) / (1024**3)}')  # in bytes. 
+                local_output_data.append((local_output_array, min_xyz, max_xyz)) 
         
         return local_output_data
-            
-    def get_iso_point_original(self, X, Y, Z, var = 'pr', timepoint = 0, verbose = False):
-        """
-        find the value for the specified var(iable) at the specified point XYZ and specified time.
-        Position is assumed to be a point of the grid, i.e. should be integers, and time should be an integer between 0 and 5.
-        """
-        f, cornercode, offset, minLim, maxLim = self.get_file_for_point(X, Y, Z, var, timepoint)
-        if verbose:
-            print(f'filename : {f}')
-            print(f'cornercode : {cornercode}')
-            print(f'corner : {np.array(self.mortoncurve.unpack(cornercode))}')
-            print(f'offset : {offset}')
-            print(f'minLim : {minLim}')
-            print(f'maxLim : {maxLim}')
-            #print(f, cornercode, offset, minLim, maxLim)
-        
-        N = 1
-        if var == 'vel':
-            N = 3
-        
-        with open(f, 'rb') as b:
-            b.seek(N * 4 * (cornercode + offset - minLim))
-            xraw = b.read(4 * N)
-        
-        l = struct.unpack('f' * N, xraw)
-        
-        return l
     
     def write_output_matrix_to_hdf5(self, output_data, output_path, output_filename, dataset_name):
         # write output_data to a hdf5 file.
         with h5py.File(output_path + output_filename + '.h5', 'w') as h5f:
             h5f.create_dataset(dataset_name, data = output_data)
+            
