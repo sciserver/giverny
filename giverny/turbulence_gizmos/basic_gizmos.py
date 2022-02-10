@@ -1,128 +1,98 @@
 import os
 import math
+import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
 
 """
 mapping gizmos.
 """
+def get_variable_function(variable_id):
+    # get the function symbol for the user-specified variable.
+    return {
+        'vel':'u',
+        'pr':'p'
+    }[variable_id]
+
 def get_value_names():
-    # map of the value names for each variable, e.g. "ux" is the x-component of the velocity. 
-    value_name_map = {}
-    value_name_map['vel'] = {1:'ux', 2:'uy', 3:'uz'}
-    value_name_map['pr'] = {1:'p'}
-    
-    return value_name_map
+    # map of the value names for each variable, e.g. "ux" is the x-component of the velocity.
+    return {
+        'vel':{1:'ux', 2:'uy', 3:'uz'},
+        'pr':{1:'p'}
+    }
 
 def get_num_values_per_datapoint(variable_id):
     # get the number of values per datapoint for the user-specified variable.
-    datapoint_values_map = {}
-    datapoint_values_map['vel'] = 3
-    datapoint_values_map['pr'] = 1
-    
-    num_values_per_datapoint = datapoint_values_map[variable_id]
-    
-    return num_values_per_datapoint
+    return {
+        'vel':3,
+        'pr':1
+    }[variable_id]
 
 def get_variable_identifier(variable_name):
     # convert the variable name to its corresponding identifier, e.g. convert "velocity" to "vel".
-    variable_map = {}
-    variable_map['velocity'] = 'vel'
-    variable_map['pressure'] = 'pr'
+    valid_variable_names = ['velocity', 'pressure']
     
     variable_name = variable_name.lower()
-    
-    if variable_name not in variable_map:
-        raise Exception(f"'{variable_name}' is not a valid variable: {list(variable_map.keys())}")
-    
-    variable_id = variable_map[variable_name]
-    
-    return variable_id
+    if variable_name not in valid_variable_names:
+        raise Exception(f"'{variable_name}' is not a valid variable: {valid_variable_names}")
+
+    return {
+        'velocity':'vel',
+        'pressure':'pr'
+    }[variable_name]
 
 """
 processing gizmos.
 """
-def assemble_axis_ranges(x_range, y_range, z_range):
-    # assemble all of the axis ranges together into one numpy array.
-    axes_ranges = np.array([x_range, y_range, z_range], dtype = np.ndarray)
-    
-    return axes_ranges
+def assemble_axis_data(axes_data):
+    # assemble all of the axis data together into one numpy array.
+    return np.array(axes_data, dtype = np.ndarray)
 
 def convert_to_0_based_value(value):
     # convert the 1-based value to a 0-based value.
-    updated_value = value - 1
-    
-    return updated_value
+    return value - 1
 
-def check_axis_range_num_datapoints(axis_range):
-    # number of datapoints in the axis range.
-    axis_length = axis_range[1] - axis_range[0] + 1
-    
-    return axis_length
+def get_axes_ranges_num_datapoints(axes_ranges):
+    # number of datapoints along each axis.
+    return axes_ranges[:, 1] - axes_ranges[:, 0] + 1
 
-def update_axis_range(axis_range, axis_length, cube_resolution):
-    # convert the 1-based axis range to a 0-based axis range.
-    updated_axis_range = list(np.array(axis_range) - 1)
-    
-    # truncate the axis range if necessary.
-    if axis_length > cube_resolution:
-        updated_axis_range = [updated_axis_range[0], updated_axis_range[0] + cube_resolution - 1]
-    
-    return updated_axis_range
-
-def convert_to_0_based_ranges(x_range, y_range, z_range, cube_resolution):
+def convert_to_0_based_ranges(axes_ranges, cube_resolution):
     # calculate the number of datapoints along each axis range.
-    x_axis_length = check_axis_range_num_datapoints(x_range)
-    y_axis_length = check_axis_range_num_datapoints(y_range)
-    z_axis_length = check_axis_range_num_datapoints(z_range)
+    axes_lengths = get_axes_ranges_num_datapoints(axes_ranges)
     
-    # convert the 1-based axes ranges to 0-based axes ranges and truncate the axis range if necessary.
-    updated_x_range = update_axis_range(x_range, x_axis_length, cube_resolution)
-    updated_y_range = update_axis_range(y_range, y_axis_length, cube_resolution)
-    updated_z_range = update_axis_range(z_range, z_axis_length, cube_resolution)
+    # convert the 1-based axes ranges to 0-based axes ranges.
+    axes_ranges = axes_ranges - 1
     
-    return updated_x_range, updated_y_range, updated_z_range
-
-def convert_negative_ranges_to_1_based(axes_ranges):
-    # converts the negative axis ranges to 1-based indices such that they can be used for plotting xarray data.
-    updated_axes_ranges = np.array([axes_range - axes_range[0] + 1 if axes_range[0] < 0 else axes_range for axes_range in axes_ranges], 
-                                   dtype = np.ndarray)
+    # truncate the axes range if necessary.
+    for axis_index, axis_range in enumerate(axes_ranges):
+        if axes_lengths[axis_index] > cube_resolution:
+            axes_ranges[axis_index, 1] = axes_ranges[axis_index, 0] + cube_resolution - 1
     
-    return updated_axes_ranges
-
+    return axes_ranges
+    
 """
 output folder gizmos.
 """
-def update_folderpath_end_oblique(folderpath):
-    # updates folderpath if it does not already end in an oblique ("/") character.
-    if folderpath[-1] != '/':
-        folderpath += '/'
-    
-    return folderpath
-
 def create_output_folder(output_path):
-    # update output_path with an oblique ("/") character at the end of the folder path if the last character is not already an oblique character.
-    output_path = update_folderpath_end_oblique(output_path)
-    # create the output folder directory if it does not already exist.
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
+    # create the output folder directory.
+    os.makedirs(output_path, exist_ok = True)
         
 """
 user-interfacing gizmos.
 """
-def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges, axes_ranges, \
-                        output_path, output_filename, \
+def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides,
+                        output_path, output_filename,
                         colormap = 'viridis'):
-    # constants and dictionaries.
+    # dictionaries.
     # -----
-    # number of datapoints in each axis range. always 2 datapoints, corresponding to minimum and maximum values.
-    axis_range_dimensions = 2
-    # turbulence datasets are all in 3 dimensions (x, y, z).
-    cube_dimensions = 3
     # variable identifier, e.g. "vel" for "velocity".
     variable_id = get_variable_identifier(variable)
     # names for each value, e.g. value index 0 for velocity data corresponds to the x-component of the velocity ("ux").
     value_name_map = get_value_names()
+    
+    # create the output_path folder if it does not already exist and make sure output_path is formatted properly.
+    output_path = pathlib.Path(output_path)
+    create_output_folder(output_path)
     
     # exception handling.
     # -----
@@ -131,76 +101,122 @@ def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges
         raise Exception(f"{value_index_original} is not a valid value_index: {list(value_name_map[variable_id].keys())}")
         
     # transposed minimum and maximum arrays for both plot_ranges and axes_ranges.
-    plot_ranges_min, plot_ranges_max = plot_ranges.T.reshape(axis_range_dimensions, cube_dimensions)
-    axes_min, axes_max = axes_ranges.T.reshape(axis_range_dimensions, cube_dimensions)
+    plot_ranges_min = plot_ranges[:, 0]
+    plot_ranges_max = plot_ranges[:, 1]
+    
+    axes_min = axes_ranges[:, 0]
+    axes_max = axes_ranges[:, 1]
     
     # raise exception if all of the plot datapoints are not inside the bounds of the user box volume.
     if not(np.all(axes_min <= plot_ranges_min) and np.all(plot_ranges_max <= axes_max)):
         raise Exception(f'the specified plot ranges are not all bounded by the box volume defined by:\n{axes_ranges}')
+        
+    # determine how many of the axes minimum values are equal to their corresponding axis maximum value.
+    num_axes_equal_min_max = plot_ranges_min == plot_ranges_max
+    # raise exception if only one of the axis ranges is not a single point (i.e. if the data being plotted is not 2-dimensional).
+    if np.count_nonzero(num_axes_equal_min_max == True) != 1:
+        raise Exception(f'only one axis (x, y, or z) should be specified as a single point, e.g. z_plot_range = [3, 3], to create a contour plot')
+        
+    # raise exception if the minimum plot_ranges datapoint is not in cutout_data.
+    cutout_x = cutout_data.x.values
+    cutout_y = cutout_data.y.values
+    cutout_z = cutout_data.z.values
+    
+    cutout_values = np.array([cutout_x, cutout_y, cutout_z], dtype = np.ndarray)
+    if not all([plot_ranges_min[q] in cutout_values[q] for q in range(len(plot_ranges_min))]):
+        # closest datapoint to the user-specified starting point for generating the contour plot.
+        closest_x = cutout_x[(np.abs(cutout_x - plot_ranges_min[0])).argmin()]
+        closest_y = cutout_y[(np.abs(cutout_y - plot_ranges_min[1])).argmin()]
+        closest_z = cutout_z[(np.abs(cutout_z - plot_ranges_min[2])).argmin()]
+
+        raise Exception(f'initial requested datapoint {plot_ranges_min} is not in the cutout data. the closest starting point ' + \
+                        f'is {np.array([closest_x, closest_y, closest_z], dtype = np.ndarray)}')
 
     # generate the plot.
     # -----
     # convert the 1-based value_index_original to a 0-based index for python.
     value_index = convert_to_0_based_value(value_index_original)
-    # update output_path with an oblique ("/") character at the end of the folder path if the last character is not already an oblique character.
-    output_path = update_folderpath_end_oblique(output_path)
     
     # name of the value that is being plotted.
     value_name = value_name_map[variable_id][value_index_original]
     
-    # convert any negative indices to 1-based indices.
-    corrected_plot_ranges = convert_negative_ranges_to_1_based(plot_ranges)
-    
-    # specify the subset (or full) axes ranges to use for plotting. cutout_data is of the format [z-range, y-range, x-range, output value index]. the 
-    # ranges are converted to 0-based indices.
-    plot_data = cutout_data[corrected_plot_ranges[2][0] - 1:corrected_plot_ranges[2][1], \
-                            corrected_plot_ranges[1][0] - 1:corrected_plot_ranges[1][1], \
-                            corrected_plot_ranges[0][0] - 1:corrected_plot_ranges[0][1], \
-                            value_index]
+    # specify the subset (or full) axes ranges to use for plotting. cutout_data is of the format [z-range, y-range, x-range, output value index].
+    plot_data = cutout_data.sel(x = range(plot_ranges[0, 0], plot_ranges[0, 1] + 1, strides[0]), 
+                                y = range(plot_ranges[1, 0], plot_ranges[1, 1] + 1, strides[1]), 
+                                z = range(plot_ranges[2, 0], plot_ranges[2, 1] + 1, strides[2]),
+                                v = value_index)
     
     # create the figure.
     fig = plt.figure(figsize = (11, 8.5), dpi = 300)
+    fig.set_facecolor('white')
     ax = fig.add_subplot(111)
     cf = plot_data.plot(ax = ax, cmap = colormap, center = False)
 
     # plot labels.
+    # get the x-axis and y-axis variable names (e.g. 'x' and 'y') before the axis labels are appended to.
+    x_axis_variable = ax.get_xlabel()
+    y_axis_variable = ax.get_ylabel()
+    x_axis_stride = plot_data.attrs[f'stride{x_axis_variable}']
+    y_axis_stride = plot_data.attrs[f'stride{y_axis_variable}']
     title_str = f'plane {variable} ({value_name}) contour plot ({ax.get_title()})'
     plt.title(title_str, fontsize = 16, weight = 'bold')
-    plt.xlabel(ax.get_xlabel(), fontsize = 14, weight = 'bold')
-    plt.ylabel(ax.get_ylabel(), fontsize = 14, weight = 'bold')
+    plt.xlabel(f'{x_axis_variable} (stride = {x_axis_stride})', fontsize = 14, weight = 'bold')
+    plt.ylabel(f'{y_axis_variable} (stride = {y_axis_stride})', fontsize = 14, weight = 'bold')
     xlims = ax.get_xlim()
     ylims = ax.get_ylim()
-    plt.xticks([math.ceil(xlims[0]), math.floor(xlims[1])])
-    plt.yticks([math.ceil(ylims[0]), math.floor(ylims[1])])
-
+    x_axis_points = plot_data.coords[x_axis_variable].values
+    y_axis_points = plot_data.coords[y_axis_variable].values
+    plt.xticks(xlims, [x_axis_points[0], x_axis_points[-1]])
+    plt.yticks(ylims, [y_axis_points[0], y_axis_points[-1]])
+    
     # save the figure.
-    #plt.show()
-    plt.savefig(output_path + output_filename)
+    plt.tight_layout()
+    plt.savefig(output_path.joinpath(output_filename))
+    
+    # show the figure in the notebook, and shrinks the dpi to make it easily visible.
+    fig.set_dpi(67)
+    plt.tight_layout()
+    plt.show()
+    
+    # close the figure.
     plt.close()
+    
+    print('Contour plot created successfully.')
 
-def retrieve_data_for_point(x, y, z, output_data, axes_ranges):
-    # constants.
-    # -----
-    # number of datapoints in each axis range. always 2 datapoints, corresponding to minimum and maximum values.
-    axis_range_dimensions = 2
-    # turbulence datasets are all in 3 dimensions (x, y, z).
-    cube_dimensions = 3
+def retrieve_data_for_point(x, y, z, output_data, axes_ranges, strides):
+    # retrieve data values for all of the specified points.
     
     # -----
     # minimum and maximum endpoints along each axis for the points the user requested.
-    endpoints = np.array([[np.min(x), np.max(x)], \
-                          [np.min(y), np.max(y)], \
-                          [np.min(z), np.max(z)]], dtype = np.ndarray)
-
-    # transposed minimum and maximum arrays for both endpoints and axes_ranges.
-    endpoints_min, endpoints_max = endpoints.T.reshape(axis_range_dimensions, cube_dimensions)
-    axes_min, axes_max = axes_ranges.T.reshape(axis_range_dimensions, cube_dimensions)
-
+    endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.ndarray)
+    endpoints_max = np.array([np.max(x), np.max(y), np.max(z)], dtype = np.ndarray)
+    
+    # convert axes_ranges to a numpy array.
+    axes_min = axes_ranges[:, 0]
+    axes_max = axes_ranges[:, 1]
+    
+    # exception_handling.
+    # -----
     # raise exception if all of the user requested datapoints are not inside the bounds of the user box volume.
     if not(np.all(axes_min <= endpoints_min) and np.all(endpoints_max <= axes_max)):
         raise Exception(f'the specified point(s) are not all bounded by the box volume defined by:\n{axes_ranges}')
+        
+    # raise exception if the minimum endpoints datapoint is not in output_data.
+    output_x = output_data.x.values
+    output_y = output_data.y.values
+    output_z = output_data.z.values
+    
+    output_values = np.array([output_x, output_y, output_z], dtype = np.ndarray)
+    if not all([endpoints_min[q] in output_values[q] for q in range(len(endpoints_min))]):
+        # closest datapoint to the user-specified starting point for retrieving the data.
+        closest_x = output_x[(np.abs(output_x - endpoints_min[0])).argmin()]
+        closest_y = output_y[(np.abs(output_y - endpoints_min[1])).argmin()]
+        closest_z = output_z[(np.abs(output_z - endpoints_min[2])).argmin()]
+
+        raise Exception(f'initial requested datapoint {endpoints_min} is not in the cutout data. the closest starting point ' + \
+                        f'is {np.array([closest_x, closest_y, closest_z], dtype = np.ndarray)}')
 
     # value(s) corresponding to the specified (x, y, z) datapoint(s).
-    output_val = output_data.sel(x = x, y = y, z = z)
-
-    return output_val
+    return output_data.sel(x = range(endpoints_min[0], endpoints_max[0] + 1, strides[0]),
+                           y = range(endpoints_min[1], endpoints_max[1] + 1, strides[1]),
+                           z = range(endpoints_min[2], endpoints_max[2] + 1, strides[2]))
