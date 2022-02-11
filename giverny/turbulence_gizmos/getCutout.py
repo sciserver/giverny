@@ -232,12 +232,11 @@ def getCutout_process_data(cube, cube_resolution, cube_title, output_path,
     # formats the dataset name for the hdf5 output file. "untitled" is a placeholder.
     dataset_name = var_original.title()
         
-    # adds the timpoint information, formatted with leading zeros out to 1000, to dataset_name. 1 is added to timepoint because python uses
-    # 0-based indices, and the output is desired to be 1-based indices.
+    # adds the timpoint information, formatted with leading zeros out to 1000, to dataset_name.
     dataset_name += '_' + str(timepoint_original).zfill(4)
     
     # writes the output file.
-    #cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
+    cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
     
     # calculate how much time it takes to run step 4.
     end_time_step4 = time.perf_counter()
