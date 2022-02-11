@@ -386,9 +386,12 @@ class iso_cube:
                     self.recursive_sub_boxes_in_file(new_sub_box, user_db_box, morton_voxels_to_read, voxel_side_length)
         return
         
-    def identify_sub_boxes_in_file(self, user_db_box, var, timepoint, voxel_side_length = 8):
+    def identify_sub_boxes_in_file(self, user_db_box_original, var, timepoint, voxel_side_length = 8):
         # initially assumes the user-specified box in the file is not the entire box representing the file. the database file box will 
         # be sub-divided into morton cubes until the user-specified box is completely mapped by all of these sub-cubes.
+        
+        # take the modulus of the axes end points to account for periodic boundary conditions.
+        user_db_box = [[axis_range[0] % self.N, axis_range[1] % self.N] for axis_range in user_db_box_original]
         
         # retrieve the morton index limits (minLim, maxLim) of the cube representing the whole database file.
         f, cornercode, offset, minLim, maxLim = self.get_file_for_point([axis_range[0] for axis_range in user_db_box], var, timepoint)
