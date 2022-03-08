@@ -7,7 +7,7 @@ import xarray as xr
 from giverny.turbulence_gizmos.constants import *
 from giverny.turbulence_gizmos.basic_gizmos import *
 
-def getCutout_process_data(cube, cube_resolution, cube_title, output_path,
+def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
                            axes_ranges, var, timepoint,
                            axes_ranges_original, strides, var_original, timepoint_original):
     # calculate how much time it takes to run the code.
@@ -196,7 +196,7 @@ def getCutout_process_data(cube, cube_resolution, cube_title, output_path,
     output_data = xr.DataArray(output_data, 
                                coords = {'z':z_coords, 'y':y_coords, 'x':x_coords, 't':timepoint_original}, 
                                dims = ['z', 'y', 'x', 'v'],
-                               attrs = {'dataset':cube_title, 'function':variable_function,
+                               attrs = {'dataset':dataset_title, 'function':variable_function,
                                         'stridex':strides[0], 'stridey':strides[1], 'stridez':strides[2],
                                         'xs':axes_ranges_original[0][0], 'xe':axes_ranges_original[0][1],
                                         'ys':axes_ranges_original[1][0], 'ye':axes_ranges_original[1][1],
@@ -223,7 +223,7 @@ def getCutout_process_data(cube, cube_resolution, cube_title, output_path,
     # write output_data to a hdf5 file.
     # the output filename specifies the title of the cube, and the x-, y-, and z-ranges so that the file is unique. 1 is added to all of the 
     # ranges, and the timepoint, because python uses 0-based indices, and the output is desired to be 1-based indices.
-    output_filename = f'{cube_title}_{var_original}_' + \
+    output_filename = f'{dataset_title}_{var_original}_' + \
                       f't{timepoint_original}_' + \
                       f'z{axes_ranges_original[2][0]}-{axes_ranges_original[2][1]}_' + \
                       f'y{axes_ranges_original[1][0]}-{axes_ranges_original[1][1]}_' + \
@@ -236,7 +236,7 @@ def getCutout_process_data(cube, cube_resolution, cube_title, output_path,
     dataset_name += '_' + str(timepoint_original).zfill(4)
     
     # writes the output file.
-    cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
+    #cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
     
     # calculate how much time it takes to run step 4.
     end_time_step4 = time.perf_counter()
