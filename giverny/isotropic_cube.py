@@ -3,6 +3,7 @@ import sys
 import h5py
 import math
 import shutil
+import pathlib
 import subprocess
 import numpy as np
 import SciServer.CasJobs as cj
@@ -60,54 +61,38 @@ class iso_cube:
         self.cache = df
     
     # defines some helper functions, all hardcoded (double-check this when other datasets are available)
-    def parse_corner_points(self, x_min, x_max, y_min, y_max, z_min, z_max):
-        # only points 1, 2, 4, and 5 are required for finding the correct sub-boxes.
+    def parse_corner_points(self, box):
         # corner 1 is the bottom left back side origin point.
         # corner 2 is the bottom right back side corner point (same as corner 1 except at the maximum x-position).
+        # corner 3 is the bottom right front side corner point (same as corner 1 except at maximum x- and y-positions).
         # corner 4 is the bottom left front side corner point (same as corner 1 except at the maximum y-positon).
         # corner 5 is the top left back corner point (same as corner 1 except at the maximum z-positon).
         # corners 2, 3, and 4 travel around the bottom plane of the box clockwise from corner 1.
         # corners 6, 7, and 8 travel around the top plane of the box clockwise from corner 5.
-        c1 = (x_min, y_min, z_min)
-        c2 = (x_max, y_min, z_min)
-        #c3 = (x_max, y_max, z_min)
-        c4 = (x_min, y_max, z_min)
-        c5 = (x_min, y_min, z_max)
-        #c6 = (x_max, y_min, z_max)
-        #c7 = (x_max, y_max, z_max)
-        #c8 = (x_min, y_max, z_max)
         
-        corner_points = (c1, c2, c4, c5)
+        # box minimum and maximum points.
+        box_min = [axis_range[0] for axis_range in box]
+        box_max = [axis_range[1] for axis_range in box]
         
-        return corner_points
+        # only points 1, 2, 4, and 5 are required for finding the correct sub-boxes. the corner points are returned in order.
+        return (
+            (box_min[0], box_min[1], box_min[2]),
+            (box_max[0], box_min[1], box_min[2]),
+            (box_min[0], box_max[1], box_min[2]),
+            (box_min[0], box_min[1], box_max[2])
+        )
         
-    def get_files_for_corner_points(self, x_range, y_range, z_range, var, timepoint):
-        # define the corner points.
-        x_min = x_range[0]; x_max = x_range[1];
-        y_min = y_range[0]; y_max = y_range[1];
-        z_min = z_range[0]; z_max = z_range[1];
-        
+    def get_files_for_corner_points(self, box, var, timepoint):
         # retrieve the corner points.
-        c_points = self.parse_corner_points(x_min, x_max, y_min, y_max, z_min, z_max)
+        corner_points = self.parse_corner_points(box)
         
         database_files = []
-        
-        # only points 1, 2, 4, and 5 are required for finding the correct sub-boxes.
-        c1_info = self.get_file_for_point(c_points[0][0], c_points[0][1], c_points[0][2], var, timepoint)
-        c1_file = c1_info[0]
-        database_files.append(c1_file)
-        
-        c2_info = self.get_file_for_point(c_points[1][0], c_points[1][1], c_points[1][2], var, timepoint)
-        c2_file = c2_info[0]
-        database_files.append(c2_file)
-        
-        c4_info = self.get_file_for_point(c_points[2][0], c_points[2][1], c_points[2][2], var, timepoint)
-        c4_file = c4_info[0]
-        database_files.append(c4_file)
-        
-        c5_info = self.get_file_for_point(c_points[3][0], c_points[3][1], c_points[3][2], var, timepoint)
-        c5_file = c5_info[0]
-        database_files.append(c5_file)
+        # only points 1, 2, 4, and 5 are required for finding the correct sub-boxes. corner_points is ordered.
+        for corner_point in corner_points:
+            point_info = self.get_file_for_point(corner_point, var, timepoint)
+            point_file = point_info[0]
+            
+            database_files.append(point_file)
         
         return database_files
     
@@ -130,7 +115,7 @@ class iso_cube:
             datapoint[axis_position] = mid_point
             
             # gets the db file for the new datapoint.
-            datapoint_info = self.get_file_for_point(datapoint[0], datapoint[1], datapoint[2], var, timepoint)
+            datapoint_info = self.get_file_for_point(datapoint, var, timepoint)
             datapoint_file = datapoint_info[0]
             
             # compares the db file for datapoint to the origin point.
@@ -140,37 +125,23 @@ class iso_cube:
             else:
                 end_point = mid_point - 1
                 axis_range[1] = mid_point
-            
-            # used for checking that there were no redundant calculations
-            #print(f'midpoint = {mid_point}')
-            #print(f'endpoint = {end_point}')
-            #print('-')
                 
         return end_point
     
     def recursive_single_database_file_sub_boxes(self, box, var, timepoint, single_file_boxes):
-        db_files = self.get_files_for_corner_points(box[0], box[1], box[2], var, timepoint)
+        db_files = self.get_files_for_corner_points(box, var, timepoint)
         num_db_files = len(set(db_files))
         
-        # checks that the x-, y-, and z- range minimum and maximum points are all within one length of the database cube size. if they are 
-        # not, then this algorithm will continue to search for the database file representative boxes, even if the minimum and maximum
+        # checks that the x-, y-, and z- range minimum and maximum points are all within the same multiple of the database cube size. if they are 
+        # not, then this algorithm will continue to search for the database file representative boxes, even if the starting minimum and maximum
         # points are in the same database file (e.g. x_max = x_min + self.N).
-        x_min_cube_multiple = math.floor(float(box[0][0]) / float(self.N))
-        x_max_cube_multiple = math.floor(float(box[0][1]) / float(self.N))
-        y_min_cube_multiple = math.floor(float(box[1][0]) / float(self.N))
-        y_max_cube_multiple = math.floor(float(box[1][1]) / float(self.N))
-        z_min_cube_multiple = math.floor(float(box[2][0]) / float(self.N))
-        z_max_cube_multiple = math.floor(float(box[2][1]) / float(self.N))
-        
-        x_multiples = len(set([x_min_cube_multiple, x_max_cube_multiple]))
-        y_multiples = len(set([y_min_cube_multiple, y_max_cube_multiple]))
-        z_multiples = len(set([z_min_cube_multiple, z_max_cube_multiple]))
+        box_multiples = [math.floor(axis_range[0] / self.N) == math.floor(axis_range[1] / self.N) for axis_range in box]
 
-        if num_db_files == 1 and x_multiples == 1 and y_multiples == 1 and z_multiples == 1:
+        if num_db_files == 1 and all(box_multiples):
             unique_db_file = list(set(db_files))[0]
             
             # stores the minLim of the box for use later when reading in the data.
-            box_info = self.get_file_for_point(box[0][0], box[1][0], box[2][0], var, timepoint)
+            box_info = self.get_file_for_point([axis_range[0] for axis_range in box], var, timepoint)
             box_minLim = box_info[3]
             
             if unique_db_file not in single_file_boxes:
@@ -179,7 +150,7 @@ class iso_cube:
                 single_file_boxes[unique_db_file].append((box, box_minLim))
             
             return
-        elif db_files[0] != db_files[1] or x_multiples > 1:
+        elif db_files[0] != db_files[1] or not box_multiples[0]:
             # this means that the x_range was sufficiently large such that all of the points were
             # not contained in a singular database file.  i.e. the database files were different for
             # corners 1 and 2.  the data x_range will now be recursively split in half to find the first databse file endpoint
@@ -191,23 +162,21 @@ class iso_cube:
             axis_position = 0
             # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point
             # when shrinking the x-axis into sub-boxes.
-            datapoint = [box[0][0], box[1][0], box[2][0]]
+            datapoint = [axis_range[0] for axis_range in box]
             # which axis is sub-divided, in this case it is the x-axis.
             axis_range = list(box[0])
             # determine where the end x-axis point is for the first sub-box.
-            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0], \
-                                                                       var, timepoint)
-
-            first_sub_box = [[box[0][0], first_box_end_point], box[1], box[2]]
-            second_sub_box = [[first_box_end_point + 1, box[0][1]], box[1], box[2]]
+            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0],
+                                                              var, timepoint)
             
+            # append the first and second sub-boxes.
             sub_boxes = []
-            sub_boxes.append(first_sub_box)
-            sub_boxes.append(second_sub_box)
+            sub_boxes.append([[box[0][0], first_box_end_point], [box[1][0], box[1][1]], [box[2][0], box[2][1]]])
+            sub_boxes.append([[first_box_end_point + 1, box[0][1]], [box[1][0], box[1][1]], [box[2][0], box[2][1]]])
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
-        elif db_files[0] != db_files[2] or y_multiples > 1:
+        elif db_files[0] != db_files[2] or not box_multiples[1]:
             # this means that the y_range was sufficiently large such that all of the points were
             # not contained in a singular database file.  i.e. the database files were different for
             # corners 1 and 4.  the data y_range will now be recursively split in half to find the first databse file endpoint
@@ -219,23 +188,21 @@ class iso_cube:
             axis_position = 1
             # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point 
             # when shrinking the y-axis into sub-boxes.
-            datapoint = [box[0][0], box[1][0], box[2][0]]
+            datapoint = [axis_range[0] for axis_range in box]
             # which axis is sub-divided, in this case it is the y-axis.
             axis_range = list(box[1])
             # determine where the end y-axis point is for the first sub-box.
-            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0], \
-                                                                       var, timepoint)
-
-            first_sub_box = [box[0], [box[1][0], first_box_end_point], box[2]]
-            second_sub_box = [box[0], [first_box_end_point + 1, box[1][1]], box[2]]
-
+            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0],
+                                                              var, timepoint)
+            
+            # append the first and second sub-boxes.
             sub_boxes = []
-            sub_boxes.append(first_sub_box)
-            sub_boxes.append(second_sub_box)
+            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], first_box_end_point], [box[2][0], box[2][1]]])
+            sub_boxes.append([[box[0][0], box[0][1]], [first_box_end_point + 1, box[1][1]], [box[2][0], box[2][1]]])
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
-        elif db_files[0] != db_files[3] or z_multiples > 1:
+        elif db_files[0] != db_files[3] or not box_multiples[2]:
             # this means that the z_range was sufficiently large such that all of the points were
             # not contained in a singular database file.  i.e. the database files were different for
             # corners 1 and 5.  the data z_range will now be recursively split in half to find the first databse file endpoint
@@ -247,108 +214,68 @@ class iso_cube:
             axis_position = 2
             # stores the c1 corner point (x, y, z) of the box to be used for finding the first box end point 
             # when shrinking the z-axis into sub-boxes.
-            datapoint = [box[0][0], box[1][0], box[2][0]]
+            datapoint = [axis_range[0] for axis_range in box]
             # which axis is sub-divided, in this case it is the z-axis.
             axis_range = list(box[2])
             # determine where the end z-axis point is for the first sub-box.
-            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0], \
-                                                          var, timepoint)
-
-            first_sub_box = [box[0], box[1], [box[2][0], first_box_end_point]]
-            second_sub_box = [box[0], box[1], [first_box_end_point + 1, box[2][1]]]
+            first_box_end_point = self.find_sub_box_end_point(axis_range, datapoint, axis_position, db_files[0],
+                                                              var, timepoint)
             
+            # append the first and second sub-boxes.
             sub_boxes = []
-            sub_boxes.append(first_sub_box)
-            sub_boxes.append(second_sub_box)
+            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], box[1][1]], [box[2][0], first_box_end_point]])
+            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], box[1][1]], [first_box_end_point + 1, box[2][1]]])
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
     
-    def identify_single_database_file_sub_boxes(self, x_range, y_range, z_range, var, timepoint):
+    def identify_single_database_file_sub_boxes(self, box, var, timepoint):
         # initially assumes the user specified box contains points in different files. the boxes will be split up until all the points
         # in each box are from a single database file.
-        box = [x_range, y_range, z_range]
+        box = [list(axis_range) for axis_range in box]
+        
         single_file_boxes = {}
         self.recursive_single_database_file_sub_boxes(box, var, timepoint, single_file_boxes)
             
         return single_file_boxes
     
     def boxes_contained(self, sub_box, user_box):
+        # note: using list comprehension instead of explicit comparisons in the if statement increases the time by approximately 25 percent.
         contained = False
         # checks if the sub-divided box is fully contained within the user-specified box.
         if (sub_box[0][0] >= user_box[0][0] and sub_box[0][1] <= user_box[0][1]) and \
-            (sub_box[1][0] >= user_box[1][0] and sub_box[1][1] <= user_box[1][1]) and \
-            (sub_box[2][0] >= user_box[2][0] and sub_box[2][1] <= user_box[2][1]):
-            contained = True
+           (sub_box[1][0] >= user_box[1][0] and sub_box[1][1] <= user_box[1][1]) and \
+           (sub_box[2][0] >= user_box[2][0] and sub_box[2][1] <= user_box[2][1]):
+            overlap = True
         
         return contained
     
     def boxes_overlap(self, sub_box, user_box):
+        # note: using list comprehension instead of explicit comparisons in the if statement increases the time by approximately 25 percent.
         overlap = False
-        # checks if the sub-divided box and the user-specified box overlap on all 3 axes
-        if (sub_box[0][0] <= user_box[0][1] and user_box[0][0] <= sub_box[0][1]) and \
-            (sub_box[1][0] <= user_box[1][1] and user_box[1][0] <= sub_box[1][1]) and \
-            (sub_box[2][0] <= user_box[2][1] and user_box[2][0] <= sub_box[2][1]):
+        # checks if the sub-divided box and the user-specified box overlap on all 3 axes.
+        if (sub_box[0][0] <= user_box[0][1] and sub_box[0][1] >= user_box[0][0]) and \
+           (sub_box[1][0] <= user_box[1][1] and sub_box[1][1] >= user_box[1][0]) and \
+           (sub_box[2][0] <= user_box[2][1] and sub_box[2][1] >= user_box[2][0]):
             overlap = True
             
         return overlap
     
-    def determine_min_overlap_point(self, voxel, user_box, axis):
-        min_point = None
-        
-        # checks if the user-specified box minimum value along the given axis is <= the voxel minimum value along the same axis.  if so, then the 
-        # minimum value is stored as voxel minimum value.  otherwise, the minimum value is stored as the user-specified box minimum value.
-        if user_box[axis][0] <= voxel[axis][0]:
-            min_point = voxel[axis][0]
-        else:
-            min_point = user_box[axis][0]
-            
-        return min_point
-    
-    def determine_max_overlap_point(self, voxel, user_box, axis):
-        max_point = None
-        
-        # checks if the user-specified box maximum value along the given axis is >= the voxel maximum value along the same axis.  if so, then the 
-        # maximum value is stored as voxel maximum value.  otherwise, the maximum value is stored as the user-specified box maximum value.
-        if user_box[axis][1] >= voxel[axis][1]:
-            max_point = voxel[axis][1]
-        else:
-            max_point = user_box[axis][1]
-            
-        return max_point
-    
     def voxel_ranges_in_user_box(self, voxel, user_box):
         # determine the minimum and maximum values of the overlap, along each axis, between voxel and the user-specified box 
         # for a partially overlapped voxel.
-        # axis 0 corresponds to the x-axis.
-        # axis 1 corresponds to the y-axis.
-        # axis 2 corresponds to the z-axis.
-        voxel_x_min = self.determine_min_overlap_point(voxel, user_box, axis = 0)
-        voxel_x_max = self.determine_max_overlap_point(voxel, user_box, axis = 0)
-        
-        voxel_y_min = self.determine_min_overlap_point(voxel, user_box, axis = 1)
-        voxel_y_max = self.determine_max_overlap_point(voxel, user_box, axis = 1)
-        
-        voxel_z_min = self.determine_min_overlap_point(voxel, user_box, axis = 2)
-        voxel_z_max = self.determine_max_overlap_point(voxel, user_box, axis = 2)
-        
-        voxel_data = [[voxel_x_min, voxel_x_max], [voxel_y_min, voxel_y_max], [voxel_z_min, voxel_z_max]]
-        
-        return voxel_data
+        return [[voxel[q][0] if user_box[q][0] <= voxel[q][0] else user_box[q][0], 
+                 voxel[q][1] if user_box[q][1] >= voxel[q][1] else user_box[q][1]] for q in range(len(user_box))]
         
     def recursive_sub_boxes_in_file(self, box, user_db_box, morton_voxels_to_read, voxel_side_length = 8):
         # recursively sub-divides the database file cube until the entire user-specified box is mapped by morton cubes.
-        box_x_range = box[0]
-        box_y_range = box[1]
-        box_z_range = box[2]
         
         # only need to check one axes since each sub-box is a cube. this value will be compared to voxel_side_length to limit the recursive
         # shrinking algorithm.
-        sub_box_axes_length = box_x_range[1] - box_x_range[0] + 1
+        sub_box_axes_length = box[0][1] - box[0][0] + 1
         
         # checks if the sub-box corner points are all inside the portion of the user-specified box in the database file.
         box_fully_contained = self.boxes_contained(box, user_db_box)
-        box_partially_contained = self.boxes_overlap(box, user_db_box)
         # recursively shrinks to voxel-sized boxes (8 x 8 x 8), and stores all of the necessary information regarding these boxes
         # that will be used when reading in data from the database file. if a sub-box is fully inside the user-box before getting down 
         # to the voxel level, then the information is stored for this box without shrinking further to save time.
@@ -359,10 +286,9 @@ class iso_cube:
             
             # calculate the number of voxel lengths that fit along each axis, and then from these values calculate the total number
             # of voxels that are inside of this sub-box. each of these values should be an integer because all of the values are divisible.
-            num_voxels_x = int((box[0][1] - box[0][0] + 1) / voxel_side_length)
-            num_voxels_y = int((box[1][1] - box[1][0] + 1) / voxel_side_length)
-            num_voxels_z = int((box[2][1] - box[2][0] + 1) / voxel_side_length)
-            num_voxels = num_voxels_x * num_voxels_y * num_voxels_z
+            num_voxels = int((box[0][1] - box[0][0] + 1) / voxel_side_length) * \
+                         int((box[1][1] - box[1][0] + 1) / voxel_side_length) * \
+                         int((box[2][1] - box[2][0] + 1) / voxel_side_length)
             
             # whether the voxel type is fully contained in the user-box ('f') or partially contained ('p') for each voxel.
             voxel_type = ['f'] * num_voxels
@@ -387,142 +313,106 @@ class iso_cube:
                     
             return
         elif sub_box_axes_length == voxel_side_length:
-            if box_fully_contained or box_partially_contained:
-                # converts the box (x, y, z) minimum and maximum points to morton indices for the database file.
-                morton_index_min = self.mortoncurve.pack(box[0][0], box[1][0], box[2][0])
-                morton_index_max = self.mortoncurve.pack(box[0][1], box[1][1], box[2][1])
-                
-                # calculate the number of voxel lengths that fit along each axis, and then from these values calculate the total number
-                # of voxels that are inside of this sub-box. each of these values should be an integer because all of the values are divisible.
-                num_voxels_x = int((box[0][1] - box[0][0] + 1) / voxel_side_length)
-                num_voxels_y = int((box[1][1] - box[1][0] + 1) / voxel_side_length)
-                num_voxels_z = int((box[2][1] - box[2][0] + 1) / voxel_side_length)
-                num_voxels = num_voxels_x * num_voxels_y * num_voxels_z
-                
-                # whether the voxel type is fully contained in the user-box ('f') or partially contained ('p') for each voxel.
-                voxel_type = 'p'
-                if box_fully_contained:
-                    voxel_type = 'f'
-                
-                voxel_type = [voxel_type] * num_voxels
-                
-                # stores the morton indices for reading from the database file efficiently and voxel info for parsing out the voxel information.
-                if morton_voxels_to_read == list():
+            # converts the box (x, y, z) minimum and maximum points to morton indices for the database file.
+            morton_index_min = self.mortoncurve.pack(box[0][0], box[1][0], box[2][0])
+            morton_index_max = self.mortoncurve.pack(box[0][1], box[1][1], box[2][1])
+
+            # calculate the number of voxel lengths that fit along each axis, and then from these values calculate the total number
+            # of voxels that are inside of this sub-box. each of these values should be an integer because all of the values are divisible.
+            num_voxels = int((box[0][1] - box[0][0] + 1) / voxel_side_length) * \
+                         int((box[1][1] - box[1][0] + 1) / voxel_side_length) * \
+                         int((box[2][1] - box[2][0] + 1) / voxel_side_length)
+
+            # whether the voxel type is fully contained in the user-box ('f') or partially contained ('p') for each voxel.
+            voxel_type = 'p'
+            if box_fully_contained:
+                voxel_type = 'f'
+
+            voxel_type = [voxel_type] * num_voxels
+
+            # stores the morton indices for reading from the database file efficiently and voxel info for parsing out the voxel information.
+            if morton_voxels_to_read == list():
+                morton_voxel_info = [[morton_index_min, morton_index_max], num_voxels, voxel_type]
+                morton_voxels_to_read.append(morton_voxel_info)
+            else:
+                # check if the most recent sub-box maximum is 1 index less than the new sub-box minimum.  if so, then 
+                # extend the range of the previous sub-box morton maximum to stitch these two boxes together. also, add the number of voxels 
+                # and append the new voxel type information so that the voxel boundaries can be parsed correctly when reading the data.
+                if morton_voxels_to_read[-1][0][1] == (morton_index_min - 1):
+                    morton_voxels_to_read[-1][0][1] = morton_index_max
+                    morton_voxels_to_read[-1][1] += num_voxels
+                    morton_voxels_to_read[-1][2] += voxel_type
+                else:
+                    # start a new morton sequence that will be read in separately.
                     morton_voxel_info = [[morton_index_min, morton_index_max], num_voxels, voxel_type]
                     morton_voxels_to_read.append(morton_voxel_info)
-                else:
-                    # check if the most recent sub-box maximum is 1 index less than the new sub-box minimum.  if so, then 
-                    # extend the range of the previous sub-box morton maximum to stitch these two boxes together. also, add the number of voxels 
-                    # and append the new voxel type information so that the voxel boundaries can be parsed correctly when reading the data.
-                    if morton_voxels_to_read[-1][0][1] == (morton_index_min - 1):
-                        morton_voxels_to_read[-1][0][1] = morton_index_max
-                        morton_voxels_to_read[-1][1] += num_voxels
-                        morton_voxels_to_read[-1][2] += voxel_type
-                    else:
-                        # start a new morton sequence that will be read in separately.
-                        morton_voxel_info = [[morton_index_min, morton_index_max], num_voxels, voxel_type]
-                        morton_voxels_to_read.append(morton_voxel_info)
 
             return
         else:
-            if box_partially_contained:
-                # sub-divide the box into 8 sub-cubes (divide the x-, y-, and z- axes in half) and recursively check each box if 
-                # it is inside the user-specified box, if necessary.
-                box_x_range_midpoint = math.floor((box_x_range[0] + box_x_range[1]) / 2)
-                box_y_range_midpoint = math.floor((box_y_range[0] + box_y_range[1]) / 2)
-                box_z_range_midpoint = math.floor((box_z_range[0] + box_z_range[1]) / 2)
-                
-                # ordering sub-boxes 1-8 below in this order maintains the morton-curve index structure, such that 
-                # the minimum (x, y, z) morton index for a new box only needs to be compared to the last 
-                # sub-boxes' maximum (x, y, z) morton index to see if they can be stitched together.
-                
-                # new_sub_box_1 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_min, z_midpoint]
-                # new_sub_box_2 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_min, z_midpoint]
-                # new_sub_box_3 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
-                # new_sub_box_4 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
-                new_sub_box_1 = [[box_x_range[0], box_x_range_midpoint], 
-                                 [box_y_range[0], box_y_range_midpoint], 
-                                 [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_2 = [[box_x_range_midpoint + 1, box_x_range[1]], 
-                                 [box_y_range[0], box_y_range_midpoint], 
-                                 [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_3 = [[box_x_range[0], box_x_range_midpoint], 
-                                 [box_y_range_midpoint + 1, box_y_range[1]], 
-                                 [box_z_range[0], box_z_range_midpoint]]
-                new_sub_box_4 = [[box_x_range_midpoint + 1, box_x_range[1]], 
-                                 [box_y_range_midpoint + 1, box_y_range[1]], 
-                                 [box_z_range[0], box_z_range_midpoint]]
-                
-                # new_sub_box_5 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
-                # new_sub_box_6 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
-                # new_sub_box_7 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
-                # new_sub_box_8 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
-                new_sub_box_5 = [[box_x_range[0], box_x_range_midpoint], 
-                                 [box_y_range[0], box_y_range_midpoint], 
-                                 [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_6 = [[box_x_range_midpoint + 1, box_x_range[1]], 
-                                 [box_y_range[0], box_y_range_midpoint], 
-                                 [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_7 = [[box_x_range[0], box_x_range_midpoint], 
-                                 [box_y_range_midpoint + 1, box_y_range[1]], 
-                                 [box_z_range_midpoint + 1, box_z_range[1]]]
-                new_sub_box_8 = [[box_x_range_midpoint + 1, box_x_range[1]], 
-                                 [box_y_range_midpoint + 1, box_y_range[1]], 
-                                 [box_z_range_midpoint + 1, box_z_range[1]]]
+            # sub-divide the box into 8 sub-cubes (divide the x-, y-, and z- axes in half) and recursively check each box if 
+            # it is inside the user-specified box, if necessary.
+            box_midpoints = [math.floor((axis_range[0] + axis_range[1]) / 2) for axis_range in box]
 
-                new_sub_boxes = []
-                new_sub_boxes.append(new_sub_box_1)
-                new_sub_boxes.append(new_sub_box_2)
-                new_sub_boxes.append(new_sub_box_3)
-                new_sub_boxes.append(new_sub_box_4)
-                new_sub_boxes.append(new_sub_box_5)
-                new_sub_boxes.append(new_sub_box_6)
-                new_sub_boxes.append(new_sub_box_7)
-                new_sub_boxes.append(new_sub_box_8)
-                    
-                for new_sub_box in new_sub_boxes:
-                    # checks if a sub-box is at least partially contained inside the user-specified box. if so, then the sub-box will 
-                    # be recursively searched until an entire sub-box is inside the user-specified box.
-                    new_sub_box_partially_contained = self.boxes_overlap(new_sub_box, user_db_box)
+            # ordering sub-boxes 1-8 below in this order maintains the morton-curve index structure, such that 
+            # the minimum (x, y, z) morton index for a new box only needs to be compared to the last 
+            # sub-boxes' maximum (x, y, z) morton index to see if they can be stitched together.
 
-                    if new_sub_box_partially_contained:
-                        self.recursive_sub_boxes_in_file(new_sub_box, user_db_box, morton_voxels_to_read, voxel_side_length)
+            # sub_box_1 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_min, z_midpoint]
+            # sub_box_2 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_min, z_midpoint]
+            # sub_box_3 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
+            # sub_box_4 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_min, z_midpoint]
+            sub_box_1 = [[box[0][0], box_midpoints[0]], [box[1][0], box_midpoints[1]], [box[2][0], box_midpoints[2]]]
+            sub_box_2 = [[box_midpoints[0] + 1, box[0][1]], [box[1][0], box_midpoints[1]], [box[2][0], box_midpoints[2]]]
+            sub_box_3 = [[box[0][0], box_midpoints[0]], [box_midpoints[1] + 1, box[1][1]], [box[2][0], box_midpoints[2]]]
+            sub_box_4 = [[box_midpoints[0] + 1, box[0][1]], [box_midpoints[1] + 1, box[1][1]], [box[2][0], box_midpoints[2]]]
+
+            # sub_box_5 is the sub-box bounded by [x_min, x_midpoint], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
+            # sub_box_6 is the sub-box bounded by [x_midpoint + 1, x_max], [y_min, y_midpoint], and [z_midpoint + 1, z_max]
+            # sub_box_7 is the sub-box bounded by [x_min, x_midpoint], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
+            # sub_box_8 is the sub-box bounded by [x_midpoint + 1, x_max], [y_midpoint + 1, y_max], and [z_midpoint + 1, z_max]
+            sub_box_5 = [[box[0][0], box_midpoints[0]], [box[1][0], box_midpoints[1]], [box_midpoints[2] + 1, box[2][1]]]
+            sub_box_6 = [[box_midpoints[0] + 1, box[0][1]], [box[1][0], box_midpoints[1]], [box_midpoints[2] + 1, box[2][1]]]
+            sub_box_7 = [[box[0][0], box_midpoints[0]], [box_midpoints[1] + 1, box[1][1]], [box_midpoints[2] + 1, box[2][1]]]
+            sub_box_8 = [[box_midpoints[0] + 1, box[0][1]], [box_midpoints[1] + 1, box[1][1]], [box_midpoints[2] + 1, box[2][1]]]
+            
+            new_sub_boxes = [sub_box_1, sub_box_2, sub_box_3, sub_box_4, sub_box_5, sub_box_6, sub_box_7, sub_box_8]
+
+            for new_sub_box in new_sub_boxes:
+                # checks if a sub-box is at least partially contained inside the user-specified box. if so, then the sub-box will 
+                # be recursively searched until an entire sub-box is inside the user-specified box.
+                new_sub_box_partially_contained = self.boxes_overlap(new_sub_box, user_db_box)
+
+                if new_sub_box_partially_contained:
+                    self.recursive_sub_boxes_in_file(new_sub_box, user_db_box, morton_voxels_to_read, voxel_side_length)
         return
         
     def identify_sub_boxes_in_file(self, user_db_box_original, var, timepoint, voxel_side_length = 8):
-        # take the modulus of the axes end points to account for periodic boundary conditions.
-        user_db_box = [[user_db_box_axis_range[0] % self.N, user_db_box_axis_range[1] % self.N] for user_db_box_axis_range in user_db_box_original]
-        
         # initially assumes the user-specified box in the file is not the entire box representing the file. the database file box will 
         # be sub-divided into morton cubes until the user-specified box is completely mapped by all of these sub-cubes.
-        user_db_box_x_range = user_db_box[0]
-        user_db_box_y_range = user_db_box[1]
-        user_db_box_z_range = user_db_box[2]
         
-        user_db_box_x_min = user_db_box_x_range[0]
-        user_db_box_y_min = user_db_box_y_range[0]
-        user_db_box_z_min = user_db_box_z_range[0]
+        # take the modulus of the axes end points to account for periodic boundary conditions.
+        user_db_box = [[axis_range[0] % self.N, axis_range[1] % self.N] for axis_range in user_db_box_original]
         
-        # retrieve the morton index limits (minLim, maxLim) of the cube representing the whole database file
-        f, cornercode, offset, minLim, maxLim = self.get_file_for_point(user_db_box_x_min, user_db_box_y_min, user_db_box_z_min, var, timepoint)
+        # retrieve the morton index limits (minLim, maxLim) of the cube representing the whole database file.
+        f, cornercode, offset, minLim, maxLim = self.get_file_for_point([axis_range[0] for axis_range in user_db_box], var, timepoint)
         minLim_xyz = self.mortoncurve.unpack(minLim)
         maxLim_xyz = self.mortoncurve.unpack(maxLim)
         
-        # get the box for the entire database file so that it can be recursively broken down into cubes
-        db_box = [[minLim_xyz[0], maxLim_xyz[0]], [minLim_xyz[1], maxLim_xyz[1]], [minLim_xyz[2], maxLim_xyz[2]]]
+        # get the box for the entire database file so that it can be recursively broken down into cubes.
+        db_box = [[minLim_xyz[q], maxLim_xyz[q]] for q in range(len(minLim_xyz))]
         
-        # these are the constituent file sub-cubes that make up the part of the user-specified box in the database file
+        # these are the constituent file sub-cubes that make up the part of the user-specified box in the database file.
         morton_voxels_to_read = []
         self.recursive_sub_boxes_in_file(db_box, user_db_box, morton_voxels_to_read, voxel_side_length)
 
         return morton_voxels_to_read
         
-    def get_offset(self, x, y, z):
+    def get_offset(self, datapoint):
         """
         todo: is this code correct for velocity as well?  yes.
         """
         # morton curve index corresponding to the user specified x, y, and z values
-        code = self.mortoncurve.pack(x, y, z)
+        code = self.mortoncurve.pack(datapoint[0], datapoint[1], datapoint[2])
         # always looking at an 8 x 8 x 8 box around the grid point, so the shift is always 9 bits to determine 
         # the bottom left corner of the box. the cornercode (bottom left corner of the 8 x 8 x 8 box) is always 
         # in the same file as the user-specified grid point.
@@ -530,35 +420,28 @@ class iso_cube:
         cornercode = (code >> 9) << 9
         corner = np.array(self.mortoncurve.unpack(cornercode))
         # calculates the offset between the grid point and corner of the box and converts it to a 4-byte float.
-        offset = np.sum((np.array([x, y, z]) - corner) * np.array([1, 8, 64]))
+        offset = np.sum((np.array(datapoint) - corner) * np.array([1, 8, 64]))
         
         return cornercode, offset
     
-    def get_file_for_point(self, x, y, z, var = 'pr', timepoint = 0):
+    def get_file_for_point(self, datapoint, var = 'pr', timepoint = 0):
         """
         querying the cached SQL metadata for the file for the user specified grid point
         """
         # use periodic boundary conditions to adjust the x, y, and z values if they are outside the range of the whole dataset cube.
-        if x < 0 or x > (self.N - 1):
-            x = x % self.N
-        
-        if y < 0 or y > (self.N - 1):
-            y = y % self.N
-            
-        if z < 0 or z > (self.N - 1):
-            z = z % self.N
+        datapoint = [point % self.N for point in datapoint]
         
         # query the cached SQL metadata for the user-specified grid point.
-        cornercode, offset = self.get_offset(x, y, z)
+        cornercode, offset = self.get_offset(datapoint)
         t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
         t = t.iloc[0]
         dataN = t.path.split("/")
         f = f'/home/idies/workspace/turb/data{t.ProductionMachineName[-2:]}_{dataN[2][-2:]}/{dataN[-1]}/{t.ProductionDatabaseName}_{var}_{timepoint}.bin'
         return f, cornercode, offset, t.minLim, t.maxLim
         
-    def read_database_files_sequentially(self, sub_db_boxes, \
-                                         x_min, y_min, z_min, x_range, y_range, z_range, \
-                                         num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
+    def read_database_files_sequentially(self, sub_db_boxes,
+                                         axes_ranges,
+                                         num_values_per_datapoint, bytes_per_datapoint, voxel_side_length,
                                          missing_value_placeholder):
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
@@ -566,18 +449,18 @@ class iso_cube:
             sub_db_boxes_disk_data = sub_db_boxes[database_file_disk]
             
             # read in the voxel data from all of the database files on this disk.
-            disk_result_output_data = self.get_iso_points(sub_db_boxes_disk_data, \
-                                                          x_min, y_min, z_min, x_range, y_range, z_range, \
-                                                          num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder, \
+            disk_result_output_data = self.get_iso_points(sub_db_boxes_disk_data,
+                                                          axes_ranges,
+                                                          num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder,
                                                           verbose = False)
             
             result_output_data += disk_result_output_data
             
         return result_output_data
         
-    def read_database_files_in_parallel_with_dask(self, sub_db_boxes, \
-                                                  x_min, y_min, z_min, x_range, y_range, z_range, \
-                                                  num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, \
+    def read_database_files_in_parallel_with_dask(self, sub_db_boxes,
+                                                  axes_ranges,
+                                                  num_values_per_datapoint, bytes_per_datapoint, voxel_side_length,
                                                   missing_value_placeholder, num_processes):
         # start the dask client for parallel processing.
         # -----
@@ -630,10 +513,10 @@ class iso_cube:
             # scatter the data across the distributed workers.
             sub_db_boxes_disk_data_scatter = client.scatter(sub_db_boxes_disk_data, workers = worker)
             # read in the voxel data from all of the database files on this disk.
-            disk_result_output_data = client.submit(self.get_iso_points, sub_db_boxes_disk_data_scatter, \
-                                                    x_min, y_min, z_min, x_range, y_range, z_range, \
-                                                    num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder, \
-                                                    verbose = False, \
+            disk_result_output_data = client.submit(self.get_iso_points, sub_db_boxes_disk_data_scatter,
+                                                    axes_ranges,
+                                                    num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder,
+                                                    verbose = False,
                                                     workers = worker)
             
             result_output_data.append(disk_result_output_data)
@@ -656,18 +539,15 @@ class iso_cube:
         
         return result_output_data
     
-    def get_iso_points(self, sub_db_boxes_disk_data, \
-                       x_min, y_min, z_min, x_range, y_range, z_range, \
-                       num_values_per_datapoint = 1, bytes_per_datapoint = 4, voxel_side_length = 8, missing_value_placeholder = -999.9, \
+    def get_iso_points(self, sub_db_boxes_disk_data,
+                       user_box,
+                       num_values_per_datapoint = 1, bytes_per_datapoint = 4, voxel_side_length = 8, missing_value_placeholder = -999.9,
                        verbose = False):
         """
         retrieve the values for the specified var(iable) in the user-specified box and at the specified timepoint.
         """
         # volume of the voxel cube.
         voxel_cube_size = voxel_side_length**3
-        
-        # defines the user-specified box.
-        user_box = [x_range, y_range, z_range]
         
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
@@ -681,37 +561,31 @@ class iso_cube:
                 morton_voxels_to_read = sub_db_boxes_disk_data[db_file][user_box_key]
 
                 # retrieve the minimum and maximum (x, y, z) coordinates of the morton sub-box that is going to be read in.
-                min_xyz = [user_box_ranges[0][0], user_box_ranges[1][0], user_box_ranges[2][0]]
-                max_xyz = [user_box_ranges[0][1], user_box_ranges[1][1], user_box_ranges[2][1]]
+                min_xyz = [axis_range[0] for axis_range in user_box_ranges]
+                max_xyz = [axis_range[1] for axis_range in user_box_ranges]
                 
                 # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
-                cube_x_multiple = math.floor(float(min_xyz[0]) / float(self.N)) * self.N
-                cube_y_multiple = math.floor(float(min_xyz[1]) / float(self.N)) * self.N
-                cube_z_multiple = math.floor(float(min_xyz[2]) / float(self.N)) * self.N
+                cube_multiples = [math.floor(float(min_xyz[q]) / float(self.N)) * self.N for q in range(len(min_xyz))]
 
                 # create the local output array for this box that will be filled and returned.
-                local_output_array = np.full((max_xyz[2] - min_xyz[2] + 1, \
-                                              max_xyz[1] - min_xyz[1] + 1, \
-                                              max_xyz[0] - min_xyz[0] + 1, \
+                local_output_array = np.full((max_xyz[2] - min_xyz[2] + 1,
+                                              max_xyz[1] - min_xyz[1] + 1,
+                                              max_xyz[0] - min_xyz[0] + 1,
                                               num_values_per_datapoint), fill_value = missing_value_placeholder, dtype = 'f')
 
                 # iterates over the groups of morton adjacent voxels to minimize the number I/O operations when reading the data.
                 for morton_data in morton_voxels_to_read:
                     # the continuous range of morton indices compiled from adjacent voxels that can be read in from the file at the same time.
+                    # the minimum morton index is equivalent to "cornercode + offset" because it is defined as the corner of a voxel.
                     morton_index_range = morton_data[0]
                     # the voxels that will be parsed out from the data that is read in. the voxels need to be parsed separately because the data 
                     # is sequentially ordered within a voxel as opposed to morton ordered outside a voxel.
                     num_voxels = morton_data[1]
 
-                    # morton_index_min is equivalent to "cornercode + offset" because morton_index_min is defined as the corner of a voxel.
-                    morton_index_min = morton_index_range[0]
-                    morton_index_max = morton_index_range[1]
-                    morton_index_diff = (morton_index_max - morton_index_min) + 1
-
                     # the point to seek to in order to start reading the file for this morton index range.
-                    seek_distance = num_values_per_datapoint * bytes_per_datapoint * (morton_index_min - db_minLim)
+                    seek_distance = num_values_per_datapoint * bytes_per_datapoint * (morton_index_range[0] - db_minLim)
                     # number of bytes to read in from the database file.
-                    read_length = num_values_per_datapoint * bytes_per_datapoint * morton_index_diff 
+                    read_length = num_values_per_datapoint * bytes_per_datapoint * (morton_index_range[1] - morton_index_range[0] + 1)
 
                     # read the data efficiently.
                     l = np.fromfile(db_file, dtype = 'f', count = read_length, offset = seek_distance)
@@ -720,23 +594,18 @@ class iso_cube:
                     # iterate over each voxel in voxel_data.
                     for voxel_count in np.arange(0, num_voxels, 1):
                         # get the origin point (x, y, z) for the voxel.
-                        voxel_origin_point = self.mortoncurve.unpack(morton_index_min + (voxel_count * voxel_cube_size))
+                        voxel_origin_point = self.mortoncurve.unpack(morton_index_range[0] + (voxel_count * voxel_cube_size))
 
                         # voxel axes ranges.
-                        voxel_ranges = [[voxel_origin_point[0] + cube_x_multiple, voxel_origin_point[0] + cube_x_multiple + voxel_side_length - 1], \
-                                        [voxel_origin_point[1] + cube_y_multiple, voxel_origin_point[1] + cube_y_multiple + voxel_side_length - 1], \
-                                        [voxel_origin_point[2] + cube_z_multiple, voxel_origin_point[2] + cube_z_multiple + voxel_side_length - 1]]
+                        voxel_ranges = [[voxel_origin_point[0] + cube_multiples[0], voxel_origin_point[0] + cube_multiples[0] + voxel_side_length - 1],
+                                        [voxel_origin_point[1] + cube_multiples[1], voxel_origin_point[1] + cube_multiples[1] + voxel_side_length - 1],
+                                        [voxel_origin_point[2] + cube_multiples[2], voxel_origin_point[2] + cube_multiples[2] + voxel_side_length - 1]]
 
                         # assumed to be a voxel that is fully inside the user-specified box. if the box was only partially contained inside the 
                         # user-specified box, then the voxel ranges are corrected to the edges of the user-specified box.
                         voxel_type = morton_data[2][voxel_count]
                         if voxel_type == 'p':
-                            voxel_ranges = self.voxel_ranges_in_user_box(voxel_ranges, [x_range, y_range, z_range])
-
-                        # retrieve the x-, y-, and z-ranges for the voxel.
-                        voxel_x_range = voxel_ranges[0]
-                        voxel_y_range = voxel_ranges[1]
-                        voxel_z_range = voxel_ranges[2]
+                            voxel_ranges = self.voxel_ranges_in_user_box(voxel_ranges, user_box)
 
                         # pull out the data that corresponds to this voxel.
                         sub_l_array = l[voxel_count * voxel_cube_size : (voxel_count + 1) * voxel_cube_size]
@@ -746,14 +615,14 @@ class iso_cube:
                         
                         # remove parts of the voxel that are outside of the user-specified box.
                         if voxel_type == 'p':
-                            sub_l_array = sub_l_array[voxel_z_range[0] % voxel_side_length : (voxel_z_range[1] % voxel_side_length) + 1, \
-                                                      voxel_y_range[0] % voxel_side_length : (voxel_y_range[1] % voxel_side_length) + 1, \
-                                                      voxel_x_range[0] % voxel_side_length : (voxel_x_range[1] % voxel_side_length) + 1]
+                            sub_l_array = sub_l_array[voxel_ranges[2][0] % voxel_side_length : (voxel_ranges[2][1] % voxel_side_length) + 1,
+                                                      voxel_ranges[1][0] % voxel_side_length : (voxel_ranges[1][1] % voxel_side_length) + 1,
+                                                      voxel_ranges[0][0] % voxel_side_length : (voxel_ranges[0][1] % voxel_side_length) + 1]
                         
                         # insert sub_l_array into local_output_data.
-                        local_output_array[voxel_z_range[0] - min_xyz[2] : voxel_z_range[1] - min_xyz[2] + 1, \
-                                           voxel_y_range[0] - min_xyz[1] : voxel_y_range[1] - min_xyz[1] + 1, \
-                                           voxel_x_range[0] - min_xyz[0] : voxel_x_range[1] - min_xyz[0] + 1] = sub_l_array
+                        local_output_array[voxel_ranges[2][0] - min_xyz[2] : voxel_ranges[2][1] - min_xyz[2] + 1,
+                                           voxel_ranges[1][0] - min_xyz[1] : voxel_ranges[1][1] - min_xyz[1] + 1,
+                                           voxel_ranges[0][0] - min_xyz[0] : voxel_ranges[0][1] - min_xyz[0] + 1] = sub_l_array
 
                 # checks to make sure that data was read in for all points.
                 if missing_value_placeholder in local_output_array:
@@ -766,6 +635,6 @@ class iso_cube:
     
     def write_output_matrix_to_hdf5(self, output_data, output_path, output_filename, dataset_name):
         # write output_data to a hdf5 file.
-        with h5py.File(output_path + output_filename + '.h5', 'w') as h5f:
+        with h5py.File(output_path.joinpath(output_filename + '.h5'), 'w') as h5f:
             h5f.create_dataset(dataset_name, data = output_data)
             
