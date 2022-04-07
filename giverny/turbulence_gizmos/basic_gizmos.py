@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import pathlib
 import numpy as np
@@ -191,6 +192,10 @@ def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_r
                         f'is {np.array([closest_x, closest_y, closest_z], dtype = np.ndarray)}')
 
     # generate the plot.
+    print('Generating contour plot...')
+    print('-----')
+    sys.stdout.flush()
+    
     # -----
     # convert the 1-based value_index_original to a 0-based index for python.
     value_index = convert_to_0_based_value(value_index_original)
@@ -245,6 +250,7 @@ def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_r
     # close the figure.
     plt.close()
     
+    print('-----')
     print('Contour plot created successfully.')
 
 def dataValues(x, y, z, output_data, axes_ranges, strides):
