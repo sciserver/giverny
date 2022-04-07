@@ -5,8 +5,69 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 """
+user-input checking gizmos.
+"""
+def check_dataset_title(dataset_title):
+    # check that dataset_title is a valid dataset title.
+    valid_dataset_titles = ['isotropic4096', 'isotropic8192']
+    
+    if dataset_title not in valid_dataset_titles:
+        raise Exception(f"'{dataset_title}' (case-sensitive) is not a valid dataset title: {valid_dataset_titles}")
+        
+    return
+
+def check_variable(variable):
+    # check that variable is a valid variable name.
+    valid_variables = ['pressure', 'velocity']
+    
+    if variable not in valid_variables:
+        raise Exception(f"'{variable}' (case-sensitive) is not a valid variable: {valid_variables}")
+        
+    return
+
+def check_timepoint(timepoint, dataset_title):
+    # check that timepoint is a valid timepoint for the dataset.
+    valid_timepoints = {'isotropic4096':range(1, 1 + 1), 'isotropic8192':range(1, 6 + 1)}
+    
+    if timepoint not in valid_timepoints[dataset_title]:
+        raise Exception(f'{timepoint} is not a valid timepoint: must be in the inclusive range of ' +
+                        f'[{valid_timepoints[dataset_title][0]}, {valid_timepoints[dataset_title][-1]}]')
+        
+    return
+
+def check_axes_ranges(axes_ranges):
+    # check that the axis ranges are all specified as minimum and maximum integer values.
+    for axis_range in axes_ranges:
+        if len(axis_range) != 2:
+            raise Exception(f'axis range, {axis_range}, is not correctly specified as [minimum, maximum]')
+            
+        for val in axis_range:
+            if type(val) != int:
+                raise Exception(f'{val} in axis range, {list(axis_range)}, is not an integer')
+                
+def check_strides(strides):
+    # check that the strides are all positive integer values.
+    for stride in strides:
+        if type(stride) != int or stride < 1:
+            raise Exception(f'stride, {stride}, is not an integer value >= 1')
+
+"""
 mapping gizmos.
 """
+def get_dataset_resolution(dataset_title):
+    # get the number of datapoints (resolution) along each axis of the isotropic dataset.
+    return {
+        'isotropic4096':4096,
+        'isotropic8192':8192
+    }[dataset_title]
+
+def get_filename_prefix(dataset_title):
+    # get the common filename prefix for each database file in the dataset.
+    return {
+        'isotropic4096':'iso4096',
+        'isotropic8192':'iso8192'
+    }[dataset_title]
+
 def get_variable_function(variable_id):
     # get the function symbol for the user-specified variable.
     return {
@@ -30,12 +91,6 @@ def get_num_values_per_datapoint(variable_id):
 
 def get_variable_identifier(variable_name):
     # convert the variable name to its corresponding identifier, e.g. convert "velocity" to "vel".
-    valid_variable_names = ['velocity', 'pressure']
-    
-    variable_name = variable_name.lower()
-    if variable_name not in valid_variable_names:
-        raise Exception(f"'{variable_name}' is not a valid variable: {valid_variable_names}")
-
     return {
         'velocity':'vel',
         'pressure':'pr'
@@ -80,9 +135,9 @@ def create_output_folder(output_path):
 """
 user-interfacing gizmos.
 """
-def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides,
-                        output_path, output_filename,
-                        colormap = 'viridis'):
+def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides,
+                output_path, output_filename,
+                colormap = 'viridis'):
     # dictionaries.
     # -----
     # variable identifier, e.g. "vel" for "velocity".
@@ -96,6 +151,9 @@ def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges
     
     # exception handling.
     # -----
+    # check that the user-input x-, y-, and z-axis plot ranges are all specified correctly as [minimum, maximum] integer values.
+    check_axes_ranges(plot_ranges)
+    
     # check that the user specified a valid value index.
     if value_index_original not in value_name_map[variable_id]:
         raise Exception(f"{value_index_original} is not a valid value_index: {list(value_name_map[variable_id].keys())}")
@@ -146,6 +204,12 @@ def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges
                                 z = range(plot_ranges[2, 0], plot_ranges[2, 1] + 1, strides[2]),
                                 v = value_index)
     
+    # raise exception if only one point is going to be plotted along more than 1 axis. a contour plot requires more 
+    # than 1 point along 2 axes. this check is required in case the user specifies a stride along an axis that 
+    # is >= number of datapoints along that axis.
+    if plot_data.shape.count(1) > 1:
+        raise Exception('the contour plot could not be created because more than 1 axis only had 1 datapoint')
+    
     # create the figure.
     fig = plt.figure(figsize = (11, 8.5), dpi = 300)
     fig.set_facecolor('white')
@@ -183,7 +247,7 @@ def create_contour_plot(value_index_original, variable, cutout_data, plot_ranges
     
     print('Contour plot created successfully.')
 
-def retrieve_data_for_point(x, y, z, output_data, axes_ranges, strides):
+def dataValues(x, y, z, output_data, axes_ranges, strides):
     # retrieve data values for all of the specified points.
     
     # -----

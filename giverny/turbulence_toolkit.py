@@ -6,15 +6,14 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 """
 retrieve a cutout of the isotropic cube.
 """
-def getCutout(cube, cube_resolution, cube_title,
+def getCutout(cube, dataset_title,
               output_path,
               axes_ranges_original, strides, var_original, timepoint_original,
               trace_memory = False):
     # housekeeping procedures.
     # -----
-    output_path, var, axes_ranges, var_original, timepoint = housekeeping_procedures(cube_resolution,
-                                                                                     output_path,
-                                                                                     axes_ranges_original, var_original, timepoint_original)
+    output_path, var, axes_ranges, timepoint, cube_resolution = \
+        housekeeping_procedures(dataset_title, output_path, axes_ranges_original, strides, var_original, timepoint_original)
     
     # process the data.
     # -----
@@ -26,7 +25,7 @@ def getCutout(cube, cube_resolution, cube_title,
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
 
     # parse the database files, generate the output_data matrix, and write the matrix to an hdf5 file.
-    output_data = getCutout_process_data(cube, cube_resolution, cube_title, output_path,
+    output_data = getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
                                          axes_ranges, var, timepoint,
                                          axes_ranges_original, strides, var_original, timepoint_original)
     
@@ -57,16 +56,31 @@ complete all of the housekeeping procedures before data processing.
     - convert 1-based timepoint to 0-based.
     - format the output path using pathlib and create the output folder directory.
 """
-def housekeeping_procedures(cube_resolution,
+def housekeeping_procedures(dataset_title,
                             output_path,
-                            axes_ranges_original, var_original, timepoint_original):
+                            axes_ranges_original, strides, var_original, timepoint_original):
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(var_original)
+    # check that the user-input timepoint is a valid timepoint for the dataset.
+    check_timepoint(timepoint_original, dataset_title)
+    # check that the user-input x-, y-, and z-axis ranges are all specified correctly as [minimum, maximum] integer values.
+    check_axes_ranges(axes_ranges_original)
+    # check that the user-input strides are all positive integers.
+    check_strides(strides)
+    
+    # pre-processing steps.
+    # -----
+    # get the number of datapoints (resolution) along each axis of the isotropic cube.
+    cube_resolution = get_dataset_resolution(dataset_title)
+    
     # converts the 1-based axes ranges above to 0-based axes ranges, and truncates the ranges if they are longer than cube_resolution since 
     # the boundaries are periodic. output_data will be filled in with the duplicate data for the truncated data points after processing
     # so that the data files are not read redundantly.
     axes_ranges = convert_to_0_based_ranges(axes_ranges_original, cube_resolution)
 
     # convert the variable name from var_original into a variable identifier.
-    var_original = var_original.lower()
     var = get_variable_identifier(var_original)
     
     # converts the 1-based timepoint above to a 0-based timepoint.
@@ -76,4 +90,4 @@ def housekeeping_procedures(cube_resolution,
     output_path = pathlib.Path(output_path)
     create_output_folder(output_path)
     
-    return output_path, var, axes_ranges, var_original, timepoint
+    return (output_path, var, axes_ranges, timepoint, cube_resolution)

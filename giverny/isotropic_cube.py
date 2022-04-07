@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 import h5py
 import math
 import shutil
@@ -8,6 +9,7 @@ import subprocess
 import numpy as np
 import SciServer.CasJobs as cj
 from dask.distributed import Client, LocalCluster
+from giverny.turbulence_gizmos.basic_gizmos import *
 # installs morton-py if necessary.
 try:
     import morton
@@ -17,12 +19,15 @@ finally:
     import morton
 
 class iso_cube:
-    def __init__(self, cube_resolution, cube_title = '', cube_dimensions = 3):
+    def __init__(self, dataset_title = '', cube_dimensions = 3):
+        # check that dataset_title is a valid dataset title.
+        check_dataset_title(dataset_title)
+        
         # cube size.
-        self.N = cube_resolution
+        self.N = get_dataset_resolution(dataset_title)
         
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
-        self.cube_title = cube_title
+        self.dataset_title = dataset_title
         
         # setting up Morton curve.
         bits = int(math.log(self.N, 2))
@@ -33,17 +38,11 @@ class iso_cube:
     def init_cache(self):
         # read SQL metadata for all of the turbulence data files into the cache.
         sql = f"""
-        select dbm.ProductionMachineName
-        , dbm.ProductionDatabaseName
-        , dbm.minLim, dbm.maxLim
-        , dbm.minTime, dbm.maxTime
-        , dp.path
+        select dbm.ProductionDatabaseName
+        , dbm.minLim
+        , dbm.maxLim
         from databasemap dbm
-           join datapath{str(self.N)} dp
-             on dp.datasetid=dbm.datasetid
-           and dp.productionmachinename=dbm.productionmachinename
-           and dp.ProductionDatabaseName=dbm.ProductionDatabaseName
-        where dbm.datasetname = '{self.cube_title}'
+        where dbm.datasetname = '{self.dataset_title}'
         order by minlim
         """
         df = cj.executeQuery(sql, "turbinfo")
@@ -58,7 +57,30 @@ class iso_cube:
         df['y_max'] = y 
         df['z_max'] = z
         
+        # get map of the filepaths for all of the dataset binary files.
+        self.filepaths = self.get_filepaths()
+        
         self.cache = df
+    
+    def get_filepaths(self):
+        # map the filepaths to the part of each filename that matches "ProductionDatabaseName" in the SQL metadata for this dataset.
+        
+        # get the common filename prefix for all files in this dataset, e.g. "iso8192" for the isotropic8192 dataset.
+        dataset_filename_prefix = get_filename_prefix(self.dataset_title)
+        # recursively search all sub-directories in the turbulence filedb system for the dataset binary files.
+        filepaths = sorted(glob.glob(f'/home/idies/workspace/turb/**/{dataset_filename_prefix}*.bin', recursive = True))
+        
+        # map the filepaths to the filenames so that they can be easily retrieved.
+        filepaths_map = {}
+        for filepath in filepaths:
+            # part of the filenames that exactly matches the "ProductionDatabaseName" column stored in the SQL metadata, plus the variable
+            # identifer (e.g. 'vel'), plus the timepoint.
+            filename = filepath.split(os.sep)[-1].replace('.bin', '').strip()
+            # only add the filepath to the dictionary once since there could be backup copies of the files.
+            if filename not in filepaths_map:
+                filepaths_map[filename] = filepath
+        
+        return filepaths_map
     
     # defines some helper functions, all hardcoded (double-check this when other datasets are available)
     def parse_corner_points(self, box):
@@ -170,9 +192,10 @@ class iso_cube:
                                                               var, timepoint)
             
             # append the first and second sub-boxes.
-            sub_boxes = []
-            sub_boxes.append([[box[0][0], first_box_end_point], [box[1][0], box[1][1]], [box[2][0], box[2][1]]])
-            sub_boxes.append([[first_box_end_point + 1, box[0][1]], [box[1][0], box[1][1]], [box[2][0], box[2][1]]])
+            first_sub_box = [[box[0][0], first_box_end_point], [box[1][0], box[1][1]], [box[2][0], box[2][1]]]
+            second_sub_box = [[first_box_end_point + 1, box[0][1]], [box[1][0], box[1][1]], [box[2][0], box[2][1]]]
+            
+            sub_boxes = [first_sub_box, second_sub_box]
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
@@ -196,9 +219,10 @@ class iso_cube:
                                                               var, timepoint)
             
             # append the first and second sub-boxes.
-            sub_boxes = []
-            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], first_box_end_point], [box[2][0], box[2][1]]])
-            sub_boxes.append([[box[0][0], box[0][1]], [first_box_end_point + 1, box[1][1]], [box[2][0], box[2][1]]])
+            first_sub_box = [[box[0][0], box[0][1]], [box[1][0], first_box_end_point], [box[2][0], box[2][1]]]
+            second_sub_box = [[box[0][0], box[0][1]], [first_box_end_point + 1, box[1][1]], [box[2][0], box[2][1]]]
+            
+            sub_boxes = [first_sub_box, second_sub_box]
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
@@ -222,9 +246,10 @@ class iso_cube:
                                                               var, timepoint)
             
             # append the first and second sub-boxes.
-            sub_boxes = []
-            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], box[1][1]], [box[2][0], first_box_end_point]])
-            sub_boxes.append([[box[0][0], box[0][1]], [box[1][0], box[1][1]], [first_box_end_point + 1, box[2][1]]])
+            first_sub_box = [[box[0][0], box[0][1]], [box[1][0], box[1][1]], [box[2][0], first_box_end_point]]
+            second_sub_box = [[box[0][0], box[0][1]], [box[1][0], box[1][1]], [first_box_end_point + 1, box[2][1]]]
+            
+            sub_boxes = [first_sub_box, second_sub_box]
             
             for sub_box in sub_boxes:
                 self.recursive_single_database_file_sub_boxes(sub_box, var, timepoint, single_file_boxes)
@@ -241,25 +266,25 @@ class iso_cube:
     
     def boxes_contained(self, sub_box, user_box):
         # note: using list comprehension instead of explicit comparisons in the if statement increases the time by approximately 25 percent.
-        contained = False
+        
         # checks if the sub-divided box is fully contained within the user-specified box.
         if (sub_box[0][0] >= user_box[0][0] and sub_box[0][1] <= user_box[0][1]) and \
            (sub_box[1][0] >= user_box[1][0] and sub_box[1][1] <= user_box[1][1]) and \
            (sub_box[2][0] >= user_box[2][0] and sub_box[2][1] <= user_box[2][1]):
-            overlap = True
+            return True
         
-        return contained
+        return False
     
     def boxes_overlap(self, sub_box, user_box):
         # note: using list comprehension instead of explicit comparisons in the if statement increases the time by approximately 25 percent.
-        overlap = False
+        
         # checks if the sub-divided box and the user-specified box overlap on all 3 axes.
         if (sub_box[0][0] <= user_box[0][1] and sub_box[0][1] >= user_box[0][0]) and \
            (sub_box[1][0] <= user_box[1][1] and sub_box[1][1] >= user_box[1][0]) and \
            (sub_box[2][0] <= user_box[2][1] and sub_box[2][1] >= user_box[2][0]):
-            overlap = True
+            return True
             
-        return overlap
+        return False
     
     def voxel_ranges_in_user_box(self, voxel, user_box):
         # determine the minimum and maximum values of the overlap, along each axis, between voxel and the user-specified box 
@@ -435,8 +460,7 @@ class iso_cube:
         cornercode, offset = self.get_offset(datapoint)
         t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
         t = t.iloc[0]
-        dataN = t.path.split("/")
-        f = f'/home/idies/workspace/turb/data{t.ProductionMachineName[-2:]}_{dataN[2][-2:]}/{dataN[-1]}/{t.ProductionDatabaseName}_{var}_{timepoint}.bin'
+        f = self.filepaths[f'{t.ProductionDatabaseName}_{var}_{timepoint}']
         return f, cornercode, offset, t.minLim, t.maxLim
         
     def read_database_files_sequentially(self, sub_db_boxes,
@@ -458,6 +482,32 @@ class iso_cube:
             
         return result_output_data
         
+    def sort_hard_disks(self, sub_db_boxes):
+        # sort the hard disks from largest to smallest in terms of the total volume of data (and number of i/o operations) that will
+        # be read from each hard disk.
+        sub_db_box_sizes = {}
+        for database_file_disk in sub_db_boxes:
+            # initialize the volume of data to be read ('read volume') and number of i/o operations ('num reads') for this hard disk.
+            sub_db_box_sizes[database_file_disk] = {'read volume': 0, 'num reads': 0}
+            
+            for database_file in sub_db_boxes[database_file_disk]:
+                for user_box in sub_db_boxes[database_file_disk][database_file]:
+                    # calculate the volume of the box in the database file.
+                    read_volume = np.prod([user_box[0][q][1] - user_box[0][q][0] + 1 for q in range(len(user_box[0]))], dtype = int)
+                    # retrieve the number of distinct voxel groups that need to be read in separately for this box.
+                    num_reads = len(sub_db_boxes[database_file_disk][database_file][user_box])
+                    
+                    # update 'read volume' and 'num reads' for this hard disk.
+                    sub_db_box_sizes[database_file_disk]['read volume'] += read_volume
+                    sub_db_box_sizes[database_file_disk]['num reads'] += num_reads
+                    
+        # sort the hard disks from largest to smallest.
+        ordered_sub_db_box_keys = sorted(sub_db_box_sizes,
+                                         key = lambda x: (sub_db_box_sizes[x]['read volume'], sub_db_box_sizes[x]['num reads']),
+                                         reverse = True)
+        
+        return ordered_sub_db_box_keys, sub_db_box_sizes
+    
     def read_database_files_in_parallel_with_dask(self, sub_db_boxes,
                                                   axes_ranges,
                                                   num_values_per_datapoint, bytes_per_datapoint, voxel_side_length,
@@ -476,10 +526,10 @@ class iso_cube:
             client.restart()
             
             # get the current working directory for saving the zip file of turbulence processing functions to.
-            data_dir = os.getcwd() + '/'
+            data_dir = os.getcwd() + os.sep
             
             # upload the turbulence processing functions in the giverny folder to the workers.
-            shutil.make_archive(data_dir + 'giverny', 'zip', root_dir = data_dir, base_dir = 'giverny/')
+            shutil.make_archive(data_dir + 'giverny', 'zip', root_dir = data_dir, base_dir = 'giverny' + os.sep)
             client.upload_file(data_dir + 'giverny.zip')
         except FileNotFoundError:
             # update the distributed_cluster flag to False.
@@ -504,11 +554,30 @@ class iso_cube:
         print(f'Database files are being read in parallel ({utilized_workers} workers utilized)...')
         sys.stdout.flush()
         
+        # sort sub_db_boxes keys (distinct hard disks) from largest to smallest in terms of the amount of data to be read.
+        ordered_sub_db_box_keys, sub_db_box_sizes = self.sort_hard_disks(sub_db_boxes)
+        
         result_output_data = []
+        worker_size_map = {}
         # iterate over the hard disk drives that the database files are stored on.
-        for file_disk_index, database_file_disk in enumerate(sub_db_boxes):
+        for file_disk_index, database_file_disk in enumerate(ordered_sub_db_box_keys):
             sub_db_boxes_disk_data = sub_db_boxes[database_file_disk]
-            worker = workers[file_disk_index % num_workers]
+            
+            # identify the worker that has the smallest load assigned to it.
+            worker = None
+            if len(worker_size_map) < num_workers:
+                # use the next available worker and keep track of how much data this worker will read.
+                worker = workers[file_disk_index % num_workers]
+                worker_size_map[worker] = {'read volume': sub_db_box_sizes[database_file_disk]['read volume'],
+                                           'num reads': sub_db_box_sizes[database_file_disk]['num reads']}
+            else:
+                # choose the worker that has the least amount of work assigned to it. this choice minimizes box volume first, and
+                # then the number of i/o operations second if two or more workers are currently assigned to read the same box volume.
+                worker = sorted(worker_size_map, key = lambda x: (worker_size_map[x]['read volume'], worker_size_map[x]['num reads']))[0]
+                
+                # update how much data this worker will read.
+                worker_size_map[worker]['read volume'] += sub_db_box_sizes[database_file_disk]['read volume']
+                worker_size_map[worker]['num reads'] += sub_db_box_sizes[database_file_disk]['num reads']
             
             # scatter the data across the distributed workers.
             sub_db_boxes_disk_data_scatter = client.scatter(sub_db_boxes_disk_data, workers = worker)
@@ -522,7 +591,7 @@ class iso_cube:
             result_output_data.append(disk_result_output_data)
         
         # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = client.gather(result_output_data)
+        result_output_data = client.gather(result_output_data)        
         # flattens result_output_data to match the formatting as when the data is processed sequentially.
         result_output_data = [element for result in result_output_data for element in result]
         
@@ -589,8 +658,9 @@ class iso_cube:
 
                     # read the data efficiently.
                     l = np.fromfile(db_file, dtype = 'f', count = read_length, offset = seek_distance)
-                    l = l[np.arange(0, l.size - num_values_per_datapoint + 1, num_values_per_datapoint)[:, None] + np.arange(num_values_per_datapoint)] 
-
+                    # group the value(s) for each datapoint together.
+                    l = l.reshape(int(len(l) / num_values_per_datapoint), num_values_per_datapoint)
+                    
                     # iterate over each voxel in voxel_data.
                     for voxel_count in np.arange(0, num_voxels, 1):
                         # get the origin point (x, y, z) for the voxel.
