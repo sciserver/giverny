@@ -59,7 +59,7 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     
     user_single_db_boxes = cube.identify_single_database_file_sub_boxes(axes_ranges, var, timepoint, c['database_file_disk_index'])
 
-    num_db_files = np.sum([len(user_single_db_boxes[key]) for key in user_single_db_boxes])
+    num_db_files = sum(len(value) for value in user_single_db_boxes.values())
     num_db_disks = len(user_single_db_boxes)
     print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
     print(f'number of hard disks that the database files are distributed on:\n{num_db_disks}\n')
@@ -187,10 +187,10 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     end_time = time.perf_counter()
     
     # see how long the program took to run.
-    print(f'\nstep 1 time elapsed = {round(end_time_step1 - start_time_step1, 3)} seconds ({round((end_time_step1 - start_time_step1) / 60, 3)} minutes)')
-    print(f'step 2 time elapsed = {round(end_time_step2 - start_time_step2, 3)} seconds ({round((end_time_step2 - start_time_step2) / 60, 3)} minutes)')
-    print(f'step 3 time elapsed = {round(end_time_step3 - start_time_step3, 3)} seconds ({round((end_time_step3 - start_time_step3) / 60, 3)} minutes)')
-    print(f'total time elapsed = {round(end_time - start_time, 3)} seconds ({round((end_time - start_time) / 60, 3)} minutes)')
+    print(f'\nstep 1 time elapsed = {end_time_step1 - start_time_step1:0.3f} seconds ({(end_time_step1 - start_time_step1) / 60:0.3f} minutes)')
+    print(f'step 2 time elapsed = {end_time_step2 - start_time_step2:0.3f} seconds ({(end_time_step2 - start_time_step2) / 60:0.3f} minutes)')
+    print(f'step 3 time elapsed = {end_time_step3 - start_time_step3:0.3f} seconds ({(end_time_step3 - start_time_step3) / 60:0.3f} minutes)')
+    print(f'total time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
     sys.stdout.flush()
     
     print('\nData processing pipeline has completed successfully.\n' + '-' * 5)
