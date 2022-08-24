@@ -57,9 +57,12 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     # calculate how much time it takes to run step 1.
     start_time_step1 = time.perf_counter()
     
-    user_single_db_boxes = cube.identify_single_database_file_sub_boxes(axes_ranges, var, timepoint)
+    user_single_db_boxes = cube.identify_single_database_file_sub_boxes(axes_ranges, var, timepoint, c['database_file_disk_index'])
 
-    print(f'number of database files that the user-specified box is found in:\n{len(user_single_db_boxes)}\n')
+    num_db_files = np.sum([len(user_single_db_boxes[key]) for key in user_single_db_boxes])
+    num_db_disks = len(user_single_db_boxes)
+    print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
+    print(f'number of hard disks that the database files are distributed on:\n{num_db_disks}\n')
     sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
@@ -67,74 +70,14 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
 
     print('Successfully completed.\n' + '-' * 5)
     sys.stdout.flush()
-    
-    # -----
-    # recursively break down each single file box into sub-boxes, each of which is exactly one of the sub-divided cubes of the database file.
-    print('\nStep 2: Recursively breaking down the portion of the user-specified box in each database file into voxels...\n' + '-' * 25)
-    sys.stdout.flush()
-    
-    # calculate how much time it takes to run step 2.
-    start_time_step2 = time.perf_counter()
-    
-    # iterates over the database files to figure out how many different hard disk drives these database files are stored on. if the number of disks
-    # is greater than 1, then processing of the data will be distributed across several python processes using dask to speed up the processing 
-    # time. if all of the database files are stored on 1 hard disk drive, then the data will be processed sequentially using base python.
-    database_file_disks = set([])
-    sub_db_boxes = {}
-    for db_file in sorted(user_single_db_boxes, key = lambda x: os.path.basename(x)):
-        # the parent folder for the database file corresponds to the hard disk drive that the file is stored on.
-        database_file_disk = db_file.split(os.sep)[c['database_file_disk_index']]
-        
-        # add the folder to the set of folders already identified. this will be used to determine if dask is needed for processing.
-        database_file_disks.add(database_file_disk)
-        
-        # create a new dictionary for all of the database files that are stored on this disk.
-        if database_file_disk not in sub_db_boxes:
-            sub_db_boxes[database_file_disk] = {}
-            # keeping track of the original user-specified box ranges in case the user specifies a box outside of the dataset cube.
-            sub_db_boxes[database_file_disk][db_file] = {}
-        elif db_file not in sub_db_boxes[database_file_disk]:
-            sub_db_boxes[database_file_disk][db_file] = {}
-        
-        for user_db_box_data in user_single_db_boxes[db_file]:
-            user_db_box = user_db_box_data[0]
-            user_db_box_minLim = user_db_box_data[1]
-            # convert the user_db_box list of lists to a tuple of tuples so that it can be used as a key, along with user_db_box_minLim 
-            # in the sub_db_boxes dictionary.
-            user_db_box_key = (tuple([tuple(user_db_box_range) for user_db_box_range in user_db_box]), user_db_box_minLim)
-
-            morton_voxels_to_read = cube.identify_sub_boxes_in_file(user_db_box, var, timepoint, c['voxel_side_length'])
-
-            # update sub_db_boxes with the information for reading in the database files.
-            sub_db_boxes[database_file_disk][db_file][user_db_box_key] = morton_voxels_to_read
-    
-    min_file_boxes = np.min([len(sub_db_boxes[database_file_disk][db_file][user_db_box_key]) 
-                             for database_file_disk in sub_db_boxes 
-                             for db_file in sub_db_boxes[database_file_disk] 
-                             for user_db_box_key in sub_db_boxes[database_file_disk][db_file]])
-    max_file_boxes = np.max([len(sub_db_boxes[database_file_disk][db_file][user_db_box_key]) 
-                             for database_file_disk in sub_db_boxes 
-                             for db_file in sub_db_boxes[database_file_disk] 
-                             for user_db_box_key in sub_db_boxes[database_file_disk][db_file]])
-    
-    print('sub-box statistics for the database file(s):\n-')
-    print(f'minimum number of sub-boxes to read in a database file:\n{min_file_boxes}')
-    print(f'maximum number of sub-boxes to read in a database file:\n{max_file_boxes}\n')
-    sys.stdout.flush()
-    
-    # calculate how much time it takes to run step 2.
-    end_time_step2 = time.perf_counter()
-    
-    print('Successfully completed.\n' + '-' * 5)
-    sys.stdout.flush()
 
     # -----
     # read the data.
-    print('\nStep 3: Reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
+    print('\nStep 2: Reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
     sys.stdout.flush()
     
     # calculate how much time it takes to run step 3.
-    start_time_step3 = time.perf_counter()
+    start_time_step2 = time.perf_counter()
     
     # pre-fill the output data 3-d array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
     # so that the array is filled with the missing placeholder values (-999.9). 
@@ -142,14 +85,12 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
                            fill_value = c['missing_value_placeholder'], dtype = 'f')
     
     # determines if the database files will be read sequentially with base python, or in parallel with dask.
-    num_db_disks = len(database_file_disks)
     if num_db_disks == 1:
         # sequential processing.
         print('Database files are being read sequentially...')
         sys.stdout.flush()
         
-        result_output_data = cube.read_database_files_sequentially(sub_db_boxes,
-                                                                   axes_ranges,
+        result_output_data = cube.read_database_files_sequentially(user_single_db_boxes,
                                                                    num_values_per_datapoint, c['bytes_per_datapoint'], c['voxel_side_length'],
                                                                    c['missing_value_placeholder'])
     else:
@@ -159,8 +100,7 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
         if num_db_disks < c['dask_maximum_processes']:
             num_processes = num_db_disks
         
-        result_output_data = cube.read_database_files_in_parallel_with_dask(sub_db_boxes,
-                                                                            axes_ranges,
+        result_output_data = cube.read_database_files_in_parallel_with_dask(user_single_db_boxes,
                                                                             num_values_per_datapoint, c['bytes_per_datapoint'], c['voxel_side_length'],
                                                                             c['missing_value_placeholder'], num_processes)
     
@@ -207,18 +147,18 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
         raise Exception(f'output_data was not filled correctly')
     
     # calculate how much time it takes to run step 3.
-    end_time_step3 = time.perf_counter()
+    end_time_step2 = time.perf_counter()
     
     print('\nSuccessfully completed.\n' + '-' * 5)
     sys.stdout.flush()
     
     # -----
     # write the output file.
-    print('\nStep 4: Writing the output matrix to a hdf5 file...\n' + '-' * 25)
+    print('\nStep 3: Writing the output matrix to a hdf5 file...\n' + '-' * 25)
     sys.stdout.flush()
     
     # calculate how much time it takes to run step 4.
-    start_time_step4 = time.perf_counter()
+    start_time_step3 = time.perf_counter()
     
     # write output_data to a hdf5 file.
     # the output filename specifies the title of the cube, and the x-, y-, and z-ranges so that the file is unique. 1 is added to all of the 
@@ -239,7 +179,7 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     #cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
     
     # calculate how much time it takes to run step 4.
-    end_time_step4 = time.perf_counter()
+    end_time_step3 = time.perf_counter()
     
     print('\nSuccessfully completed.\n' + '-' * 5)
     sys.stdout.flush()
@@ -250,7 +190,6 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     print(f'\nstep 1 time elapsed = {round(end_time_step1 - start_time_step1, 3)} seconds ({round((end_time_step1 - start_time_step1) / 60, 3)} minutes)')
     print(f'step 2 time elapsed = {round(end_time_step2 - start_time_step2, 3)} seconds ({round((end_time_step2 - start_time_step2) / 60, 3)} minutes)')
     print(f'step 3 time elapsed = {round(end_time_step3 - start_time_step3, 3)} seconds ({round((end_time_step3 - start_time_step3) / 60, 3)} minutes)')
-    print(f'step 4 time elapsed = {round(end_time_step4 - start_time_step4, 3)} seconds ({round((end_time_step4 - start_time_step4) / 60, 3)} minutes)')
     print(f'total time elapsed = {round(end_time - start_time, 3)} seconds ({round((end_time - start_time) / 60, 3)} minutes)')
     sys.stdout.flush()
     
