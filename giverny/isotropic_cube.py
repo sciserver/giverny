@@ -5,11 +5,14 @@ import glob
 import h5py
 import math
 import mmap
+import time
 import shutil
 import pathlib
 import subprocess
 import numpy as np
 import SciServer.CasJobs as cj
+from collections import defaultdict
+from SciServer import Authentication
 from dask.distributed import Client, LocalCluster
 from giverny.turbulence_gizmos.basic_gizmos import *
 # installs morton-py if necessary.
@@ -35,48 +38,66 @@ class iso_cube:
         bits = int(math.log(self.N, 2))
         self.mortoncurve = morton.Morton(dimensions = cube_dimensions, bits = bits)
         
+        # get the SciServer user name.
+        user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
+        # set the directory for saving and reading the pickled files.
+        self.pickle_dir = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_pickled')
+        # create the pickled directory if it does not already exist.
+        create_output_folder(self.pickle_dir)
+        
+        # get map of the filepaths for all of the dataset binary files.
+        self.init_filepaths()
+        
+        # get a cache of the metadata for the database files.
         self.init_cache()
         
     def init_cache(self):
-        # read SQL metadata for all of the turbulence data files into the cache.
-        sql = f"""
-        select dbm.ProductionDatabaseName
-        , dbm.minLim
-        , dbm.maxLim
-        from databasemap dbm
-        where dbm.datasetname = '{self.dataset_title}'
-        order by minlim
-        """
-        df = cj.executeQuery(sql, "turbinfo")
+        # pickled file for saving the globbed filepaths.
+        pickle_file = self.pickle_dir.joinpath(self.dataset_title + '_metadata.pickle')
         
-        x, y, z = self.mortoncurve.unpack(df['minLim'].values)
-        df['x_min'] = x
-        df['y_min'] = y
-        df['z_min'] = z
-        
-        x, y, z = self.mortoncurve.unpack(df['maxLim'].values)
-        df['x_max'] = x
-        df['y_max'] = y 
-        df['z_max'] = z
-        
-        # get map of the filepaths for all of the dataset binary files.
-        self.filepaths = self.get_filepaths()
-        
-        self.cache = df
-    
-    def get_filepaths(self):
-        # get the directory for saving and reading the globbed filepaths pickled file. 
-        current_dir = pathlib.Path(os.getcwd())
-        pickle_dir = current_dir.joinpath('pickled')
-        pickle_file = pickle_dir.joinpath(self.dataset_title + '_globbed_filepaths_map.pickle')
-        
-        filepaths_map = {}
         try:
             # try reading the pickled file.
-            with open(pickle_file, 'rb') as pickled_filepaths:
-                filepaths_map = dill.load(pickled_filepaths)
+            with open(pickle_file, 'rb') as pickled_filepath:
+                self.cache = dill.load(pickled_filepath)
+        except FileNotFoundError:
+            # read SQL metadata for all of the turbulence data files into the cache.
+            sql = f"""
+            select dbm.ProductionDatabaseName
+            , dbm.minLim
+            , dbm.maxLim
+            from databasemap dbm
+            where dbm.datasetname = '{self.dataset_title}'
+            order by minlim
+            """
+            df = cj.executeQuery(sql, "turbinfo")
+
+            x, y, z = self.mortoncurve.unpack(df['minLim'].values)
+            df['x_min'] = x
+            df['y_min'] = y
+            df['z_min'] = z
+
+            x, y, z = self.mortoncurve.unpack(df['maxLim'].values)
+            df['x_max'] = x
+            df['y_max'] = y 
+            df['z_max'] = z
+
+            self.cache = df
+            
+            # save self.cache to a pickled file.
+            with open(pickle_file, 'wb') as pickled_filepath:
+                dill.dump(self.cache, pickled_filepath)
+    
+    def init_filepaths(self):
+        # pickled file for saving the globbed filepaths.
+        pickle_file = self.pickle_dir.joinpath(self.dataset_title + '_database_filepaths.pickle')
+        
+        try:
+            # try reading the pickled file.
+            with open(pickle_file, 'rb') as pickled_filepath:
+                self.filepaths = dill.load(pickled_filepath)
         except FileNotFoundError:
             # map the filepaths to the part of each filename that matches "ProductionDatabaseName" in the SQL metadata for this dataset.
+            self.filepaths = {}
             
             # get the common filename prefix for all files in this dataset, e.g. "iso8192" for the isotropic8192 dataset.
             dataset_filename_prefix = get_filename_prefix(self.dataset_title)
@@ -89,15 +110,12 @@ class iso_cube:
                 # identifer (e.g. 'vel'), plus the timepoint.
                 filename = filepath.split(os.sep)[-1].replace('.bin', '').strip()
                 # only add the filepath to the dictionary once since there could be backup copies of the files.
-                if filename not in filepaths_map:
-                    filepaths_map[filename] = filepath
+                if filename not in self.filepaths:
+                    self.filepaths[filename] = filepath
             
-            # create the pickled directory if it does not already exist.
-            create_output_folder(pickle_dir)
-            with open(pickle_file, 'wb') as pickled_filepaths:
-                dill.dump(filepaths_map, pickled_filepaths)
-        
-        return filepaths_map
+            # save self.filepaths to a pickled file.
+            with open(pickle_file, 'wb') as pickled_filepath:
+                dill.dump(self.filepaths, pickled_filepath)
     
     def identify_single_database_file_sub_boxes(self, box, var, timepoint, database_file_disk_index):
         # initially assumes the user specified box contains points in different files. the box will be split up until all the points
@@ -106,7 +124,7 @@ class iso_cube:
         box_max_xyz = [axis_range[1] for axis_range in box]
         
         # map of the parts of the user-specified box that are found in each database file.
-        single_file_boxes = {}
+        single_file_boxes = defaultdict(lambda: defaultdict(list))
 
         # z-value of the origin point (bottom left corner) of the box.
         current_z = box_min_xyz[2]
@@ -130,21 +148,13 @@ class iso_cube:
                     max_corner_xyz = self.mortoncurve.unpack(min_corner_info[4])
                     
                     # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
-                    cube_ms = [math.floor(float(min_corner_xyz[q]) / float(self.N)) * self.N for q in range(len(min_corner_xyz))]
+                    cube_ms = [math.floor(float(min_corner_xyz[q]) / float(self.N)) * self.N for q in range(3)]
                     
                     # specify the box that is fully inside a database file.
-                    box = [[current_x, max_corner_xyz[0] + cube_ms[0] if (max_corner_xyz[0] + cube_ms[0]) <= box_max_xyz[0] else box_max_xyz[0]],
-                           [current_y, max_corner_xyz[1] + cube_ms[1] if (max_corner_xyz[1] + cube_ms[1]) <= box_max_xyz[1] else box_max_xyz[1]],
-                           [current_z, max_corner_xyz[2] + cube_ms[2] if (max_corner_xyz[2] + cube_ms[2]) <= box_max_xyz[2] else box_max_xyz[2]]]
+                    box = [[min_corner_xyz[i], min(max_corner_xyz[i] + cube_ms[i], box_max_xyz[i])] for i in range(3)]
                     
                     # add the box axes ranges and the minimum morton limit to the map.
-                    if database_file_disk not in single_file_boxes:
-                        single_file_boxes[database_file_disk] = {}
-                        single_file_boxes[database_file_disk][min_corner_db_file] = [(box, box_minLim)]
-                    elif min_corner_db_file not in single_file_boxes[database_file_disk]:
-                        single_file_boxes[database_file_disk][min_corner_db_file] = [(box, box_minLim)]
-                    else:
-                        single_file_boxes[database_file_disk][min_corner_db_file].append((box, box_minLim))
+                    single_file_boxes[database_file_disk][min_corner_db_file].append((box, box_minLim))
 
                     # move to the next database file origin point.
                     current_x = max_corner_xyz[0] + cube_ms[0] + 1
@@ -192,47 +202,12 @@ class iso_cube:
         result_output_data = []
         # iterate over the hard disk drives that the database files are stored on.
         for database_file_disk in user_single_db_boxes:
-            user_single_db_boxes_disk_data = user_single_db_boxes[database_file_disk]
-            
             # read in the voxel data from all of the database files on this disk.
-            disk_result_output_data = self.get_iso_points(user_single_db_boxes_disk_data,
-                                                          num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder,
-                                                          verbose = False)
-            
-            result_output_data += disk_result_output_data
-            
+            result_output_data += self.get_iso_points(user_single_db_boxes[database_file_disk],
+                                                      num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder,
+                                                      verbose = False)
+        
         return result_output_data
-        
-    def sort_hard_disks(self, user_single_db_boxes, voxel_side_length):
-        # sort the hard disks from largest to smallest in terms of the total volume of data that will be read from each hard disk.
-        voxel_cube_size = voxel_side_length**3
-        
-        sub_db_box_sizes = {}
-        for database_file_disk in user_single_db_boxes:
-            # initialize the volume of data to be read ('read volume') for this hard disk.
-            sub_db_box_sizes[database_file_disk] = {'read volume': 0}
-            
-            for database_file in user_single_db_boxes[database_file_disk]:
-                for user_box_data in user_single_db_boxes[database_file_disk][database_file]:
-                    # retrieve the axes ranges of sub-box.
-                    user_box = user_box_data[0]
-                    # expand the boundaries of the box to encompass complete voxels and calculate the lengths along each axis.
-                    full_user_box_diffs = [(axis_range[1] + (voxel_side_length - (axis_range[1] % voxel_side_length) - 1)) - \
-                                           (axis_range[0] - (axis_range[0] % voxel_side_length)) + 1
-                                           for axis_range in user_box]
-                    
-                    # calculate the volume of the box in the database file.
-                    read_volume = np.prod(full_user_box_diffs, dtype = np.int64)
-                    
-                    # update 'read volume' for this hard disk.
-                    sub_db_box_sizes[database_file_disk]['read volume'] += read_volume
-                    
-        # sort the hard disks from largest to smallest.
-        ordered_sub_db_box_keys = sorted(sub_db_box_sizes,
-                                         key = lambda x: sub_db_box_sizes[x]['read volume'],
-                                         reverse = True)
-        
-        return ordered_sub_db_box_keys, sub_db_box_sizes
     
     def read_database_files_in_parallel_with_dask(self, user_single_db_boxes,
                                                   num_values_per_datapoint, bytes_per_datapoint, voxel_side_length,
@@ -279,35 +254,14 @@ class iso_cube:
         print(f'Database files are being read in parallel ({utilized_workers} workers utilized)...')
         sys.stdout.flush()
         
-        # sort user_single_db_boxes keys (distinct hard disks) from largest to smallest in terms of the amount of data to be read.
-        ordered_sub_db_box_keys, sub_db_box_sizes = self.sort_hard_disks(user_single_db_boxes, voxel_side_length)
-        
         result_output_data = []
-        worker_size_map = {}
         # iterate over the hard disk drives that the database files are stored on.
-        for file_disk_index, database_file_disk in enumerate(ordered_sub_db_box_keys):
-            user_single_db_boxes_disk_data = user_single_db_boxes[database_file_disk]
-            
-            # identify the worker that has the smallest load assigned to it.
-            worker = None
-            if len(worker_size_map) < num_workers:
-                # use the next available worker and keep track of how much data this worker will read.
-                worker = workers[file_disk_index % num_workers]
-                worker_size_map[worker] = {'read volume': sub_db_box_sizes[database_file_disk]['read volume']}
-            else:
-                # choose the worker that has the least amount of work assigned to it.
-                worker = sorted(worker_size_map, key = lambda x: worker_size_map[x]['read volume'])[0]
-                
-                # update how much data this worker will read.
-                worker_size_map[worker]['read volume'] += sub_db_box_sizes[database_file_disk]['read volume']
-            
+        for database_file_disk in user_single_db_boxes:
             # read in the voxel data from all of the database files on this disk.
-            disk_result_output_data = client.submit(self.get_iso_points, user_single_db_boxes_disk_data,
+            result_output_data.append(client.submit(self.get_iso_points, user_single_db_boxes[database_file_disk],
                                                     num_values_per_datapoint, bytes_per_datapoint, voxel_side_length, missing_value_placeholder,
                                                     verbose = False,
-                                                    workers = worker)
-            
-            result_output_data.append(disk_result_output_data)
+                                                    workers = workers))
         
         # gather all of the results once they are finished being run in parallel by dask.
         result_output_data = client.gather(result_output_data)        
@@ -327,18 +281,18 @@ class iso_cube:
         
         return result_output_data
     
-    def morton_pack(self, voxel_x, voxel_y, voxel_z):
-        # convert the (x, y, z) voxel origin point to a morton index.
-        return self.mortoncurve.pack(voxel_x, voxel_y, voxel_z)
-    
     def get_iso_points(self, user_single_db_boxes_disk_data,
                        num_values_per_datapoint = 1, bytes_per_datapoint = 4, voxel_side_length = 8, missing_value_placeholder = -999.9,
                        verbose = False):
         """
         retrieve the values for the specified var(iable) in the user-specified box and at the specified timepoint.
         """
-        # vectorize the morton_pack function.
-        v_morton_pack = np.vectorize(self.morton_pack, otypes = [int])
+        # set the byte order for reading the data from the binary files.
+        dt = np.dtype(np.float32)
+        dt = dt.newbyteorder('<')
+        
+        # vectorize the mortoncurve.pack function.
+        v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
         
         # volume of the voxel cube.
         voxel_cube_size = voxel_side_length**3
@@ -377,7 +331,7 @@ class iso_cube:
                 
                 # vectorized calculation of the morton indices for the voxel origin points.
                 morton_mins = v_morton_pack(voxel_origin_points[:, 0], voxel_origin_points[:, 1], voxel_origin_points[:, 2])
-
+                
                 # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
                 cube_ms = np.array([math.floor(float(min_xyz[q]) / float(self.N)) * self.N for q in range(len(min_xyz))])
 
@@ -387,9 +341,14 @@ class iso_cube:
                 # determine the minimum and maximum voxel ranges that overlap the user-specified box.
                 voxel_mins = np.max([voxel_origin_points + cube_ms, tiled_min_xyz], axis = 0)
                 voxel_maxs = np.min([voxel_origin_points + cube_ms + voxel_side_length - 1, tiled_max_xyz], axis = 0)
-                # calculate the modulus of each voxel minimum and maximum for correctly slicing partially overlapped voxels.
+                
+                # calculate the modulus of each voxel minimum and maximum and add 1 to voxel_maxs_mod for correctly
+                # slicing partially overlapped voxels.
                 voxel_mins_mod = voxel_mins % voxel_side_length
-                voxel_maxs_mod = voxel_maxs % voxel_side_length
+                voxel_maxs_mod = (voxel_maxs % voxel_side_length) + 1
+                # adjust voxel_mins and voxel_maxs by min_xyz and add 1 to voxel_maxs for simplified local_output_array slicing.
+                voxel_mins = voxel_mins - min_xyz
+                voxel_maxs = voxel_maxs - min_xyz + 1
                 
                 # create the local output array for this box that will be filled and returned.
                 local_output_array = np.full((xyz_diffs[2], xyz_diffs[1], xyz_diffs[0],
@@ -398,7 +357,7 @@ class iso_cube:
                 # iterates over the voxels and reads them from the memory map of the database file.
                 for morton_index_min, voxel_min, voxel_max, voxel_min_mod, voxel_max_mod in \
                     sorted(zip(morton_mins, voxel_mins, voxel_maxs, voxel_mins_mod, voxel_maxs_mod), key = lambda x: x[0]):
-                    l = np.frombuffer(mm, dtype = np.float32,
+                    l = np.frombuffer(mm, dtype = dt,
                                       count = num_values_per_datapoint * voxel_cube_size,
                                       offset = num_values_per_datapoint * bytes_per_datapoint * (morton_index_min - db_minLim))
                     
@@ -406,11 +365,11 @@ class iso_cube:
                     l = l.reshape(voxel_side_length, voxel_side_length, voxel_side_length, num_values_per_datapoint)
                     
                     # put the voxel data into the local array.
-                    local_output_array[voxel_min[2] - min_xyz[2] : voxel_max[2] - min_xyz[2] + 1,
-                                       voxel_min[1] - min_xyz[1] : voxel_max[1] - min_xyz[1] + 1,
-                                       voxel_min[0] - min_xyz[0] : voxel_max[0] - min_xyz[0] + 1] = l[voxel_min_mod[2] : voxel_max_mod[2] + 1,
-                                                                                                      voxel_min_mod[1] : voxel_max_mod[1] + 1,
-                                                                                                      voxel_min_mod[0] : voxel_max_mod[0] + 1]
+                    local_output_array[voxel_min[2] : voxel_max[2],
+                                       voxel_min[1] : voxel_max[1],
+                                       voxel_min[0] : voxel_max[0]] = l[voxel_min_mod[2] : voxel_max_mod[2],
+                                                                        voxel_min_mod[1] : voxel_max_mod[1],
+                                                                        voxel_min_mod[0] : voxel_max_mod[0]]
                 
                 # checks to make sure that data was read in for all points.
                 if missing_value_placeholder in local_output_array:

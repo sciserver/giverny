@@ -233,10 +233,14 @@ def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_r
     plt.ylabel(f'{y_axis_variable} (stride = {y_axis_stride})', fontsize = 14, weight = 'bold')
     xlims = ax.get_xlim()
     ylims = ax.get_ylim()
+    # adjust the axis ticks to the center of each datapoint.
+    x_ticks = [xlims[0] + (x_axis_stride / 2), xlims[1] - (x_axis_stride / 2)]
+    y_ticks = [ylims[0] + (y_axis_stride / 2), ylims[1] - (y_axis_stride / 2)]
+    # axis datapoints.
     x_axis_points = plot_data.coords[x_axis_variable].values
     y_axis_points = plot_data.coords[y_axis_variable].values
-    plt.xticks(xlims, [x_axis_points[0], x_axis_points[-1]])
-    plt.yticks(ylims, [y_axis_points[0], y_axis_points[-1]])
+    plt.xticks(x_ticks, [x_axis_points[0], x_axis_points[-1]])
+    plt.yticks(y_ticks, [y_axis_points[0], y_axis_points[-1]])
     
     # save the figure.
     plt.tight_layout()
