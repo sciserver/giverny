@@ -7,8 +7,7 @@ import xarray as xr
 from giverny.turbulence_gizmos.constants import *
 from giverny.turbulence_gizmos.basic_gizmos import *
 
-def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
-                           axes_ranges, var, timepoint,
+def getCutout_process_data(cube, axes_ranges, var, timepoint,
                            axes_ranges_original, strides, var_original, timepoint_original):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
@@ -16,10 +15,19 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     # data constants.
     # -----
     c = get_constants()
+    dataset_title = cube.dataset_title
 
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
     num_values_per_datapoint = get_num_values_per_datapoint(var)
+    
+    # placeholder spatial interpolation value which is not used for getCutout.
+    sint = ''
+    # initialize cube constants.
+    cube.init_constants(var, timepoint, sint,
+                        num_values_per_datapoint, c['bytes_per_datapoint'],
+                        c['voxel_side_length'], c['missing_value_placeholder'],
+                        c['database_file_disk_index'], c['dask_maximum_processes'])
 
     # used for determining the indices in the output array for each x, y, z datapoint.
     axes_min = axes_ranges[:, 0]
@@ -57,7 +65,7 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     # calculate how much time it takes to run step 1.
     start_time_step1 = time.perf_counter()
     
-    user_single_db_boxes = cube.identify_single_database_file_sub_boxes(axes_ranges, var, timepoint, c['database_file_disk_index'])
+    user_single_db_boxes = cube.identify_single_database_file_sub_boxes(axes_ranges)
 
     num_db_files = sum(len(value) for value in user_single_db_boxes.values())
     num_db_disks = len(user_single_db_boxes)
@@ -90,19 +98,10 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
         print('Database files are being read sequentially...')
         sys.stdout.flush()
         
-        result_output_data = cube.read_database_files_sequentially(user_single_db_boxes,
-                                                                   num_values_per_datapoint, c['bytes_per_datapoint'], c['voxel_side_length'],
-                                                                   c['missing_value_placeholder'])
+        result_output_data = cube.read_database_files_sequentially(user_single_db_boxes)
     else:
         # parallel processing.
-        # optimizes the number of processes that are used by dask and makes sure that the number of processes does not exceed dask_maximum_processes.
-        num_processes = c['dask_maximum_processes']
-        if num_db_disks < c['dask_maximum_processes']:
-            num_processes = num_db_disks
-        
-        result_output_data = cube.read_database_files_in_parallel_with_dask(user_single_db_boxes,
-                                                                            num_values_per_datapoint, c['bytes_per_datapoint'], c['voxel_side_length'],
-                                                                            c['missing_value_placeholder'], num_processes)
+        result_output_data = cube.read_database_files_in_parallel_with_dask(user_single_db_boxes)
     
     # iterate over the results to fill output_data.
     for result in result_output_data:
@@ -111,11 +110,11 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
                     result[1][0] - axes_min[0] : result[2][0] - axes_min[0] + 1] = result[0]
     
     # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
-    # exceeds cube_resolution. note: no copies of the data values should be made, hence data_value_multiplier equals 1.
-    axes_multipliers = np.ceil(axes_lengths_original / cube_resolution).astype(int)
+    # exceeds the cube resolution (cube.N). note: no copies of the data values should be made, hence data_value_multiplier equals 1.
+    axes_multipliers = np.ceil(axes_lengths_original / cube.N).astype(int)
     data_value_multiplier = 1
     
-    # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than cube_resolution along any axis.
+    # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than the cube resolution along any axis.
     if np.any(axes_multipliers > 1):
         output_data = np.tile(output_data, (axes_multipliers[2], axes_multipliers[1], axes_multipliers[0], data_value_multiplier))
         # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
@@ -176,7 +175,7 @@ def getCutout_process_data(cube, cube_resolution, dataset_title, output_path,
     dataset_name += '_' + str(timepoint_original).zfill(4)
     
     # writes the output file.
-    #cube.write_output_matrix_to_hdf5(output_data, output_path, output_filename, dataset_name)
+    #cube.write_output_matrix_to_hdf5(output_data, output_filename, dataset_name)
     
     # calculate how much time it takes to run step 4.
     end_time_step3 = time.perf_counter()
