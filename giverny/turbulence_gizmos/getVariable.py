@@ -42,7 +42,7 @@ def getVariable_process_data(cube, points, sint, var, timepoint,
     cube.init_interpolation_cube_size_lookup_table()
     
     # get the maps of points that require native and visitor buckets for interpolation.
-    original_points_indices, db_native_map, db_visitor_map = cube.identify_database_file_points(points)
+    db_native_map, db_visitor_map = cube.identify_database_file_points(points)
     
     print(f'len db_native_map = \n{len(db_native_map)}')
     print('-')
@@ -74,9 +74,11 @@ def getVariable_process_data(cube, points, sint, var, timepoint,
     
     # iterate over the results to fill output_data.
     output_data = []
-    for result in result_output_data:
+    original_points_indices = []
+    for original_point_index, result in result_output_data:
         output_data.append(result)
-        
+        original_points_indices.append(original_point_index)
+    
     # re-sort output_data to match the original ordering of points.
     output_data_indices, output_data = zip(*sorted(zip(original_points_indices, output_data), key = lambda x: x[0]))
     

@@ -629,9 +629,9 @@ class iso_cube:
              
         # save the original indices for bucket_min_mortons, which corresponds to the orderering of the user-specified
         # points. these indices will be used for sorting output_data back to the user-specified points ordering.
-        original_points_indices = sorted(range(len(bucket_min_mortons)), key = lambda x: bucket_min_mortons[x])
+        original_points_indices = [q for q in range(len(points))]
         # zip the data and sort by the bucket minimum morton codes.
-        zipped_data = sorted(zip(bucket_min_mortons, bucket_max_mortons, points, center_points, voxel_origin_groups), key = lambda x: x[0])
+        zipped_data = sorted(zip(bucket_min_mortons, bucket_max_mortons, points, center_points, voxel_origin_groups, original_points_indices), key = lambda x: x[0])
         
         # map the native bucket points to their respective db files and buckets.
         db_native_map = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
@@ -648,7 +648,7 @@ class iso_cube:
         db_minLim = file_info[1]
         db_maxLim = file_info[2]
         
-        for bucket_min_morton, bucket_max_morton, point, center_point, voxel_origin_group in zipped_data:
+        for bucket_min_morton, bucket_max_morton, point, center_point, voxel_origin_group, original_point_index in zipped_data:
             # update the database file info if the morton code is outside of the previous database fil maximum morton limit.
             if bucket_min_morton > db_maxLim:
                 file_info = self.get_file_for_cornercode(bucket_min_morton)
@@ -663,10 +663,10 @@ class iso_cube:
                 bucket_key = voxel_origin_group.tobytes()
                 
                 # assign to the native map.
-                db_native_map[db_disk][db_file, db_minLim][bucket_key].append((point, center_point))
+                db_native_map[db_disk][db_file, db_minLim][bucket_key].append((point, center_point, original_point_index))
             else:
                 # assign to the visitor map.
-                db_visitor_map.append((point, center_point))
+                db_visitor_map.append((point, center_point, original_point_index))
         
         # reformat db_native_map for distributed processing if the native data is distributed across more than 1 db disk.
         if len(db_native_map) > 1:
@@ -676,7 +676,7 @@ class iso_cube:
                                           for bucket_key in db_native_map[db_disk][file_key]
                                           for point_pair in db_native_map[db_disk][file_key][bucket_key]]
         
-        return original_points_indices, db_native_map, np.array(db_visitor_map)
+        return db_native_map, np.array(db_visitor_map, dtype = 'object')
     
     def get_file_for_cornercode(self, cornercode):
         """
@@ -937,9 +937,9 @@ class iso_cube:
                                voxel_origin_point[0] : voxel_origin_point[0] + 8,
                                :] = l
 
-                    for point, center_point in bucket_data:
+                    for point, center_point, original_point_index in bucket_data:
                         # interpolate the points and use a lookup table for faster interpolations.
-                        local_output_data.append((point, self.interpLagL(center_point, bucket)))
+                        local_output_data.append((original_point_index, (point, self.interpLagL(center_point, bucket))))
         
         return local_output_data
     
@@ -1025,7 +1025,7 @@ class iso_cube:
                 current_bucket = bucket_key
 
             # interpolate the points and use a lookup table for faster interpolations.
-            local_output_data.append((point_data[0], self.interpLagL(point_data[1], bucket)))
+            local_output_data.append((point_data[2], (point_data[0], self.interpLagL(point_data[1], bucket))))
         
         return local_output_data
     
@@ -1112,7 +1112,7 @@ class iso_cube:
                 current_bucket = bucket_key
             
             # interpolate the point and use a lookup table for faster interpolation.
-            local_output_data.append((point_data[0], self.interpLagL(point_data[1], bucket)))
+            local_output_data.append((point_data[2], (point_data[0], self.interpLagL(point_data[1], bucket))))
         
         return local_output_data
     
