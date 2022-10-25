@@ -36,6 +36,14 @@ def check_timepoint(timepoint, dataset_title):
         
     return
 
+def check_spatial_interpolation(sint):
+    valid_sints = ['none', 'lag4', 'lag6', 'lag8', 'm1q4', 'm2q8']
+    
+    if sint not in valid_sints:
+        raise Exception(f"'{sint}' (case-sensitive) is not a valid sint: {valid_sints}")
+        
+    return
+
 def check_axes_ranges(axes_ranges):
     # check that the axis ranges are all specified as minimum and maximum integer values.
     for axis_range in axes_ranges:
@@ -136,8 +144,7 @@ def create_output_folder(output_path):
 """
 user-interfacing gizmos.
 """
-def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides,
-                output_path, output_filename,
+def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
                 colormap = 'viridis'):
     # dictionaries.
     # -----
@@ -146,9 +153,8 @@ def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_r
     # names for each value, e.g. value index 0 for velocity data corresponds to the x-component of the velocity ("ux").
     value_name_map = get_value_names()
     
-    # create the output_path folder if it does not already exist and make sure output_path is formatted properly.
-    output_path = pathlib.Path(output_path)
-    create_output_folder(output_path)
+    # create the output folder if it does not already exist..
+    create_output_folder(cube.output_path)
     
     # exception handling.
     # -----
@@ -244,7 +250,7 @@ def contourPlot(value_index_original, variable, cutout_data, plot_ranges, axes_r
     
     # save the figure.
     plt.tight_layout()
-    plt.savefig(output_path.joinpath(output_filename))
+    plt.savefig(cube.output_path.joinpath(output_filename))
     
     # show the figure in the notebook, and shrinks the dpi to make it easily visible.
     fig.set_dpi(67)
