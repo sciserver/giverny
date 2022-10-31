@@ -827,7 +827,7 @@ class iso_cube:
                 worker = workers[disk_index % num_workers] 
                 
                 # scatter the data.
-                db_map_scatter = client.scatter(np.array(db_native_map[database_file_disk]), broadcast = False, workers = worker)
+                db_map_scatter = client.scatter(np.array(db_native_map[database_file_disk], dtype = 'object'), broadcast = False, workers = worker)
                 # submit the data for parallel processing.
                 result_output_data.append(client.submit(self.get_iso_points_variable, db_map_scatter, verbose = False, workers = worker))
         
@@ -965,9 +965,8 @@ class iso_cube:
         # empty voxel bucket.
         bucket = np.zeros((16, 16, 16, self.num_values_per_datapoint))
         
-        points = np.array(db_native_map_data)[:, 0]
         # convert the points to gridded datapoints.
-        datapoints = np.floor(points / self.dx).astype(int) % self.N
+        datapoints = np.array([np.floor(point / self.dx).astype(int) % self.N for point in db_native_map_data[:, 0]])
         # calculate the minimum and maximum bucket (x, y, z) corner points for each datapoint.
         bucket_min_xyzs = ((datapoints - self.bucket_min_index) - ((datapoints - self.bucket_min_index) % self.voxel_side_length)) % self.N
         bucket_max_xyzs = ((datapoints + self.bucket_max_index) + (self.voxel_side_length - ((datapoints + self.bucket_max_index) % self.voxel_side_length) - 1)) % self.N
