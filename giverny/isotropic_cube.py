@@ -5,8 +5,10 @@ import glob
 import h5py
 import math
 import mmap
+import zarr
 import shutil
 import pathlib
+import warnings
 import subprocess
 import numpy as np
 import SciServer.CasJobs as cj
@@ -15,6 +17,7 @@ from collections import defaultdict
 from SciServer import Authentication
 from dask.distributed import Client, LocalCluster
 from giverny.turbulence_gizmos.basic_gizmos import *
+
 # installs morton-py if necessary.
 try:
     import morton
@@ -25,6 +28,9 @@ finally:
 
 class iso_cube:
     def __init__(self, dataset_title = '', output_path = '', cube_dimensions = 3):
+        # turn off the dask warning for scattering large objects to the workers.
+        warnings.filterwarnings("ignore", message = ".*Large object of size.*detected in task graph")
+        
         # check that dataset_title is a valid dataset title.
         check_dataset_title(dataset_title)
         
@@ -54,9 +60,6 @@ class iso_cube:
         self.pickle_dir = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_pickled')
         # create the pickled directory if it does not already exist.
         create_output_folder(self.pickle_dir)
-        
-        # get map of the filepaths for all of the dataset binary files.
-        self.init_filepaths()
         
         # get a cache of the metadata for the database files.
         self.init_cache()
@@ -100,11 +103,26 @@ class iso_cube:
             with open(pickle_file, 'wb') as pickled_filepath:
                 dill.dump(self.cache, pickled_filepath)
     
+    def get_turb_folders(self):
+        # specifies the folders on fileDB that should be searched for the primary copies of the zarr files.
+        folder_base = '/home/idies/workspace/turb/'
+        folder_paths = ['data04_01/zarr/iso8192db_01/', 'data05_01/zarr/iso8192db_02/', 'data06_01/zarr/iso8192db_03/',
+                        'data07_01/zarr/iso8192db_04/', 'data08_01/zarr/iso8192db_05/', 'data09_01/zarr/iso8192db_06/',
+                        'data04_02/zarr/iso8192db_07/', 'data05_02/zarr/iso8192db_08/', 'data06_02/zarr/iso8192db_09/',
+                        'data07_02/zarr/iso8192db_10/', 'data08_02/zarr/iso8192db_11/', 'data09_02/zarr/iso8192db_12/',
+                        'data04_03/zarr/iso8192db_13/', 'data05_03/zarr/iso8192db_14/', 'data06_03/zarr/iso8192db_15/',
+                        'data07_03/zarr/iso8192db_16/', 'data08_03/zarr/iso8192db_17/', 'data09_03/zarr/iso8192db_18/']
+        
+        return [folder_base + folder_path for folder_path in folder_paths]
+        
     def init_filepaths(self):
         # pickled file for saving the globbed filepaths.
         pickle_file = self.pickle_dir.joinpath(self.dataset_title + '_database_filepaths.pickle')
         
         try:
+            if self.rewrite_metadata:
+                raise FileNotFoundError
+            
             # try reading the pickled file.
             with open(pickle_file, 'rb') as pickled_filepath:
                 self.filepaths = dill.load(pickled_filepath)
@@ -114,14 +132,20 @@ class iso_cube:
             
             # get the common filename prefix for all files in this dataset, e.g. "iso8192" for the isotropic8192 dataset.
             dataset_filename_prefix = get_filename_prefix(self.dataset_title)
-            # recursively search all sub-directories in the turbulence filedb system for the dataset binary files.
-            filepaths = sorted(glob.glob(f'/home/idies/workspace/turb/**/{dataset_filename_prefix}*.bin', recursive = True))
+            
+            # recursively search all sub-directories in the turbulence fileDB system for the dataset zarr files.
+            turb_folders = self.get_turb_folders()
+            filepaths = []
+            for turb_folder in turb_folders:
+                data_filepaths = glob.glob(turb_folder + '*.zarr')
+
+                filepaths += data_filepaths
 
             # map the filepaths to the filenames so that they can be easily retrieved.
             for filepath in filepaths:
                 # part of the filenames that exactly matches the "ProductionDatabaseName" column stored in the SQL metadata, plus the variable
                 # identifer (e.g. 'vel'), plus the timepoint.
-                filename = filepath.split(os.sep)[-1].replace('.bin', '').strip()
+                filename = filepath.split(os.sep)[-1].replace('.zarr', '').strip()
                 # only add the filepath to the dictionary once since there could be backup copies of the files.
                 if filename not in self.filepaths:
                     self.filepaths[filename] = filepath
@@ -135,6 +159,9 @@ class iso_cube:
         pickle_file = self.pickle_dir.joinpath(self.dataset_title + f'_cornercode_file_map-variable_{self.var}-timepoint_{self.timepoint}.pickle')
         
         try:
+            if self.rewrite_metadata:
+                raise FileNotFoundError
+            
             # try reading the pickled file.
             with open(pickle_file, 'rb') as pickled_file_map:
                 self.cornercode_file_map = dill.load(pickled_file_map)
@@ -186,11 +213,11 @@ class iso_cube:
             # create the interpolation cube size lookup table. the first number is the number of points on the left of the integer 
             # interpolation point, and the second number is the number of points on the right.
             self.interp_cube_sizes = {}
-            self.interp_cube_sizes['lag4'] = [1, 3]
-            self.interp_cube_sizes['m1q4'] = [1, 3]
-            self.interp_cube_sizes['lag6'] = [2, 4]
-            self.interp_cube_sizes['lag8'] = [3, 5]
-            self.interp_cube_sizes['m2q8'] = [3, 5]
+            self.interp_cube_sizes['lag4'] = [1, 2]
+            self.interp_cube_sizes['m1q4'] = [1, 2]
+            self.interp_cube_sizes['lag6'] = [2, 3]
+            self.interp_cube_sizes['lag8'] = [3, 4]
+            self.interp_cube_sizes['m2q8'] = [3, 4]
             self.interp_cube_sizes['none'] = [0, 0]
             
             # save self.interp_cube_sizes to a pickled file.
@@ -198,28 +225,29 @@ class iso_cube:
                 dill.dump(self.interp_cube_sizes, pickled_lookup_table)
                 
         # lookup the interpolation cube size indices.
-        self.cube_indices = self.interp_cube_sizes[self.sint]
-        self.cube_min_index = self.cube_indices[0]
-        self.cube_max_index = self.cube_indices[1]
-        # store the bucket indices for determining how many voxels need to be read for each point.
-        self.bucket_min_index = self.cube_min_index
-        self.bucket_max_index = self.cube_max_index - 1
+        self.cube_min_index, self.cube_max_index = self.interp_cube_sizes[self.sint]
     
-    def init_constants(self, var, timepoint, sint,
-                       num_values_per_datapoint, bytes_per_datapoint,
-                       voxel_side_length, missing_value_placeholder, database_file_disk_index, dask_maximum_processes):
+    def init_constants(self, var, var_original, timepoint, sint, num_values_per_datapoint, c,
+                       rewrite_metadata = False):
         # create the constants.
         self.var = var
+        self.var_name = var_original
         self.timepoint = timepoint
         self.sint = sint
         self.num_values_per_datapoint = num_values_per_datapoint
-        self.bytes_per_datapoint = bytes_per_datapoint
-        self.voxel_side_length = voxel_side_length
-        self.missing_value_placeholder = missing_value_placeholder
-        self.database_file_disk_index = database_file_disk_index
-        self.dask_maximum_processes = dask_maximum_processes
+        self.bytes_per_datapoint = c['bytes_per_datapoint']
+        self.voxel_side_length = c['voxel_side_length']
+        self.missing_value_placeholder = c['missing_value_placeholder']
+        self.database_file_disk_index = c['database_file_disk_index']
+        self.dask_maximum_processes = c['dask_maximum_processes']
+        self.chunk_size = c['chunk_size']
+        self.file_size = c['file_size']
+        self.rewrite_metadata = rewrite_metadata
         
-        # get a map of the files to cornercodes for all of the dataset binary files.
+        # get map of the filepaths for all of the dataset files.
+        self.init_filepaths()
+        
+        # get a map of the files to cornercodes for all of the dataset files.
         self.init_cornercode_file_map()
     
     """
@@ -313,21 +341,13 @@ class iso_cube:
             # outer product of the 1d kernels
             #------------------------------------
             gk = np.einsum('i,j,k', gz, gy, gx)
-            #---------------------------------------
-            # assemble the 8x8x8 cube and convolve
-            #---------------------------------------
-            d = u[ix[2] - self.cube_min_index : ix[2] + self.cube_max_index,
-                  ix[1] - self.cube_min_index : ix[1] + self.cube_max_index,
-                  ix[0] - self.cube_min_index : ix[0] + self.cube_max_index,
-                  :]
 
-            ui = np.einsum('ijk,ijkl->l', gk, d)
+            return np.einsum('ijk,ijkl->l', gk, u)
         else:
             # 'none' spatial interpolation.
             ix = np.floor(p + 0.5).astype(np.int32)
-            ui = np.array(u[ix[2], ix[1], ix[0], :])
-        
-        return ui
+            
+            return np.array(u[ix[2], ix[1], ix[0], :])
     
     """
     getCutout functions.
@@ -368,8 +388,8 @@ class iso_cube:
                     # specify the box that is fully inside a database file.
                     box = [[min_corner_xyz[i], min(max_corner_xyz[i] + cube_ms[i], box_max_xyz[i])] for i in range(3)]
                     
-                    # add the box axes ranges and the minimum morton limit to the map.
-                    single_file_boxes[database_file_disk][min_corner_db_file].append((box, box_minLim))
+                    # add the box axes ranges to the map.
+                    single_file_boxes[database_file_disk][min_corner_db_file].append(box)
 
                     # move to the next database file origin point.
                     current_x = max_corner_xyz[0] + cube_ms[0] + 1
@@ -461,8 +481,7 @@ class iso_cube:
         for database_file_disk in user_single_db_boxes:
             # read in the voxel data from all of the database files on this disk.
             result_output_data.append(client.submit(self.get_iso_points, user_single_db_boxes[database_file_disk],
-                                                    verbose = False,
-                                                    workers = workers))
+                                                    verbose = False, workers = workers, pure = False))
         
         # gather all of the results once they are finished being run in parallel by dask.
         result_output_data = client.gather(result_output_data)        
@@ -487,99 +506,29 @@ class iso_cube:
         """
         retrieve the values for the specified var(iable) in the user-specified box and at the specified timepoint.
         """
-        # set the byte order for reading the data from the binary files.
+        # set the byte order for reading the data from the files.
         dt = np.dtype(np.float32)
         dt = dt.newbyteorder('<')
         
-        # vectorize the mortoncurve.pack function.
-        v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
-        
-        # volume of the voxel cube.
-        voxel_cube_size = self.voxel_side_length**3
-        
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
-        # iterate over the database files and morton sub-boxes to read the data from.
+        # iterate over the database files to read the data from.
         for db_file in user_single_db_boxes_disk_data:
-            # create an open file object of the database file.
-            open_db_file = open(db_file, 'rb')
-            
-            # create a memory map of the database file.
-            size_bytes = os.fstat(open_db_file.fileno()).st_size
-            mm = mmap.mmap(open_db_file.fileno(), length = size_bytes, access = mmap.ACCESS_READ)
+            zm = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
             
             # iterate over the user box ranges corresponding to the morton voxels that will be read from this database file.
-            for user_box_data in user_single_db_boxes_disk_data[db_file]:
-                # retrieve the axes ranges of sub-box and the minimum morton limit of the database file.
-                user_box_ranges = user_box_data[0]
-                db_minLim = user_box_data[1]
-
+            for user_box_ranges in user_single_db_boxes_disk_data[db_file]:
                 # retrieve the minimum and maximum (x, y, z) coordinates of the database file box that is going to be read in.
-                min_xyz = np.array([axis_range[0] for axis_range in user_box_ranges])
-                max_xyz = np.array([axis_range[1] for axis_range in user_box_ranges])
-                xyz_diffs = max_xyz - min_xyz + 1
+                min_xyz = [axis_range[0] for axis_range in user_box_ranges]
+                max_xyz = [axis_range[1] for axis_range in user_box_ranges]
+                # adjust the user box ranges to file size indices.
+                user_box_ranges = np.array(user_box_ranges) % self.file_size
                 
-                # expand the boundaries of the box to encompass complete voxels.
-                full_min_xyz = [axis_range[0] - (axis_range[0] % self.voxel_side_length) for axis_range in user_box_ranges]
-                full_max_xyz = [axis_range[1] + (self.voxel_side_length - (axis_range[1] % self.voxel_side_length) - 1) for axis_range in user_box_ranges]
-                
-                # origin points of voxels that overlap the user-specified box.
-                voxel_origin_points = np.array([[x, y, z]
-                                                 for z in range(full_min_xyz[2], full_max_xyz[2] + 1, self.voxel_side_length)
-                                                 for y in range(full_min_xyz[1], full_max_xyz[1] + 1, self.voxel_side_length)
-                                                 for x in range(full_min_xyz[0], full_max_xyz[0] + 1, self.voxel_side_length)]) % self.N
-                
-                # vectorized calculation of the morton indices for the voxel origin points.
-                morton_mins = v_morton_pack(voxel_origin_points[:, 0], voxel_origin_points[:, 1], voxel_origin_points[:, 2])
-                
-                # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
-                cube_ms = np.array([math.floor(float(min_xyz[q]) / float(self.N)) * self.N for q in range(len(min_xyz))])
-
-                # create copies of min_xyz and max_xyz to vectorize the voxel_mins and voxel_maxs calculations.
-                tiled_min_xyz = np.tile(min_xyz, (len(voxel_origin_points), 1))
-                tiled_max_xyz = np.tile(max_xyz, (len(voxel_origin_points), 1))
-                # determine the minimum and maximum voxel ranges that overlap the user-specified box.
-                voxel_mins = np.max([voxel_origin_points + cube_ms, tiled_min_xyz], axis = 0)
-                voxel_maxs = np.min([voxel_origin_points + cube_ms + self.voxel_side_length - 1, tiled_max_xyz], axis = 0)
-                
-                # calculate the modulus of each voxel minimum and maximum and add 1 to voxel_maxs_mod for correctly
-                # slicing partially overlapped voxels.
-                voxel_mins_mod = voxel_mins % self.voxel_side_length
-                voxel_maxs_mod = (voxel_maxs % self.voxel_side_length) + 1
-                # adjust voxel_mins and voxel_maxs by min_xyz and add 1 to voxel_maxs for simplified local_output_array slicing.
-                voxel_mins = voxel_mins - min_xyz
-                voxel_maxs = voxel_maxs - min_xyz + 1
-                
-                # create the local output array for this box that will be filled and returned.
-                local_output_array = np.full((xyz_diffs[2], xyz_diffs[1], xyz_diffs[0],
-                                              self.num_values_per_datapoint), fill_value = self.missing_value_placeholder, dtype = np.float32)
-                
-                # iterates over the voxels and reads them from the memory map of the database file.
-                for morton_index_min, voxel_min, voxel_max, voxel_min_mod, voxel_max_mod in \
-                    sorted(zip(morton_mins, voxel_mins, voxel_maxs, voxel_mins_mod, voxel_maxs_mod), key = lambda x: x[0]):
-                    l = np.frombuffer(mm, dtype = dt,
-                                      count = self.num_values_per_datapoint * voxel_cube_size,
-                                      offset = self.num_values_per_datapoint * self.bytes_per_datapoint * (morton_index_min - db_minLim))
-                    
-                    # reshape the data into a 3-d voxel.
-                    l = l.reshape(self.voxel_side_length, self.voxel_side_length, self.voxel_side_length, self.num_values_per_datapoint)
-                    
-                    # put the voxel data into the local array.
-                    local_output_array[voxel_min[2] : voxel_max[2],
-                                       voxel_min[1] : voxel_max[1],
-                                       voxel_min[0] : voxel_max[0]] = l[voxel_min_mod[2] : voxel_max_mod[2],
-                                                                        voxel_min_mod[1] : voxel_max_mod[1],
-                                                                        voxel_min_mod[0] : voxel_max_mod[0]]
-                
-                # checks to make sure that data was read in for all points.
-                if self.missing_value_placeholder in local_output_array:
-                    raise Exception(f'local_output_array was not filled correctly')
-                
-                # append the filled local_output_array into local_output_data.
-                local_output_data.append((local_output_array, min_xyz, max_xyz))
-        
-            # close the open file object.
-            open_db_file.close()
+                # append the cutout into local_output_data.
+                local_output_data.append((zm[user_box_ranges[2][0] : user_box_ranges[2][1] + 1,
+                                             user_box_ranges[1][0] : user_box_ranges[1][1] + 1,
+                                             user_box_ranges[0][0] : user_box_ranges[0][1] + 1],
+                                             min_xyz, max_xyz))
         
         return local_output_data
     
@@ -591,90 +540,58 @@ class iso_cube:
     """
     getVariable functions.
     """
-    def get_voxel_origin_groups(self, bucket_min_x, bucket_min_y, bucket_min_z, bucket_max_x, bucket_max_y, bucket_max_z):
-        # get arrays of the voxel origin poins for each bucket.
-        return np.array([[x, y, z]
-                         for z in range(bucket_min_z, (bucket_max_z if bucket_min_z <= bucket_max_z else self.N + bucket_max_z) + 1, 8)
-                         for y in range(bucket_min_y, (bucket_max_y if bucket_min_y <= bucket_max_y else self.N + bucket_max_y) + 1, 8)
-                         for x in range(bucket_min_x, (bucket_max_x if bucket_min_x <= bucket_max_x else self.N + bucket_max_x) + 1, 8)])
-    
-    def find_center_points(self, points):
-        # find center coordinates of the bucket [e.g, (7.5 7.5 7.5) for the first bucket].
-        center_points = points / self.dx % self.voxel_side_length
-        center_points = np.where([center_point < self.bucket_min_index for center_point in center_points],
-                                 [center_point + 8 for center_point in center_points],
-                                 [center_point for center_point in center_points])
-        
-        return center_points
-    
     def identify_database_file_points(self, points):
         # vectorize the mortoncurve.pack function.
         v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
-        # vectorize the get_voxel_origin_groups function.
-        v_get_voxel_origin_groups = np.vectorize(self.get_voxel_origin_groups, otypes = [list])
         
         # convert the points to the center point position within their own bucket.
-        center_points = self.find_center_points(points)
+        center_points = (points / self.dx % 1) + self.cube_min_index
         # convert the points to gridded datapoints.
         datapoints = np.floor(points / self.dx).astype(int) % self.N
-        # calculate the minimum and maximum bucket (x, y, z) corner point for each point in datapoints.
-        bucket_min_xyzs = ((datapoints - self.bucket_min_index) - ((datapoints - self.bucket_min_index) % self.voxel_side_length)) % self.N
-        bucket_max_xyzs = ((datapoints + self.bucket_max_index) + (self.voxel_side_length - ((datapoints + self.bucket_max_index) % self.voxel_side_length) - 1)) % self.N
-        # calculate the minimum and maximum bucket morton codes for each point in datapoints.
-        bucket_min_mortons = v_morton_pack(bucket_min_xyzs[:, 0], bucket_min_xyzs[:, 1], bucket_min_xyzs[:, 2])
-        bucket_max_mortons = v_morton_pack(bucket_max_xyzs[:, 0], bucket_max_xyzs[:, 1], bucket_max_xyzs[:, 2])
-        # get the origin points for each voxel in the buckets.
-        voxel_origin_groups = v_get_voxel_origin_groups(bucket_min_xyzs[:, 0], bucket_min_xyzs[:, 1], bucket_min_xyzs[:, 2],
-                                                        bucket_max_xyzs[:, 0], bucket_max_xyzs[:, 1], bucket_max_xyzs[:, 2])
-             
-        # save the original indices for bucket_min_mortons, which corresponds to the orderering of the user-specified
+        # calculate the minimum and maximum chunk (x, y, z) corner point for each point in datapoints.
+        chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size)) % self.N
+        chunk_max_xyzs = ((datapoints + self.cube_max_index) + (self.chunk_size - ((datapoints + self.cube_max_index) % self.chunk_size) - 1)) % self.N
+        # create the chunk keys for each chunk group.
+        chunk_keys = [chunk_origin_group.tobytes() for chunk_origin_group in np.stack([chunk_min_xyzs, chunk_max_xyzs], axis = 1)]
+        # convert chunk_min_xyzs and chunk_max_xyzs to indices in a single database file.
+        chunk_min_mods = chunk_min_xyzs % self.file_size
+        chunk_max_mods = chunk_max_xyzs % self.file_size
+        # calculate the minimum and maximum chunk morton codes for each point in chunk_min_xyzs and chunk_max_xyzs.
+        chunk_min_mortons = v_morton_pack(chunk_min_xyzs[:, 0], chunk_min_xyzs[:, 1], chunk_min_xyzs[:, 2])
+        chunk_max_mortons = v_morton_pack(chunk_max_xyzs[:, 0], chunk_max_xyzs[:, 1], chunk_max_xyzs[:, 2])
+        # calculate the db file cornercodes for each morton code.
+        db_min_cornercodes = (chunk_min_mortons >> 27) << 27
+        db_max_cornercodes = (chunk_max_mortons >> 27) << 27
+        # identify the database files that will need to be read for each chunk.
+        db_min_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_min_cornercodes]
+        db_max_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_max_cornercodes]
+        
+        # save the original indices for points, which corresponds to the orderering of the user-specified
         # points. these indices will be used for sorting output_data back to the user-specified points ordering.
         original_points_indices = [q for q in range(len(points))]
-        # zip the data and sort by the bucket minimum morton codes.
-        zipped_data = sorted(zip(bucket_min_mortons, bucket_max_mortons, points, center_points, voxel_origin_groups, original_points_indices), key = lambda x: x[0])
+        # zip the data.
+        zipped_data = sorted(zip(chunk_min_mortons, chunk_keys, db_min_files, db_max_files, points, datapoints, center_points,
+                                 chunk_min_xyzs, chunk_max_xyzs, chunk_min_mods, chunk_max_mods, original_points_indices), key = lambda x: (x[0], x[1]))
         
-        # map the native bucket points to their respective db files and buckets.
+        # map the native bucket points to their respective db files and chunks.
         db_native_map = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         # store an array of visitor bucket points.
         db_visitor_map = []
         
-        # first morton code.
-        bucket_min_morton = zipped_data[0][0]
-        
-        # database file info for the first morton code.
-        file_info = self.get_file_for_cornercode(bucket_min_morton)
-        db_file = file_info[0]
-        db_disk = db_file.split(os.sep)[-3]
-        db_minLim = file_info[1]
-        db_maxLim = file_info[2]
-        
-        for bucket_min_morton, bucket_max_morton, point, center_point, voxel_origin_group, original_point_index in zipped_data:
+        for chunk_min_morton, chunk_key, db_min_file, db_max_file, point, datapoint, center_point, \
+            chunk_min_xyz, chunk_max_xyz, chunk_min_mod, chunk_max_mod, original_point_index in zipped_data:
             # update the database file info if the morton code is outside of the previous database fil maximum morton limit.
-            if bucket_min_morton > db_maxLim:
-                file_info = self.get_file_for_cornercode(bucket_min_morton)
-                db_file = file_info[0]
-                db_disk = db_file.split(os.sep)[-3]
-                db_minLim = file_info[1]
-                db_maxLim = file_info[2]
+            db_disk = db_min_file.split(os.sep)[self.database_file_disk_index]
             
-            # assign to native map.
-            if ((bucket_max_morton <= db_maxLim) and (bucket_min_morton <= bucket_max_morton)):
-                # convert the voxel_origin_group to a unique value that can used as a key in db_native_map.
-                bucket_key = voxel_origin_group.tobytes()
-                
-                # assign to the native map.
-                db_native_map[db_disk][db_file, db_minLim][bucket_key].append((point, center_point, original_point_index))
+            if db_min_file == db_max_file:
+                # assign to native map.
+                if chunk_key not in db_native_map[db_disk][db_min_file]:
+                    db_native_map[db_disk][db_min_file][chunk_key].append((chunk_min_xyz, chunk_max_xyz, chunk_min_mod, chunk_max_mod))
+    
+                db_native_map[db_disk][db_min_file][chunk_key].append((point, datapoint, center_point, original_point_index))
             else:
                 # assign to the visitor map.
-                db_visitor_map.append((point, center_point, original_point_index))
-        
-        # reformat db_native_map for distributed processing if the native data is distributed across more than 1 db disk.
-        if len(db_native_map) > 1:
-            for db_disk in db_native_map:
-                db_native_map[db_disk] = [point_pair
-                                          for file_key in db_native_map[db_disk]
-                                          for bucket_key in db_native_map[db_disk][file_key]
-                                          for point_pair in db_native_map[db_disk][file_key][bucket_key]]
+                db_visitor_map.append((point, datapoint, center_point, original_point_index))
         
         return db_native_map, np.array(db_visitor_map, dtype = 'object')
     
@@ -688,12 +605,19 @@ class iso_cube:
         f = self.filepaths[f'{t.ProductionDatabaseName}_{self.var}_{self.timepoint}']
         return f, t.minLim, t.maxLim
     
+    def get_chunk_origin_groups(self, chunk_min_x, chunk_min_y, chunk_min_z, chunk_max_x, chunk_max_y, chunk_max_z):
+        # get arrays of the chunk origin points for each bucket.
+        return np.array([[x, y, z]
+                         for z in range(chunk_min_z, (chunk_max_z if chunk_min_z <= chunk_max_z else self.N + chunk_max_z) + 1, self.chunk_size)
+                         for y in range(chunk_min_y, (chunk_max_y if chunk_min_y <= chunk_max_y else self.N + chunk_max_y) + 1, self.chunk_size)
+                         for x in range(chunk_min_x, (chunk_max_x if chunk_min_x <= chunk_max_x else self.N + chunk_max_x) + 1, self.chunk_size)])
+    
     def read_natives_sequentially_variable(self, db_native_map, native_output_data):
         # native data.
         # iterate over the data volumes that the database files are stored on.
         for database_file_disk in db_native_map:
             # read in the voxel data from all of the database files on this disk.
-            native_output_data += self.get_iso_points_variable_one_native_volume(db_native_map[database_file_disk], verbose = False)
+            native_output_data += self.get_iso_points_variable(db_native_map[database_file_disk], verbose = False)
             
     def read_visitors_in_parallel_variable(self, db_visitor_map, visitor_output_data):
         # visitor data.
@@ -738,10 +662,8 @@ class iso_cube:
             temp_visitor_output_data = []
             # scatter the chunks to their own worker and submit each chunk for parallel processing.
             for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # scatter the chunk.
-                db_map_scatter = client.scatter(db_visitor_map_chunk, broadcast = False, workers = worker)
                 # submit the chunk for parallel processing.
-                temp_visitor_output_data.append(client.submit(self.get_iso_points_variable_visitor, db_map_scatter, verbose = False, workers = worker))
+                temp_visitor_output_data.append(client.submit(self.get_iso_points_variable_visitor, db_visitor_map_chunk, verbose = False, workers = worker, pure = False))
                 
             # gather all of the results once they are finished being run in parallel by dask.
             temp_visitor_output_data = client.gather(temp_visitor_output_data)
@@ -826,10 +748,9 @@ class iso_cube:
             for disk_index, database_file_disk in enumerate(db_native_map):
                 worker = workers[disk_index % num_workers] 
                 
-                # scatter the data.
-                db_map_scatter = client.scatter(np.array(db_native_map[database_file_disk]), broadcast = False, workers = worker)
                 # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_iso_points_variable, db_map_scatter, verbose = False, workers = worker))
+                result_output_data.append(client.submit(self.get_iso_points_variable, db_native_map[database_file_disk], verbose = False,
+                                                            workers = worker, pure = False))
         
         # visitor buckets.
         # -----
@@ -845,10 +766,8 @@ class iso_cube:
 
             # scatter the chunks to their own worker and submit the chunk for parallel processing.
             for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # scatter the data.
-                db_map_scatter = client.scatter(db_visitor_map_chunk, broadcast = False, workers = worker)
                 # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_iso_points_variable_visitor, db_map_scatter, verbose = False, workers = worker))
+                result_output_data.append(client.submit(self.get_iso_points_variable_visitor, db_visitor_map_chunk, verbose = False, workers = worker, pure = False))
         
         # gather all of the results once they are finished being run in parallel by dask.
         result_output_data = client.gather(result_output_data)        
@@ -868,251 +787,129 @@ class iso_cube:
                 
         return result_output_data
     
-    def get_iso_points_variable_one_native_volume(self, db_native_map_data, verbose = False):
+    def get_iso_points_variable(self, db_native_map_data, verbose = False):
         """
         reads and interpolates the user-requested native points in a single database volume.
         """
-        # set the byte order for reading the data from the binary files.
+        # set the byte order for reading the data from the files.
         dt = np.dtype(np.float32)
         dt = dt.newbyteorder('<')
         
-        # vectorize the mortoncurve.pack function.
-        v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int]) 
-        
-        # volume of the voxel- cube.
-        voxel_cube_size = self.voxel_side_length**3
-        
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
-        
-        # empty voxel bucket.
-        bucket = np.zeros((16, 16, 16, self.num_values_per_datapoint))
-        
-        # iterate of the db files.
-        for db_file, db_minLim in db_native_map_data:
-            # create an open file object of the database file.
-            with open(db_file, 'rb') as open_db_file:
-                # create a memory map of the database file.
-                size_bytes = os.fstat(open_db_file.fileno()).st_size
-                mm = mmap.mmap(open_db_file.fileno(), length = size_bytes, access = mmap.ACCESS_READ)
-
-                # build the buckets and interpolate the points.
-                db_file_data = db_native_map_data[db_file, db_minLim]
-                for bucket_key in db_file_data:                    
-                    bucket_data = db_file_data[bucket_key]
-                    # only use the first point to calculate the bucket.                     
-                    point = bucket_data[0][0]
-                    
-                    # convert the point to a gridded datapoint.
-                    datapoint = np.floor(point / self.dx).astype(int) % self.N
-                    # calculate the minimum and maximum bucket (x, y, z) corner point for datapoint.
-                    bucket_min_xyz = ((datapoint - self.bucket_min_index) - ((datapoint - self.bucket_min_index) % self.voxel_side_length)) % self.N
-                    bucket_max_xyz = ((datapoint + self.bucket_max_index) + (self.voxel_side_length - ((datapoint + self.bucket_max_index) % self.voxel_side_length) - 1)) % self.N
-                    # calculate the minimum and maximum bucket morton code for datapoint.
-                    bucket_min_morton = self.mortoncurve.pack(bucket_min_xyz[0], bucket_min_xyz[1], bucket_min_xyz[2])
-                    bucket_max_morton = self.mortoncurve.pack(bucket_max_xyz[0], bucket_max_xyz[1], bucket_max_xyz[2])
-                    # get the origin points for each voxel in the bucket.
-                    voxel_origin_group = self.get_voxel_origin_groups(bucket_min_xyz[0], bucket_min_xyz[1], bucket_min_xyz[2],
-                                                                      bucket_max_xyz[0], bucket_max_xyz[1], bucket_max_xyz[2])
-                                                       
-                    # get the voxel origin group inside the dataset domain.
-                    voxel_origin_group_boundary = voxel_origin_group % self.N
-                    # calculate the morton codes for the minimum point in each voxel of the bucket.
-                    morton_mins = v_morton_pack(voxel_origin_group_boundary[:, 0], voxel_origin_group_boundary[:, 1], voxel_origin_group_boundary[:, 2])
-                    # adjust the voxel origin points to the domain [0, 15] for filling the empty bucket array.
-                    voxel_origin_points = voxel_origin_group - voxel_origin_group[0]
-                    
-                    # iterates over the voxels and reads them from the memory map of the database file.
-                    for morton_min, voxel_origin_point in zip(morton_mins, voxel_origin_points):
-                        l = np.frombuffer(mm, dtype = dt,
-                                          count = self.num_values_per_datapoint * voxel_cube_size,
-                                          offset = self.num_values_per_datapoint * self.bytes_per_datapoint * (morton_min - db_minLim))
-
-                        # reshape the data into a 3-d voxel.
-                        l = l.reshape(self.voxel_side_length, self.voxel_side_length, self.voxel_side_length, self.num_values_per_datapoint)
-
-                        # fill the bucket.
-                        bucket[voxel_origin_point[2] : voxel_origin_point[2] + 8,
-                               voxel_origin_point[1] : voxel_origin_point[1] + 8,
-                               voxel_origin_point[0] : voxel_origin_point[0] + 8,
-                               :] = l
-
-                    for point, center_point, original_point_index in bucket_data:
-                        # interpolate the points and use a lookup table for faster interpolations.
-                        local_output_data.append((original_point_index, (point, self.interpLagL(center_point, bucket))))
-        
-        return local_output_data
-    
-    def get_iso_points_variable(self, db_native_map_data, verbose = False):
-        """
-        reads and interpolates the user-requested native points in multiple database volumes.
-        """
-        # set the byte order for reading the data from the binary files.
-        dt = np.dtype(np.float32)
-        dt = dt.newbyteorder('<')
-        
-        # vectorize the mortoncurve.pack function.
-        v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
-        # vectorize the get_voxel_origin_groups function.
-        v_get_voxel_origin_groups = np.vectorize(self.get_voxel_origin_groups, otypes = [list])
-        
-        # volume of the voxel- cube.
-        voxel_cube_size = self.voxel_side_length**3
-        
-        # the collection of local output data that will be returned to fill the complete output_data array.
-        local_output_data = []
-        
-        # empty voxel bucket.
-        bucket = np.zeros((16, 16, 16, self.num_values_per_datapoint))
-        
-        points = np.array(db_native_map_data)[:, 0]
-        # convert the points to gridded datapoints.
-        datapoints = np.floor(points / self.dx).astype(int) % self.N
-        # calculate the minimum and maximum bucket (x, y, z) corner points for each datapoint.
-        bucket_min_xyzs = ((datapoints - self.bucket_min_index) - ((datapoints - self.bucket_min_index) % self.voxel_side_length)) % self.N
-        bucket_max_xyzs = ((datapoints + self.bucket_max_index) + (self.voxel_side_length - ((datapoints + self.bucket_max_index) % self.voxel_side_length) - 1)) % self.N
-        # calculate the morton codes for each datapoint.
-        mortons = v_morton_pack(datapoints[:, 0], datapoints[:, 1], datapoints[:, 2])
-        # calculate the db file cornercodes for each morton code.
-        db_cornercodes = (mortons >> 27) << 27
-
-        # get the origin points for each voxel in the buckets.
-        voxel_origin_groups = v_get_voxel_origin_groups(bucket_min_xyzs[:, 0], bucket_min_xyzs[:, 1], bucket_min_xyzs[:, 2],
-                                                        bucket_max_xyzs[:, 0], bucket_max_xyzs[:, 1], bucket_max_xyzs[:, 2])
-
-        current_file = ''
-        current_bucket = ''
-        # build the buckets and interpolate the points.
-        for point_data, voxel_origin_group, db_cornercode in zip(db_native_map_data, voxel_origin_groups, db_cornercodes):
-            db_file, db_minLim = self.cornercode_file_map[db_cornercode]
+        # iterate over the database files and morton sub-boxes to read the data from.
+        for db_file in db_native_map_data:
+            zs = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
             
-            # create a memory map of the file if the current point is in a different file from the previous point.
-            if current_file != db_file:
-                # create an open file object of the database file.
-                with open(db_file, 'rb') as open_db_file:
-                    # create a memory map of the database file.
-                    size_bytes = os.fstat(open_db_file.fileno()).st_size
-                    mm = mmap.mmap(open_db_file.fileno(), length = size_bytes, access = mmap.ACCESS_READ)
+            db_file_data = db_native_map_data[db_file]
+            for chunk_key in db_file_data:
+                chunk_data = db_file_data[chunk_key]
+                chunk_min_xyz = chunk_data[0][0]
+                chunk_max_xyz = chunk_data[0][1]
 
-                # update current_file.
-                current_file = db_file
+                # read in the necessary chunks.
+                zm = zs[chunk_data[0][2][2] : chunk_data[0][3][2] + 1,
+                        chunk_data[0][2][1] : chunk_data[0][3][1] + 1,
+                        chunk_data[0][2][0] : chunk_data[0][3][0] + 1]
+                
+                # iterate over the points to interpolate.
+                for point, datapoint, center_point, original_point_index in chunk_data[1:]:
+                    bucket_min_xyz = datapoint - chunk_min_xyz - self.cube_min_index
+                    bucket_max_xyz = datapoint - chunk_min_xyz + self.cube_max_index + 1
 
-            # only update the bucket if the current point is in a different bucket than the previous point.
-            bucket_key = voxel_origin_group.tobytes()
-            if current_bucket != bucket_key:
-                # get the voxel origin group inside the dataset domain.
-                voxel_origin_group_boundary = voxel_origin_group % self.N
-                # calculate the morton codes for the minimum point in each voxel of the bucket.
-                morton_mins = v_morton_pack(voxel_origin_group_boundary[:, 0], voxel_origin_group_boundary[:, 1], voxel_origin_group_boundary[:, 2])
-                # adjust the voxel origin points to the domain [0, 15] for filling the empty bucket array.
-                voxel_origin_points = voxel_origin_group - voxel_origin_group[0]
-
-                # iterates over the voxels and reads them from the memory map of the database file.
-                for morton_min, voxel_origin_point in zip(morton_mins, voxel_origin_points):
-                    l = np.frombuffer(mm, dtype = dt,
-                                      count = self.num_values_per_datapoint * voxel_cube_size,
-                                      offset = self.num_values_per_datapoint * self.bytes_per_datapoint * (morton_min - db_minLim))
-
-                    # reshape the data into a 3-d voxel.
-                    l = l.reshape(self.voxel_side_length, self.voxel_side_length, self.voxel_side_length, self.num_values_per_datapoint)
-
-                    # fill the bucket.
-                    bucket[voxel_origin_point[2] : voxel_origin_point[2] + 8,
-                           voxel_origin_point[1] : voxel_origin_point[1] + 8,
-                           voxel_origin_point[0] : voxel_origin_point[0] + 8,
-                           :] = l
-
-                current_bucket = bucket_key
-
-            # interpolate the points and use a lookup table for faster interpolations.
-            local_output_data.append((point_data[2], (point_data[0], self.interpLagL(point_data[1], bucket))))
+                    bucket = zm[bucket_min_xyz[2] : bucket_max_xyz[2],
+                                bucket_min_xyz[1] : bucket_max_xyz[1],
+                                bucket_min_xyz[0] : bucket_max_xyz[0]]
+            
+                    # interpolate the points and use a lookup table for faster interpolations.
+                    local_output_data.append((original_point_index, (point, self.interpLagL(center_point, bucket))))
         
         return local_output_data
     
     def get_iso_points_variable_visitor(self, visitor_data, verbose = False):
-        """
-        reads and interpolates the user-requested visitor points.
-        """
-        # set the byte order for reading the data from the binary files.
-        dt = np.dtype(np.float32)
-        dt = dt.newbyteorder('<')
-        
-        # vectorize the mortoncurve.pack function.
-        v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
-        
-        # volume of the voxel cube.
-        voxel_cube_size = self.voxel_side_length**3
-        
-        # the collection of local output data that will be returned to fill the complete output_data array.
-        local_output_data = []
-        
-        # empty voxel bucket.
-        bucket = np.zeros((16, 16, 16, self.num_values_per_datapoint))
-        
-        current_bucket = ''
-        for point_data in visitor_data:
-            # only use the first point to calculate the bucket.
-            point = point_data[0]
-            
-            # convert the point to a gridded datapoint.
-            datapoint = np.floor(point / self.dx).astype(int) % self.N
-            # calculate the minimum and maximum bucket (x, y, z) corner point for datapoint.
-            bucket_min_xyz = ((datapoint - self.bucket_min_index) - ((datapoint - self.bucket_min_index) % self.voxel_side_length)) % self.N
-            bucket_max_xyz = ((datapoint + self.bucket_max_index) + (self.voxel_side_length - ((datapoint + self.bucket_max_index) % self.voxel_side_length) - 1)) % self.N
-            # get the origin points for each voxel in the bucket.
-            voxel_origin_group = self.get_voxel_origin_groups(bucket_min_xyz[0], bucket_min_xyz[1], bucket_min_xyz[2],
-                                                              bucket_max_xyz[0], bucket_max_xyz[1], bucket_max_xyz[2])
-    
-            # only update the bucket if the new point is in a different bucket than the previous point.
-            bucket_key = voxel_origin_group.tobytes()
-            if current_bucket != bucket_key:
-                # get the voxel origin group inside the dataset domain.
-                voxel_origin_group_boundary = voxel_origin_group % self.N
-                # calculate the morton codes for the minimum point in each voxel of the bucket.
-                morton_mins = v_morton_pack(voxel_origin_group_boundary[:, 0], voxel_origin_group_boundary[:, 1], voxel_origin_group_boundary[:, 2])
-                # adjust the voxel origin points to the domain [0, 15] for filling the empty bucket array.
-                voxel_origin_points = voxel_origin_group - voxel_origin_group[0]
+            """
+            reads and interpolates the user-requested visitor points.
+            """
+            # set the byte order for reading the data from the files.
+            dt = np.dtype(np.float32)
+            dt = dt.newbyteorder('<')
 
-                # calculate the db file cornercodes for each morton code.
-                db_cornercodes = (morton_mins >> 27) << 27
-                # identify the database files that will need to be read for this bucket.
-                db_files = [self.cornercode_file_map[morton_code] for morton_code in db_cornercodes]
+            # vectorize the mortoncurve.pack function.
+            v_morton_pack = np.vectorize(self.mortoncurve.pack, otypes = [int])
 
-                current_file = ''
-                # iterate of the db files.
-                for db_file_info, morton_min, voxel_origin_point in sorted(zip(db_files, morton_mins, voxel_origin_points), key = lambda x: x[1]):
-                    db_file = db_file_info[0]
-                    db_minLim = db_file_info[1]
+            # the collection of local output data that will be returned to fill the complete output_data array.
+            local_output_data = []
 
-                    # create a memory map of the file if the current point is in a different file from the previous point.
-                    if db_file != current_file:
-                        # create an open file object of the database file.
-                        with open(db_file, 'rb') as open_db_file:
-                            # create a memory map of the database file.
-                            size_bytes = os.fstat(open_db_file.fileno()).st_size
-                            mm = mmap.mmap(open_db_file.fileno(), length = size_bytes, access = mmap.ACCESS_READ)
+            # empty chunk group array (up to eight 64-cube chunks).
+            zm = np.zeros((128, 128, 128, self.num_values_per_datapoint))
 
-                        # update current_file.
-                        current_file = db_file
+            datapoints = np.array([datapoint for datapoint in visitor_data[:, 1]])
+            # calculate the minimum and maximum chunk group corner point (x, y, z) for each datapoint.
+            chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size)) % self.N
+            chunk_max_xyzs = ((datapoints + self.cube_max_index) + (self.chunk_size - ((datapoints + self.cube_max_index) % self.chunk_size) - 1)) % self.N
+            # calculate the morton codes for the minimum (x, y, z) point of each chunk group.
+            chunk_min_mortons = v_morton_pack(chunk_min_xyzs[:, 0], chunk_min_xyzs[:, 1], chunk_min_xyzs[:, 2])
+            # create the chunk keys for each chunk group.
+            chunk_keys = [chunk_origin_group.tobytes() for chunk_origin_group in np.stack([chunk_min_xyzs, chunk_max_xyzs], axis = 1)]
+            # calculate the minimum and maximum bucket corner point (x, y, z) for each datapoint.
+            bucket_min_xyzs = (datapoints - chunk_min_xyzs - self.cube_min_index) % self.N
+            bucket_max_xyzs = (datapoints - chunk_min_xyzs + self.cube_max_index + 1) % self.N
+            # create the bucket keys for each interpolation bucket.
+            bucket_keys = [bucket_origin_group.tobytes() for bucket_origin_group in np.stack([bucket_min_xyzs, bucket_max_xyzs], axis = 1)]
 
-                    l = np.frombuffer(mm, dtype = dt,
-                                      count = self.num_values_per_datapoint * voxel_cube_size,
-                                      offset = self.num_values_per_datapoint * self.bytes_per_datapoint * (morton_min - db_minLim))
+            current_chunk = ''
+            current_bucket = ''
+            for point_data, chunk_min_morton, chunk_min_xyz, chunk_max_xyz, chunk_key, bucket_min_xyz, bucket_max_xyz, bucket_key in \
+                sorted(zip(visitor_data, chunk_min_mortons, chunk_min_xyzs, chunk_max_xyzs, chunk_keys, bucket_min_xyzs, bucket_max_xyzs, bucket_keys),
+                       key = lambda x: (x[1], x[4], x[7])):
+                if current_chunk != chunk_key:
+                    # get the origin points for each voxel in the bucket.
+                    chunk_origin_groups = self.get_chunk_origin_groups(chunk_min_xyz[0], chunk_min_xyz[1], chunk_min_xyz[2],
+                                                                       chunk_max_xyz[0], chunk_max_xyz[1], chunk_max_xyz[2])
+                    # adjust the chunk origin points to the chunk domain size for filling the empty chunk group array.
+                    chunk_origin_points = chunk_origin_groups - chunk_origin_groups[0]
 
-                    # reshape the data into a 3-d voxel.
-                    l = l.reshape(self.voxel_side_length, self.voxel_side_length, self.voxel_side_length, self.num_values_per_datapoint)
+                    # get the chunk origin group inside the dataset domain.
+                    chunk_origin_groups = chunk_origin_groups % self.N
+                    # calculate the morton codes for the minimum point in each chunk of the chunk groups.
+                    morton_mins = v_morton_pack(chunk_origin_groups[:, 0], chunk_origin_groups[:, 1], chunk_origin_groups[:, 2])
+                    # get the chunk origin group inside the file domain.
+                    chunk_origin_groups = chunk_origin_groups % self.file_size
 
-                    # fill the bucket.
-                    bucket[voxel_origin_point[2] : voxel_origin_point[2] + 8,
-                           voxel_origin_point[1] : voxel_origin_point[1] + 8,
-                           voxel_origin_point[0] : voxel_origin_point[0] + 8,
-                           :] = l
-                    
-                # update current_bucket.
-                current_bucket = bucket_key
-            
-            # interpolate the point and use a lookup table for faster interpolation.
-            local_output_data.append((point_data[2], (point_data[0], self.interpLagL(point_data[1], bucket))))
-        
-        return local_output_data
+                    # calculate the db file cornercodes for each morton code.
+                    db_cornercodes = (morton_mins >> 27) << 27
+                    # identify the database files that will need to be read for this bucket.
+                    db_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_cornercodes]
+
+                    current_file = ''
+                    # iterate of the db files.
+                    for db_file, chunk_origin_point, chunk_origin_group in sorted(zip(db_files, chunk_origin_points, chunk_origin_groups), key = lambda x: x[0]):
+                        if db_file != current_file:
+                            # create an open file object of the database file.
+                            zs = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
+
+                            # update current_file.
+                            current_file = db_file
+
+                        zm[chunk_origin_point[2] : chunk_origin_point[2] + self.chunk_size,
+                           chunk_origin_point[1] : chunk_origin_point[1] + self.chunk_size,
+                           chunk_origin_point[0] : chunk_origin_point[0] + self.chunk_size] = zs[chunk_origin_group[2] : chunk_origin_group[2] + self.chunk_size,
+                                                                                                 chunk_origin_group[1] : chunk_origin_group[1] + self.chunk_size,
+                                                                                                 chunk_origin_group[0] : chunk_origin_group[0] + self.chunk_size]
+
+                    # update current_chunk.
+                    current_chunk = chunk_key
+
+                if current_bucket != bucket_key:
+                    bucket = zm[bucket_min_xyz[2] : bucket_max_xyz[2],
+                                bucket_min_xyz[1] : bucket_max_xyz[1],
+                                bucket_min_xyz[0] : bucket_max_xyz[0]]
+
+                    # update current_bucket.
+                    current_bucket = bucket_key
+
+                # interpolate the point and use a lookup table for faster interpolation.
+                local_output_data.append((point_data[3], (point_data[0], self.interpLagL(point_data[2], bucket))))
+
+            return local_output_data
     

@@ -8,7 +8,8 @@ from giverny.turbulence_gizmos.constants import *
 from giverny.turbulence_gizmos.basic_gizmos import *
 
 def getCutout_process_data(cube, axes_ranges, var, timepoint,
-                           axes_ranges_original, strides, var_original, timepoint_original):
+                           axes_ranges_original, strides, var_original, timepoint_original,
+                           rewrite_metadata = False):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
 
@@ -24,10 +25,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # placeholder spatial interpolation value which is not used for getCutout.
     sint = ''
     # initialize cube constants.
-    cube.init_constants(var, timepoint, sint,
-                        num_values_per_datapoint, c['bytes_per_datapoint'],
-                        c['voxel_side_length'], c['missing_value_placeholder'],
-                        c['database_file_disk_index'], c['dask_maximum_processes'])
+    cube.init_constants(var, var_original, timepoint, sint, num_values_per_datapoint, c, rewrite_metadata)
 
     # used for determining the indices in the output array for each x, y, z datapoint.
     axes_min = axes_ranges[:, 0]

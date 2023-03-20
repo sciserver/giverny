@@ -6,7 +6,7 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 retrieve a cutout of the isotropic cube.
 """
 def getCutout(cube, var_original, timepoint_original, axes_ranges_original, strides,
-              trace_memory = False):
+              rewrite_metadata = False, trace_memory = False):
     from giverny.turbulence_gizmos.getCutout import getCutout_process_data
     
     # housekeeping procedures.
@@ -25,7 +25,8 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
 
     # parse the database files, generate the output_data matrix, and write the matrix to an hdf5 file.
     output_data = getCutout_process_data(cube, axes_ranges, var, timepoint,
-                                         axes_ranges_original, strides, var_original, timepoint_original)
+                                         axes_ranges_original, strides, var_original, timepoint_original,
+                                         rewrite_metadata = rewrite_metadata)
     
     # closing the tracemalloc library.
     if trace_memory:
@@ -84,13 +85,13 @@ def getCutout_housekeeping_procedures(cube, axes_ranges_original, strides, var_o
 interpolate pressures for points of the isotropic cube.
 """
 def getPressure(cube, timepoint_original, sint, points,
-                trace_memory = False):
+                rewrite_metadata = False, trace_memory = False):
     
     print('\n' + '-' * 25 + '\ngetPressure is processing...')
     sys.stdout.flush()
     
     # call the driver function for interpolating the data for different variables.
-    output_data = getVariable(cube, points, sint, timepoint_original, trace_memory, var_original = 'pressure')
+    output_data = getVariable(cube, points, sint, timepoint_original, rewrite_metadata, trace_memory, var_original = 'pressure')
     
     return output_data
 
@@ -98,13 +99,13 @@ def getPressure(cube, timepoint_original, sint, points,
 interpolate velocities for points of the isotropic cube.
 """
 def getVelocity(cube, timepoint_original, sint, points,
-                trace_memory = False):
+                rewrite_metadata = False, trace_memory = False):
     
     print('\n' + '-' * 25 + '\ngetVelocity is processing...')
     sys.stdout.flush()
     
     # call the driver function for interpolating the data for different variables.
-    output_data = getVariable(cube, points, sint, timepoint_original, trace_memory, var_original = 'velocity')
+    output_data = getVariable(cube, points, sint, timepoint_original, rewrite_metadata, trace_memory, var_original = 'velocity')
     
     return output_data
 
@@ -112,7 +113,7 @@ def getVelocity(cube, timepoint_original, sint, points,
 interpolate the variable for points of the isotropic cube.
 """
 def getVariable(cube, points, sint, timepoint_original,
-                trace_memory = False, var_original = 'pressure'):
+                rewrite_metadata = False, trace_memory = False, var_original = 'pressure'):
     from giverny.turbulence_gizmos.getVariable import getVariable_process_data
     
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
@@ -130,7 +131,8 @@ def getVariable(cube, points, sint, timepoint_original,
 
     # parse the database files, generate the output_data array, and write the array to an hdf5 file.
     output_data = getVariable_process_data(cube, points, sint, var, timepoint,
-                                           var_original, timepoint_original)
+                                           var_original, timepoint_original,
+                                           rewrite_metadata = rewrite_metadata)
     
     # closing the tracemalloc library.
     if trace_memory:

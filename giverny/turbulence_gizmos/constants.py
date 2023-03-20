@@ -11,12 +11,16 @@ def get_constants():
         - bytes_per_datapoint: bytes per value associated with a datapoint.
         - max_data_size: maximum data size allowed to be retrieved, in gigabytes (GB).
         - voxel_side_length: smallest sub-box size to recursively shrink to. the value is the length of one side of the cube.
+        - chunk_size: cube size of the zarr chunks. the value is the length of one side of the cube.
+        - file_size: cube size of an entire file. the value is the length of one side of the cube.
     """
     return {
-        'database_file_disk_index':-3,
+        'database_file_disk_index':-4,
         'dask_maximum_processes':4,
         'missing_value_placeholder':-999.9,
         'bytes_per_datapoint':4,
         'max_data_size':3.0,
-        'voxel_side_length':8
+        'voxel_side_length':8,
+        'chunk_size':64,
+        'file_size':512
     }

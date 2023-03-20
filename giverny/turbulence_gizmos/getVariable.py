@@ -8,7 +8,8 @@ from giverny.turbulence_gizmos.constants import *
 from giverny.turbulence_gizmos.basic_gizmos import *
 
 def getVariable_process_data(cube, points, sint, var, timepoint,
-                             var_original, timepoint_original):
+                             var_original, timepoint_original,
+                             rewrite_metadata = False):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
 
@@ -21,10 +22,7 @@ def getVariable_process_data(cube, points, sint, var, timepoint,
     num_values_per_datapoint = get_num_values_per_datapoint(var)
     
     # initialize cube constants.
-    cube.init_constants(var, timepoint, sint,
-                        num_values_per_datapoint,
-                        c['bytes_per_datapoint'], c['voxel_side_length'], c['missing_value_placeholder'],
-                        c['database_file_disk_index'], c['dask_maximum_processes'])
+    cube.init_constants(var, var_original, timepoint, sint, num_values_per_datapoint, c, rewrite_metadata)
 
     # begin processing of data.
     # -----
