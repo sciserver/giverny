@@ -53,11 +53,16 @@ class iso_cube:
         self.output_path = output_path.strip()
         if self.output_path == '':
             self.output_path = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_output')
+        else:
+            self.output_path = pathlib.Path(output_path).joinpath('turbulence_output')
         # create the output directory if it does not already exist.
         create_output_folder(self.output_path)
         
         # set the directory for saving and reading the pickled files.
-        self.pickle_dir = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_pickled')
+        if self.output_path == '':
+            self.pickle_dir = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_pickled')
+        else:
+            self.pickle_dir = pathlib.Path(output_path).joinpath('turbulence_pickled')
         # create the pickled directory if it does not already exist.
         create_output_folder(self.pickle_dir)
         
