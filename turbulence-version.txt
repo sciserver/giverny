@@ -1,5 +1,15 @@
-turbulence - stable release version 1.2.1 (19 March 2023)
+turbulence - stable release version 1.2.4 (28 April 2023)
 
+version 1.2.4 updates:
+    - simplified the metadata files and switched them to be stored on a fileDB node.
+    - fixed HTML documentation in the notebook.
+version 1.2.3 updates:
+    - removed h5py package.
+    - updated HDF5 output file formatting for getCutout.
+      - updated contour plotting and data retrieval functions compatability with xarray.
+    - updated filepathing to reflect new distribution of iso8192 zarr data on fileDB.
+version 1.2.2 updates:
+    - removed "import mmap".
 version 1.2.1 updates:
     - converted the notebook to process zarr files instead of binary files.
     - simplified getCutout, getPressure, and getVelocity functions.

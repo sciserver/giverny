@@ -2,9 +2,7 @@ import os
 import sys
 import dill
 import glob
-import h5py
 import math
-import mmap
 import zarr
 import shutil
 import pathlib
@@ -54,15 +52,13 @@ class iso_cube:
         if self.output_path == '':
             self.output_path = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_output')
         else:
-            self.output_path = pathlib.Path(output_path).joinpath('turbulence_output')
+            self.output_path = pathlib.Path(self.output_path).joinpath('turbulence_output')
+        
         # create the output directory if it does not already exist.
         create_output_folder(self.output_path)
         
         # set the directory for saving and reading the pickled files.
-        if self.output_path == '':
-            self.pickle_dir = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_pickled')
-        else:
-            self.pickle_dir = pathlib.Path(output_path).joinpath('turbulence_pickled')
+        self.pickle_dir = pathlib.Path(f'/home/idies/workspace/turb/data01_01/zarr/turbulence_pickled')
         # create the pickled directory if it does not already exist.
         create_output_folder(self.pickle_dir)
         
@@ -111,12 +107,18 @@ class iso_cube:
     def get_turb_folders(self):
         # specifies the folders on fileDB that should be searched for the primary copies of the zarr files.
         folder_base = '/home/idies/workspace/turb/'
-        folder_paths = ['data04_01/zarr/iso8192db_01/', 'data05_01/zarr/iso8192db_02/', 'data06_01/zarr/iso8192db_03/',
-                        'data07_01/zarr/iso8192db_04/', 'data08_01/zarr/iso8192db_05/', 'data09_01/zarr/iso8192db_06/',
-                        'data04_02/zarr/iso8192db_07/', 'data05_02/zarr/iso8192db_08/', 'data06_02/zarr/iso8192db_09/',
-                        'data07_02/zarr/iso8192db_10/', 'data08_02/zarr/iso8192db_11/', 'data09_02/zarr/iso8192db_12/',
-                        'data04_03/zarr/iso8192db_13/', 'data05_03/zarr/iso8192db_14/', 'data06_03/zarr/iso8192db_15/',
-                        'data07_03/zarr/iso8192db_16/', 'data08_03/zarr/iso8192db_17/', 'data09_03/zarr/iso8192db_18/']
+        folder_paths = ['data01_01/zarr/', 'data01_02/zarr/', 'data01_03/zarr/',
+                        'data02_01/zarr/', 'data02_02/zarr/', 'data02_03/zarr/',
+                        'data03_01/zarr/', 'data03_02/zarr/', 'data03_03/zarr/',
+                        'data04_01/zarr/', 'data04_02/zarr/', 'data04_03/zarr/',
+                        'data05_01/zarr/', 'data05_02/zarr/', 'data05_03/zarr/',
+                        'data06_01/zarr/', 'data06_02/zarr/', 'data06_03/zarr/',
+                        'data07_01/zarr/', 'data07_02/zarr/', 'data07_03/zarr/',
+                        'data08_01/zarr/', 'data08_02/zarr/', 'data08_03/zarr/',
+                        'data09_01/zarr/', 'data09_02/zarr/', 'data09_03/zarr/',
+                        'data10_01/zarr/', 'data10_02/zarr/', 'data10_03/zarr/',
+                        'data11_01/zarr/', 'data11_02/zarr/', 'data11_03/zarr/',
+                        'data12_01/zarr/', 'data12_02/zarr/', 'data12_03/zarr/']
         
         return [folder_base + folder_path for folder_path in folder_paths]
         
@@ -142,18 +144,19 @@ class iso_cube:
             turb_folders = self.get_turb_folders()
             filepaths = []
             for turb_folder in turb_folders:
-                data_filepaths = glob.glob(turb_folder + '*.zarr')
+                data_filepaths = glob.glob(turb_folder + dataset_filename_prefix + '*_prod/*.zarr')
 
                 filepaths += data_filepaths
 
             # map the filepaths to the filenames so that they can be easily retrieved.
             for filepath in filepaths:
-                # part of the filenames that exactly matches the "ProductionDatabaseName" column stored in the SQL metadata, plus the variable
-                # identifer (e.g. 'vel'), plus the timepoint.
-                filename = filepath.split(os.sep)[-1].replace('.zarr', '').strip()
+                # part of the filenames that exactly matches the "ProductionDatabaseName" column stored in the SQL metadata.
+                filepath_split = filepath.split(os.sep)
+                folderpath = os.sep.join(filepath_split[:-1]) + os.sep
+                filename = filepath.split(os.sep)[-1].split('_')[0].strip()
                 # only add the filepath to the dictionary once since there could be backup copies of the files.
                 if filename not in self.filepaths:
-                    self.filepaths[filename] = filepath
+                    self.filepaths[filename] = folderpath + filename
             
             # save self.filepaths to a pickled file.
             with open(pickle_file, 'wb') as pickled_filepath:
@@ -161,7 +164,7 @@ class iso_cube:
                 
     def init_cornercode_file_map(self):
         # pickled file for saving the db file cornercodes to filenames map.
-        pickle_file = self.pickle_dir.joinpath(self.dataset_title + f'_cornercode_file_map-variable_{self.var}-timepoint_{self.timepoint}.pickle')
+        pickle_file = self.pickle_dir.joinpath(self.dataset_title + f'_cornercode_file_map.pickle')
         
         try:
             if self.rewrite_metadata:
@@ -177,9 +180,9 @@ class iso_cube:
             cornercode = 0
             while cornercode < self.N ** 3:
                 # get the file info for the db file cornercode.
-                f, db_minLim, db_maxLim = self.get_file_for_cornercode(cornercode)
+                f, db_minLim, db_maxLim = self.get_file_for_mortoncode(cornercode)
                 
-                self.cornercode_file_map[db_minLim] = (f, db_minLim)
+                self.cornercode_file_map[db_minLim] = f
                 
                 cornercode = db_maxLim + 1
                 
@@ -188,49 +191,59 @@ class iso_cube:
                 dill.dump(self.cornercode_file_map, pickled_file_map)
     
     def init_interpolation_lookup_table(self):
-        if self.sint != 'none':
+        # interpolation method 'none' is omitted because there is no lookup table for 'none' interpolation.
+        interp_methods = ['lag4', 'm1q4', 'lag6', 'lag8', 'm2q8']
+        
+        # lookup table resolution.
+        self.NB = 10**5
+        
+        # create the metadata files for each interpolation method if they do not already exist.
+        for interp_method in interp_methods:
             # pickled file for saving the interpolation coefficient lookup table.
-            pickle_file = self.pickle_dir.joinpath(self.dataset_title + f'_{self.sint}_lookup_table.pickle')
+            pickle_file = self.pickle_dir.joinpath(f'{interp_method}_lookup_table.pickle')
 
-            # lookup table resolution.
-            self.NB = 10**5
-
-            try:
-                # try reading the pickled file.
-                with open(pickle_file, 'rb') as pickled_lookup_table:
-                    self.LW = dill.load(pickled_lookup_table)
-            except FileNotFoundError:
+            # check if the pickled file exists.
+            if not pickle_file.is_file():
                 # create the interpolation coefficient lookup table.
-                self.LW = self.getLagL()
+                tmp_LW = self.getLagL(interp_method)
 
                 # save self.LW to a pickled file.
                 with open(pickle_file, 'wb') as pickled_lookup_table:
-                    dill.dump(self.LW, pickled_lookup_table)
+                    dill.dump(tmp_LW, pickled_lookup_table)
+        
+        # read in the interpolation lookup table for self.sint.
+        if self.sint != 'none':
+            # pickled file for saving the interpolation coefficient lookup table.
+            pickle_file = self.pickle_dir.joinpath(f'{self.sint}_lookup_table.pickle')
+
+            with open(pickle_file, 'rb') as pickled_lookup_table:
+                self.LW = dill.load(pickled_lookup_table)
                 
     def init_interpolation_cube_size_lookup_table(self):
-        pickle_file = self.pickle_dir.joinpath(self.dataset_title + f'_interpolation_cube_size_lookup_table.pickle')
+        # pickled file for saving the interpolation cube sizes lookup table.
+        pickle_file = self.pickle_dir.joinpath(f'interpolation_cube_size_lookup_table.pickle')
         
         try:
             # try reading the pickled file.
             with open(pickle_file, 'rb') as pickled_lookup_table:
-                self.interp_cube_sizes = dill.load(pickled_lookup_table)
+                interp_cube_sizes = dill.load(pickled_lookup_table)
         except FileNotFoundError:
             # create the interpolation cube size lookup table. the first number is the number of points on the left of the integer 
             # interpolation point, and the second number is the number of points on the right.
-            self.interp_cube_sizes = {}
-            self.interp_cube_sizes['lag4'] = [1, 2]
-            self.interp_cube_sizes['m1q4'] = [1, 2]
-            self.interp_cube_sizes['lag6'] = [2, 3]
-            self.interp_cube_sizes['lag8'] = [3, 4]
-            self.interp_cube_sizes['m2q8'] = [3, 4]
-            self.interp_cube_sizes['none'] = [0, 0]
+            interp_cube_sizes = {}
+            interp_cube_sizes['lag4'] = [1, 2]
+            interp_cube_sizes['m1q4'] = [1, 2]
+            interp_cube_sizes['lag6'] = [2, 3]
+            interp_cube_sizes['lag8'] = [3, 4]
+            interp_cube_sizes['m2q8'] = [3, 4]
+            interp_cube_sizes['none'] = [0, 0]
             
-            # save self.interp_cube_sizes to a pickled file.
+            # save interp_cube_sizes to a pickled file.
             with open(pickle_file, 'wb') as pickled_lookup_table:
-                dill.dump(self.interp_cube_sizes, pickled_lookup_table)
+                dill.dump(interp_cube_sizes, pickled_lookup_table)
                 
         # lookup the interpolation cube size indices.
-        self.cube_min_index, self.cube_max_index = self.interp_cube_sizes[self.sint]
+        self.cube_min_index, self.cube_max_index = interp_cube_sizes[self.sint]
     
     def init_constants(self, var, var_original, timepoint, sint, num_values_per_datapoint, c,
                        rewrite_metadata = False):
@@ -245,9 +258,13 @@ class iso_cube:
         self.missing_value_placeholder = c['missing_value_placeholder']
         self.database_file_disk_index = c['database_file_disk_index']
         self.dask_maximum_processes = c['dask_maximum_processes']
+        self.decimals = c['decimals']
         self.chunk_size = c['chunk_size']
         self.file_size = c['file_size']
         self.rewrite_metadata = rewrite_metadata
+        
+        # set the dataset name to be used in the hdf5 file. 1 is added to timepoint because the original timepoint was converted to a 0-based index.
+        self.dataset_name = get_output_variable_name(var_original) + '_' + str(timepoint + 1).zfill(4)
         
         # get map of the filepaths for all of the dataset files.
         self.init_filepaths()
@@ -258,32 +275,32 @@ class iso_cube:
     """
     interpolation functions.
     """
-    def getLagL(self):
+    def getLagL(self, sint):
         frac = np.linspace(0, 1 - 1 / self.NB, self.NB)
         LW = []
         for fp in frac:
-            LW.append(self.getLagC(fp))
+            LW.append(self.getLagC(sint, fp))
 
         return LW
     
     #===============================================================================
     # Interpolating functions to compute the kernel, extract subcube and convolve
     #===============================================================================
-    def getLagC(self, fr):
+    def getLagC(self, sint, fr):
         #------------------------------------------------------
         # get the 1D vectors for the 8 point Lagrange weights
         # inline the constants, and write explicit for loop
         # for the C compilation
         #------------------------------------------------------
         # cdef int n.
-        if self.sint == 'm1q4':
+        if sint == 'm1q4':
             # define the weights for M1Q4 spline interpolation.
             g = np.zeros(4)
             g[0] = fr * (fr * (-1.0 / 2.0 * fr + 1) - 1.0 / 2.0)
             g[1] = fr**2 * ((3.0 / 2.0) * fr - 5.0 / 2.0) + 1
             g[2] = fr * (fr * (-3.0 / 2.0 * fr + 2) + 1.0 / 2.0)
             g[3] = fr**2 * ((1.0 / 2.0) * fr - 1.0 / 2.0)
-        elif self.sint == 'm2q8':
+        elif sint == 'm2q8':
             # define the weights for M2Q8 spline interpolation.
             g = np.zeros(8)  
             g[0] = fr * (fr * (fr * (fr * ((2.0 / 45.0) * fr - 7.0 / 60.0) + 1.0 / 12.0) + 1.0 / 180.0) - 1.0 / 60.0)
@@ -296,17 +313,17 @@ class iso_cube:
             g[7] = fr**3 * (fr * (-2.0 / 45.0 * fr + 19.0 / 180.0) - 11.0 / 180.0)
         else:
             # define the weights for the different lagrangian interpolation methods.
-            if self.sint == 'lag4':
+            if sint == 'lag4':
                 wN = [1.,-3.,3.,-1.]
                 g  = np.array([0,1.,0,0])
                 # weight index.
                 w_index = 1
-            elif self.sint == 'lag6':
+            elif sint == 'lag6':
                 wN = [1.,-5.,10.,-10.,5.,-1.]
                 g  = np.array([0,0,1.,0,0,0])
                 # weight index.
                 w_index = 2
-            elif self.sint == 'lag8':
+            elif sint == 'lag8':
                 wN = [1.,-7.,21.,-35.,35.,-21.,7.,-1.]
                 g  = np.array([0,0,0,1.,0,0,0,0])
                 # weight index.
@@ -353,6 +370,19 @@ class iso_cube:
             ix = np.floor(p + 0.5).astype(np.int32)
             
             return np.array(u[ix[2], ix[1], ix[0], :])
+        
+    """
+    common functions.
+    """
+    def get_file_for_mortoncode(self, cornercode):
+        """
+        querying the cached SQL metadata for the file for the specified morton code.
+        """
+        # query the cached SQL metadata for the user-specified grid point.
+        t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
+        t = t.iloc[0]
+        f = self.filepaths[f'{t.ProductionDatabaseName}']
+        return f, t.minLim, t.maxLim
     
     """
     getCutout functions.
@@ -381,11 +411,11 @@ class iso_cube:
                 while current_x <= box_max_xyz[0]:
                     # database file name and corresponding minimum morton limit for the origin point of the box.  
                     min_corner_xyz = [current_x, current_y, current_z]
-                    min_corner_info = self.get_file_for_point(min_corner_xyz)
+                    min_corner_info = self.get_file_for_mortoncode(self.mortoncurve.pack(min_corner_xyz[0] % self.N, min_corner_xyz[1] % self.N, min_corner_xyz[2] % self.N))
                     min_corner_db_file = min_corner_info[0]
                     database_file_disk = min_corner_db_file.split(os.sep)[self.database_file_disk_index]
-                    box_minLim = min_corner_info[3]
-                    max_corner_xyz = self.mortoncurve.unpack(min_corner_info[4])
+                    box_minLim = min_corner_info[1]
+                    max_corner_xyz = self.mortoncurve.unpack(min_corner_info[2])
                     
                     # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
                     cube_ms = [math.floor(float(min_corner_xyz[q]) / float(self.N)) * self.N for q in range(3)]
@@ -404,37 +434,6 @@ class iso_cube:
             current_z = max_corner_xyz[2] + cube_ms[2] + 1
     
         return single_file_boxes
-        
-    def get_offset(self, datapoint):
-        """
-        todo: is this code correct for velocity as well?  yes.
-        """
-        # morton curve index corresponding to the user specified x, y, and z values
-        code = self.mortoncurve.pack(datapoint[0], datapoint[1], datapoint[2])
-        # always looking at an 8 x 8 x 8 box around the grid point, so the shift is always 9 bits to determine 
-        # the bottom left corner of the box. the cornercode (bottom left corner of the 8 x 8 x 8 box) is always 
-        # in the same file as the user-specified grid point.
-        # equivalent to 512 * (math.floor(code / 512))
-        cornercode = (code >> 9) << 9
-        corner = np.array(self.mortoncurve.unpack(cornercode))
-        # calculates the offset between the grid point and corner of the box and converts it to a 4-byte float.
-        offset = np.sum((np.array(datapoint) - corner) * np.array([1, 8, 64]))
-        
-        return cornercode, offset
-    
-    def get_file_for_point(self, datapoint):
-        """
-        querying the cached SQL metadata for the file for the user specified grid point
-        """
-        # use periodic boundary conditions to adjust the x, y, and z values if they are outside the range of the whole dataset cube.
-        datapoint = [point % self.N for point in datapoint]
-        
-        # query the cached SQL metadata for the user-specified grid point.
-        cornercode, offset = self.get_offset(datapoint)
-        t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
-        t = t.iloc[0]
-        f = self.filepaths[f'{t.ProductionDatabaseName}_{self.var}_{self.timepoint}']
-        return f, cornercode, offset, t.minLim, t.maxLim
         
     def read_database_files_sequentially(self, user_single_db_boxes):
         result_output_data = []
@@ -519,7 +518,7 @@ class iso_cube:
         local_output_data = []
         # iterate over the database files to read the data from.
         for db_file in user_single_db_boxes_disk_data:
-            zm = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
+            zm = zarr.open(db_file + '_' + str(self.timepoint) + '.zarr' + os.sep + self.var_name, dtype = dt, mode = 'r')
             
             # iterate over the user box ranges corresponding to the morton voxels that will be read from this database file.
             for user_box_ranges in user_single_db_boxes_disk_data[db_file]:
@@ -537,10 +536,10 @@ class iso_cube:
         
         return local_output_data
     
-    def write_output_matrix_to_hdf5(self, output_data, output_filename, dataset_name):
+    def write_output_matrix_to_hdf5(self, output_data, output_filename):
         # write output_data to a hdf5 file.
-        with h5py.File(self.output_path.joinpath(output_filename + '.h5'), 'w') as h5f:
-            h5f.create_dataset(dataset_name, data = output_data)
+        output_data.to_netcdf(self.output_path.joinpath(output_filename + '.h5'),
+                              format = "NETCDF4", mode = "w")
             
     """
     getVariable functions.
@@ -568,8 +567,8 @@ class iso_cube:
         db_min_cornercodes = (chunk_min_mortons >> 27) << 27
         db_max_cornercodes = (chunk_max_mortons >> 27) << 27
         # identify the database files that will need to be read for each chunk.
-        db_min_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_min_cornercodes]
-        db_max_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_max_cornercodes]
+        db_min_files = [self.cornercode_file_map[morton_code] for morton_code in db_min_cornercodes]
+        db_max_files = [self.cornercode_file_map[morton_code] for morton_code in db_max_cornercodes]
         
         # save the original indices for points, which corresponds to the orderering of the user-specified
         # points. these indices will be used for sorting output_data back to the user-specified points ordering.
@@ -599,16 +598,6 @@ class iso_cube:
                 db_visitor_map.append((point, datapoint, center_point, original_point_index))
         
         return db_native_map, np.array(db_visitor_map, dtype = 'object')
-    
-    def get_file_for_cornercode(self, cornercode):
-        """
-        querying the cached SQL metadata for the file for the specified morton cornercode.
-        """
-        # query the cached SQL metadata for the user-specified grid point.
-        t = self.cache[(self.cache['minLim'] <= cornercode) & (self.cache['maxLim'] >= cornercode)]
-        t = t.iloc[0]
-        f = self.filepaths[f'{t.ProductionDatabaseName}_{self.var}_{self.timepoint}']
-        return f, t.minLim, t.maxLim
     
     def get_chunk_origin_groups(self, chunk_min_x, chunk_min_y, chunk_min_z, chunk_max_x, chunk_max_y, chunk_max_z):
         # get arrays of the chunk origin points for each bucket.
@@ -804,7 +793,7 @@ class iso_cube:
         local_output_data = []
         # iterate over the database files and morton sub-boxes to read the data from.
         for db_file in db_native_map_data:
-            zs = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
+            zs = zarr.open(db_file + '_' + str(self.timepoint) + '.zarr' + os.sep + self.var_name, dtype = dt, mode = 'r')
             
             db_file_data = db_native_map_data[db_file]
             for chunk_key in db_file_data:
@@ -884,14 +873,14 @@ class iso_cube:
                     # calculate the db file cornercodes for each morton code.
                     db_cornercodes = (morton_mins >> 27) << 27
                     # identify the database files that will need to be read for this bucket.
-                    db_files = [self.cornercode_file_map[morton_code][0] for morton_code in db_cornercodes]
+                    db_files = [self.cornercode_file_map[morton_code] for morton_code in db_cornercodes]
 
                     current_file = ''
                     # iterate of the db files.
                     for db_file, chunk_origin_point, chunk_origin_group in sorted(zip(db_files, chunk_origin_points, chunk_origin_groups), key = lambda x: x[0]):
                         if db_file != current_file:
                             # create an open file object of the database file.
-                            zs = zarr.open(db_file + os.sep + self.var_name, dtype = dt, mode = 'r')
+                            zs = zarr.open(db_file + '_' + str(self.timepoint) + '.zarr' + os.sep + self.var_name, dtype = dt, mode = 'r')
 
                             # update current_file.
                             current_file = db_file

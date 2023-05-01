@@ -1,4 +1,3 @@
-import pathlib
 import tracemalloc
 from giverny.turbulence_gizmos.basic_gizmos import *
 
@@ -158,7 +157,6 @@ def getVariable(cube, points, sint, timepoint_original,
 complete all of the housekeeping procedures before data processing.
     - format the variable name and get the variable identifier.
     - convert 1-based timepoint to 0-based.
-    - format the output path using pathlib and create the output folder directory.
 """
 def getVariable_housekeeping_procedures(cube, sint, var_original, timepoint_original):
     # validate user-input.

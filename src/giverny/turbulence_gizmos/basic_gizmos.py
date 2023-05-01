@@ -1,7 +1,6 @@
 import os
 import sys
 import math
-import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -77,13 +76,6 @@ def get_filename_prefix(dataset_title):
         'isotropic8192':'iso8192'
     }[dataset_title]
 
-def get_variable_function(variable_id):
-    # get the function symbol for the user-specified variable.
-    return {
-        'vel':'u',
-        'pr':'p'
-    }[variable_id]
-
 def get_value_names():
     # map of the value names for each variable, e.g. "ux" is the x-component of the velocity.
     return {
@@ -103,6 +95,13 @@ def get_variable_identifier(variable_name):
     return {
         'velocity':'vel',
         'pressure':'pr'
+    }[variable_name]
+
+def get_output_variable_name(variable_name):
+    # format the variable name string for the HDF5 output file dataset name.
+    return{
+        'velocity':'Velocity',
+        'pressure':'Pressure'
     }[variable_name]
 
 """
@@ -144,10 +143,12 @@ def create_output_folder(output_path):
 """
 user-interfacing gizmos.
 """
-def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
+def contourPlot(cube, value_index_original, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
                 colormap = 'viridis'):
     # dictionaries.
     # -----
+    variable = cube.var_name
+    
     # variable identifier, e.g. "vel" for "velocity".
     variable_id = get_variable_identifier(variable)
     # names for each value, e.g. value index 0 for velocity data corresponds to the x-component of the velocity ("ux").
@@ -176,26 +177,16 @@ def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, 
     if not(np.all(axes_min <= plot_ranges_min) and np.all(plot_ranges_max <= axes_max)):
         raise Exception(f'the specified plot ranges are not all bounded by the box volume defined by:\n{axes_ranges}')
         
-    # determine how many of the axes minimum values are equal to their corresponding axis maximum value.
+    # determine how many of the axis minimum values are equal to their corresponding axis maximum value.
     num_axes_equal_min_max = plot_ranges_min == plot_ranges_max
-    # raise exception if only one of the axis ranges is not a single point (i.e. if the data being plotted is not 2-dimensional).
+    # raise exception if the data being plotted is not 2-dimensional.
     if np.count_nonzero(num_axes_equal_min_max == True) != 1:
         raise Exception(f'only one axis (x, y, or z) should be specified as a single point, e.g. z_plot_range = [3, 3], to create a contour plot')
         
-    # raise exception if the minimum plot_ranges datapoint is not in cutout_data.
-    cutout_x = cutout_data.x.values
-    cutout_y = cutout_data.y.values
-    cutout_z = cutout_data.z.values
-    
-    cutout_values = np.array([cutout_x, cutout_y, cutout_z], dtype = np.ndarray)
-    if not all([plot_ranges_min[q] in cutout_values[q] for q in range(len(plot_ranges_min))]):
-        # closest datapoint to the user-specified starting point for generating the contour plot.
-        closest_x = cutout_x[(np.abs(cutout_x - plot_ranges_min[0])).argmin()]
-        closest_y = cutout_y[(np.abs(cutout_y - plot_ranges_min[1])).argmin()]
-        closest_z = cutout_z[(np.abs(cutout_z - plot_ranges_min[2])).argmin()]
-
-        raise Exception(f'initial requested datapoint {plot_ranges_min} is not in the cutout data. the closest starting point ' + \
-                        f'is {np.array([closest_x, closest_y, closest_z], dtype = np.ndarray)}')
+    # convert the requested plot ranges to the domain [0, 2 * pi].
+    xcoor_values = np.around(np.arange(plot_ranges_min[0] - 1, plot_ranges_max[0], strides[0], dtype = np.float32) * cube.dx, cube.decimals)
+    ycoor_values = np.around(np.arange(plot_ranges_min[1] - 1, plot_ranges_max[1], strides[1], dtype = np.float32) * cube.dx, cube.decimals)
+    zcoor_values = np.around(np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], strides[2], dtype = np.float32) * cube.dx, cube.decimals)
 
     # generate the plot.
     print('Generating contour plot...')
@@ -210,10 +201,10 @@ def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, 
     value_name = value_name_map[variable_id][value_index_original]
     
     # specify the subset (or full) axes ranges to use for plotting. cutout_data is of the format [z-range, y-range, x-range, output value index].
-    plot_data = cutout_data.sel(x = range(plot_ranges[0, 0], plot_ranges[0, 1] + 1, strides[0]), 
-                                y = range(plot_ranges[1, 0], plot_ranges[1, 1] + 1, strides[1]), 
-                                z = range(plot_ranges[2, 0], plot_ranges[2, 1] + 1, strides[2]),
-                                v = value_index)
+    plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
+                                                   ycoor = ycoor_values, 
+                                                   zcoor = zcoor_values,
+                                                   values = value_index)
     
     # raise exception if only one point is going to be plotted along more than 1 axis. a contour plot requires more 
     # than 1 point along 2 axes. this check is required in case the user specifies a stride along an axis that 
@@ -225,28 +216,36 @@ def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, 
     fig = plt.figure(figsize = (11, 8.5), dpi = 300)
     fig.set_facecolor('white')
     ax = fig.add_subplot(111)
-    cf = plot_data.plot(ax = ax, cmap = colormap, center = False)
+    cf = plot_data.plot(ax = ax, cmap = colormap, center = False,
+                        cbar_kwargs = {'label': None})
 
     # plot labels.
+    # convert the [0, 2 * pi] domain plot label to the integer index in the [1, 8192] domain.
+    original_axis_title = ax.get_title().replace('coor', '').split('=')
+    plane_axis = original_axis_title[0].strip()
+    plane_point = int(float(original_axis_title[-1].strip()) / cube.dx) + 1
+    axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(cutout_data.attrs['t_start'])
+    title_str = f'plane {variable} ({value_name}) contour plot ({axis_title})'
     # get the x-axis and y-axis variable names (e.g. 'x' and 'y') before the axis labels are appended to.
     x_axis_variable = ax.get_xlabel()
     y_axis_variable = ax.get_ylabel()
-    x_axis_stride = plot_data.attrs[f'stride{x_axis_variable}']
-    y_axis_stride = plot_data.attrs[f'stride{y_axis_variable}']
-    title_str = f'plane {variable} ({value_name}) contour plot ({ax.get_title()})'
+    x_label = str(x_axis_variable).split('coor')[0].strip()
+    y_label = str(y_axis_variable).split('coor')[0].strip()
+    x_axis_stride = cutout_data.attrs[f'{x_label}_step']
+    y_axis_stride = cutout_data.attrs[f'{y_label}_step']
     plt.title(title_str, fontsize = 16, weight = 'bold')
-    plt.xlabel(f'{x_axis_variable} (stride = {x_axis_stride})', fontsize = 14, weight = 'bold')
-    plt.ylabel(f'{y_axis_variable} (stride = {y_axis_stride})', fontsize = 14, weight = 'bold')
+    plt.xlabel(f'{x_label} (stride = {x_axis_stride})', fontsize = 14, weight = 'bold')
+    plt.ylabel(f'{y_label} (stride = {y_axis_stride})', fontsize = 14, weight = 'bold')
     xlims = ax.get_xlim()
     ylims = ax.get_ylim()
     # adjust the axis ticks to the center of each datapoint.
-    x_ticks = [xlims[0] + (x_axis_stride / 2), xlims[1] - (x_axis_stride / 2)]
-    y_ticks = [ylims[0] + (y_axis_stride / 2), ylims[1] - (y_axis_stride / 2)]
+    x_ticks = [xlims[0] + ((x_axis_stride * cube.dx) / 2), xlims[1] - ((x_axis_stride * cube.dx) / 2)]
+    y_ticks = [ylims[0] + ((y_axis_stride * cube.dx) / 2), ylims[1] - ((y_axis_stride * cube.dx) / 2)]
     # axis datapoints.
-    x_axis_points = plot_data.coords[x_axis_variable].values
-    y_axis_points = plot_data.coords[y_axis_variable].values
-    plt.xticks(x_ticks, [x_axis_points[0], x_axis_points[-1]])
-    plt.yticks(y_ticks, [y_axis_points[0], y_axis_points[-1]])
+    x_axis_points = np.rint(plot_data.coords[x_axis_variable].values / cube.dx) + 1
+    y_axis_points = np.rint(plot_data.coords[y_axis_variable].values / cube.dx) + 1
+    plt.xticks(x_ticks, [int(x_axis_points[0]), int(x_axis_points[-1])])
+    plt.yticks(y_ticks, [int(y_axis_points[0]), int(y_axis_points[-1])])
     
     # save the figure.
     plt.tight_layout()
@@ -263,40 +262,26 @@ def contourPlot(cube, value_index_original, variable, cutout_data, plot_ranges, 
     print('-----')
     print('Contour plot created successfully.')
 
-def dataValues(x, y, z, output_data, axes_ranges, strides):
+def dataValues(cube, x, y, z, output_data, axes_ranges, strides):
     # retrieve data values for all of the specified points.
     
     # -----
     # minimum and maximum endpoints along each axis for the points the user requested.
-    endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.ndarray)
-    endpoints_max = np.array([np.max(x), np.max(y), np.max(z)], dtype = np.ndarray)
-    
-    # convert axes_ranges to a numpy array.
-    axes_min = axes_ranges[:, 0]
-    axes_max = axes_ranges[:, 1]
+    endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.int32)
+    endpoints_max = np.array([np.max(x), np.max(y), np.max(z)], dtype = np.int32)
     
     # exception_handling.
     # -----
     # raise exception if all of the user requested datapoints are not inside the bounds of the user box volume.
-    if not(np.all(axes_min <= endpoints_min) and np.all(endpoints_max <= axes_max)):
+    if not(np.all(axes_ranges[:, 0] <= endpoints_min) and np.all(endpoints_max <= axes_ranges[:, 1])):
         raise Exception(f'the specified point(s) are not all bounded by the box volume defined by:\n{axes_ranges}')
-        
-    # raise exception if the minimum endpoints datapoint is not in output_data.
-    output_x = output_data.x.values
-    output_y = output_data.y.values
-    output_z = output_data.z.values
     
-    output_values = np.array([output_x, output_y, output_z], dtype = np.ndarray)
-    if not all([endpoints_min[q] in output_values[q] for q in range(len(endpoints_min))]):
-        # closest datapoint to the user-specified starting point for retrieving the data.
-        closest_x = output_x[(np.abs(output_x - endpoints_min[0])).argmin()]
-        closest_y = output_y[(np.abs(output_y - endpoints_min[1])).argmin()]
-        closest_z = output_z[(np.abs(output_z - endpoints_min[2])).argmin()]
-
-        raise Exception(f'initial requested datapoint {endpoints_min} is not in the cutout data. the closest starting point ' + \
-                        f'is {np.array([closest_x, closest_y, closest_z], dtype = np.ndarray)}')
+    # convert the requested plot ranges to 0-based indices and then to their corresponding values in the domain [0, 2 * pi].
+    xcoor_values = np.around(np.arange(endpoints_min[0] - 1, endpoints_max[0], strides[0], dtype = np.float32) * cube.dx, cube.decimals)
+    ycoor_values = np.around(np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1], dtype = np.float32) * cube.dx, cube.decimals)
+    zcoor_values = np.around(np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2], dtype = np.float32) * cube.dx, cube.decimals)
 
     # value(s) corresponding to the specified (x, y, z) datapoint(s).
-    return output_data.sel(x = range(endpoints_min[0], endpoints_max[0] + 1, strides[0]),
-                           y = range(endpoints_min[1], endpoints_max[1] + 1, strides[1]),
-                           z = range(endpoints_min[2], endpoints_max[2] + 1, strides[2]))
+    return output_data[cube.dataset_name].sel(xcoor = xcoor_values,
+                                              ycoor = ycoor_values,
+                                              zcoor = zcoor_values)

@@ -9,6 +9,7 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 
 def getCutout_process_data(cube, axes_ranges, var, timepoint,
                            axes_ranges_original, strides, var_original, timepoint_original,
+                           time_step = 1, filter_width = 1,
                            rewrite_metadata = False):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
@@ -118,26 +119,25 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
         # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
         output_data = np.copy(output_data[0 : axes_lengths_original[2], 0 : axes_lengths_original[1], 0 : axes_lengths_original[0], :])
     
+    # create axis coordinate ranges, shifted to 0-based indices, to store in the xarray metadata.
+    z_coords = np.around(np.arange(axes_ranges_original[2][0] - 1, axes_ranges_original[2][1], strides[2], dtype = np.float32) * cube.dx, decimals = c['decimals'])
+    y_coords = np.around(np.arange(axes_ranges_original[1][0] - 1, axes_ranges_original[1][1], strides[1], dtype = np.float32) * cube.dx, decimals = c['decimals'])
+    x_coords = np.around(np.arange(axes_ranges_original[0][0] - 1, axes_ranges_original[0][1], strides[0], dtype = np.float32) * cube.dx, decimals = c['decimals'])
+    
+    # set the dataset name to be used in the hdf5 file.
+    output_dataset_name = get_output_variable_name(var_original) + '_' + str(timepoint_original).zfill(4)
+    
     # apply the strides to output_data.
-    output_data = output_data[::strides[2], ::strides[1], ::strides[0], :]
+    output_data = xr.DataArray(data = output_data[::strides[2], ::strides[1], ::strides[0], :],
+                               dims = ['zcoor', 'ycoor', 'xcoor', 'values'])
     
-    # create axis coordinate ranges to store in the xarray metadata.
-    z_coords = range(axes_ranges_original[2][0], axes_ranges_original[2][1] + 1, strides[2])
-    y_coords = range(axes_ranges_original[1][0], axes_ranges_original[1][1] + 1, strides[1])
-    x_coords = range(axes_ranges_original[0][0], axes_ranges_original[0][1] + 1, strides[0])
-    
-    # retrieve the function symbol corresponding to the variable, e.g. "velocity" corresponds to function symbol "u".
-    variable_function = get_variable_function(var)
-    
-    # convert output_data from a numpy array to a xarray.
-    output_data = xr.DataArray(output_data, 
-                               coords = {'z':z_coords, 'y':y_coords, 'x':x_coords, 't':timepoint_original}, 
-                               dims = ['z', 'y', 'x', 'v'],
-                               attrs = {'dataset':dataset_title, 'function':variable_function,
-                                        'stridex':strides[0], 'stridey':strides[1], 'stridez':strides[2],
-                                        'xs':axes_ranges_original[0][0], 'xe':axes_ranges_original[0][1],
-                                        'ys':axes_ranges_original[1][0], 'ye':axes_ranges_original[1][1],
-                                        'zs':axes_ranges_original[2][0], 'ze':axes_ranges_original[2][1]})
+    output_data = xr.Dataset(data_vars = {output_dataset_name:output_data},
+                             coords = {'zcoor':z_coords, 'ycoor':y_coords, 'xcoor':x_coords}, 
+                             attrs = {'dataset':dataset_title, 't_start':timepoint_original, 't_end':timepoint_original, 't_step':time_step,
+                                      'x_start':axes_ranges_original[0][0], 'y_start':axes_ranges_original[1][0], 'z_start':axes_ranges_original[2][0], 
+                                      'x_end':axes_ranges_original[0][1], 'y_end':axes_ranges_original[1][1], 'z_end':axes_ranges_original[2][1],
+                                      'x_step':strides[0], 'y_step':strides[1], 'z_step':strides[2],
+                                      'filterWidth':filter_width})
     
     # checks to make sure that data was read in for all points.
     if c['missing_value_placeholder'] in output_data:
@@ -166,14 +166,8 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
                       f'y{axes_ranges_original[1][0]}-{axes_ranges_original[1][1]}_' + \
                       f'x{axes_ranges_original[0][0]}-{axes_ranges_original[0][1]}'
     
-    # formats the dataset name for the hdf5 output file. "untitled" is a placeholder.
-    dataset_name = var_original.title()
-        
-    # adds the timpoint information, formatted with leading zeros out to 1000, to dataset_name.
-    dataset_name += '_' + str(timepoint_original).zfill(4)
-    
     # writes the output file.
-    #cube.write_output_matrix_to_hdf5(output_data, output_filename, dataset_name)
+    cube.write_output_matrix_to_hdf5(output_data, output_filename)
     
     # calculate how much time it takes to run step 4.
     end_time_step3 = time.perf_counter()

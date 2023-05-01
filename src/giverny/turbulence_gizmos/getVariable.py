@@ -9,6 +9,7 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 
 def getVariable_process_data(cube, points, sint, var, timepoint,
                              var_original, timepoint_original,
+                             time_step = 1, filter_width = 1,
                              rewrite_metadata = False):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
