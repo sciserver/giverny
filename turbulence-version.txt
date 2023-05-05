@@ -1,5 +1,7 @@
-turbulence - stable release version 1.2.4 (28 April 2023)
+turbulence - stable release version 1.2.5 (4 May 2023)
 
+version 1.2.5 updates:
+    - added .xmf file generation.
 version 1.2.4 updates:
     - simplified the metadata files and switched them to be stored on a fileDB node.
     - fixed HTML documentation in the notebook.

@@ -99,9 +99,16 @@ def get_variable_identifier(variable_name):
 
 def get_output_variable_name(variable_name):
     # format the variable name string for the HDF5 output file dataset name.
-    return{
+    return {
         'velocity':'Velocity',
         'pressure':'Pressure'
+    }[variable_name]
+
+def get_attribute_type(variable_name):
+    # get the attribute type of the output data.
+    return {
+        'velocity':'Vector',
+        'pressure':'Scalar'
     }[variable_name]
 
 """

@@ -540,6 +540,42 @@ class iso_cube:
         # write output_data to a hdf5 file.
         output_data.to_netcdf(self.output_path.joinpath(output_filename + '.h5'),
                               format = "NETCDF4", mode = "w")
+        
+    def write_xmf(self, shape, h5_var_name, h5_attribute_type, h5_dataset_name, output_filename):
+        # write the xmf file that corresponds to the hdf5 file.
+        
+        # newline character.
+        nl = '\r\n'
+        
+        with open(self.output_path.joinpath(output_filename + '.xmf'), 'w') as tf:
+            print(f"<?xml version=\"1.0\" ?>{nl}", file = tf)
+            print(f"<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>{nl}", file = tf)
+            print(f"<Xdmf Version=\"2.0\">{nl}", file = tf)
+            print(f"  <Domain>{nl}", file = tf)
+            print(f"      <Grid Name=\"Structured Grid\" GridType=\"Uniform\">{nl}", file = tf)
+            print(f"        <Time Value=\"{self.timepoint + 1}\" />{nl}", file = tf)
+            print(f"        <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>{nl}", file = tf)
+            print(f"        <Geometry GeometryType=\"VXVYVZ\">{nl}", file = tf)
+            print(f"          <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">{nl}", file = tf)
+            print(f"            {output_filename}.h5:/xcoor{nl}", file = tf)
+            print(f"          </DataItem>{nl}", file = tf)
+            print(f"          <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">{nl}", file = tf)
+            print(f"            {output_filename}.h5:/ycoor{nl}", file = tf)
+            print(f"          </DataItem>{nl}", file = tf)
+            print(f"          <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">{nl}", file = tf)
+            print(f"            {output_filename}.h5:/zcoor{nl}", file = tf)
+            print(f"          </DataItem>{nl}", file = tf)
+            print(f"        </Geometry>{nl}", file = tf)
+            print(f"{nl}", file = tf)
+            print(f"        <Attribute Name=\"{h5_var_name}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">{nl}", file = tf)
+            print(f"          <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {self.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">{nl}", file = tf)
+            print(f"            {output_filename}.h5:/{h5_dataset_name}{nl}", file = tf)
+            print(f"          </DataItem>{nl}", file = tf)
+            print(f"        </Attribute>{nl}", file = tf)
+            print(f"      </Grid>{nl}", file = tf)
+            print(f"{nl}", file = tf)
+            print(f"  </Domain>{nl}", file = tf)
+            print(f"</Xdmf>{nl}", file = tf)
             
     """
     getVariable functions.
