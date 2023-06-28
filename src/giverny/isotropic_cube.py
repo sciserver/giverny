@@ -44,12 +44,11 @@ class iso_cube:
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
         self.dataset_title = dataset_title
         
-        # get the SciServer user name.
-        user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
-        
         # set the directory for saving any output files.
         self.output_path = output_path.strip()
         if self.output_path == '':
+            # get the SciServer user name.
+            user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
             self.output_path = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_output')
         else:
             self.output_path = pathlib.Path(self.output_path).joinpath('turbulence_output')
