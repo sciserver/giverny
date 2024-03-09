@@ -53,8 +53,8 @@ def check_timepoint(timepoint, dataset_title, query_type):
         'isotropic1024coarse': {'getdata': (0.0, 10.056, 0.002), 'getcutout': range(1, 5024 + 1)},
         'isotropic1024fine': {'getdata': (0.0, 0.0198, 0.0002), 'getcutout': range(1, 100 + 1)},
         'isotropic4096': {'getdata': range(1, 1 + 1), 'getcutout': range(1, 1 + 1)},
-        'isotropic8192': {'getdata': range(1, 6 + 1), 'getcutout': range(1, 6 + 1)},
-        'sabl2048low': {'getdata': range(1, 20 + 1), 'getcutout': range(1, 20 + 1)},
+        'isotropic8192': {'getdata': range(0, 5 + 1), 'getcutout': range(1, 6 + 1)},
+        'sabl2048low': {'getdata': range(0, 19 + 1), 'getcutout': range(1, 20 + 1)},
         'sabl2048high': {'getdata': (0.0, 7.2, 0.075), 'getcutout': range(1, 97 + 1)},
         'rotstrat4096': {'getdata': range(1, 5 + 1), 'getcutout': range(1, 5 + 1)},
         'mhd1024': {'getdata': (0.0, 2.56, 0.0025), 'getcutout': range(1, 1025 + 1)},
@@ -80,7 +80,7 @@ def check_timepoint(timepoint, dataset_title, query_type):
         
     return
 
-def check_points_domain(dataset_title, points):
+def check_points(dataset_title, points, max_num_points):
     # check that the points are inside the acceptable domain along each axis for the dataset. 'modulo' placeholder values
     # are used for cases where points outside the domain are allowed as modulo(domain range).
     axes_domain = {
@@ -97,6 +97,10 @@ def check_points_domain(dataset_title, points):
         'channel5200': ['modulo[0, 8pi]', [-1, 1], 'modulo[0, 3pi]'],
         'transition_bl': [[30.2185, 1000.065], [0, 26.48795], 'modulo[0, 240]']
     }[dataset_title]
+    
+    # checks if too many points were queried.
+    if len(points) > max_num_points:
+        raise Exception(f'too many points queried, please limit the number of points to <= {max_num_points:,}')
 
     # minimum and maximum point values along each axis.
     points_min = np.min(points, axis = 0)
@@ -343,7 +347,7 @@ def get_sabl_points_map(cube, points):
 
     # map the minium z-axis index (dx multiplier) for each variable and interpolation method. default values correspond to 'energy' and 'velocity' variables.
     # the (w) component of 'velocity' is more restrictive on the interpolation method at the lower z-axis boundary. 'linear' index is the 0 index because
-    # the comparison is >=, not >. the points are constrained by the check_points_domain function such that user cannot specify points outside the domain.
+    # the comparison is >=, not >. the points are constrained by the check_points function such that user cannot specify points outside the domain.
     interpolation_min_index_map = defaultdict(lambda: {'lag8': 4, 'lag6': 3, 'lag4': 2,
                                                        'm2q8': 4, 'm1q4': 2,
                                                        'm2q8_g': 4, 'm1q4_g': 2,
@@ -382,7 +386,7 @@ def get_sabl_points_map(cube, points):
 
     # map the minium z-axis index (dx multiplier) for each variable and interpolation method. default values correspond to 'temperature', 'pressure', and 'velocity' variables.
     # the (u, v) components of 'velocity' are more restrictive on the interpolation method at the upper z-axis boundary. 'linear' index is the domain (2048) + 1 because
-    # the comparison is <, not <=. the points are constrained by the check_points_domain function such that user cannot specify points outside the domain.
+    # the comparison is <, not <=. the points are constrained by the check_points function such that user cannot specify points outside the domain.
     interpolation_max_index_map = defaultdict(lambda: {'lag8': 2044.5, 'lag6': 2045.5, 'lag4': 2046.5,
                                                        'm2q8': 2044.5, 'm1q4': 2046.5,
                                                        'm2q8_g': 2044.5, 'm1q4_g': 2046.5,
@@ -494,8 +498,8 @@ def get_time_index_shift(dataset_title, query_type):
         'isotropic1024coarse': defaultdict(lambda: -1, {'getdata': 0}),
         'isotropic1024fine': defaultdict(lambda: -1, {'getdata': 0}),
         'isotropic4096': defaultdict(lambda: -1),
-        'isotropic8192': defaultdict(lambda: -1),
-        'sabl2048low': defaultdict(lambda: -1),
+        'isotropic8192': defaultdict(lambda: -1, {'getdata': 0}),
+        'sabl2048low': defaultdict(lambda: -1, {'getdata': 0}),
         'sabl2048high': defaultdict(lambda: 0, {'getdata': 1}),
         'rotstrat4096': defaultdict(lambda: -1),
         'mhd1024': defaultdict(lambda: -1, {'getdata': 0}),
@@ -509,17 +513,24 @@ def get_time_index_from_timepoint(dataset_title, timepoint, tint, query_type):
     """
     get the corresponding time index for this dataset from the specified timepoint. handles datasets that allow 'pchip' time interpolation, which
     requires 2 timepoints worth of data on either side of the timepoint specified by the user.
+        - returns timepoint if the dataset is processed by the legacy pyJHTDB code because the timepoint to time index conversion is handled in pyJHTDB.
     """
-    # dt between timepoints.
-    dt = get_time_dt(dataset_title, query_type)
-    # addition to map the time to a correct time index in the filename.
-    time_index_shift = get_time_index_shift(dataset_title, query_type)
+    giverny_datasets = get_giverny_datasets()
     
-    # convert the timepoint to a time index.
-    time_index = (timepoint / dt) + time_index_shift
-    # round the time index the nearest time index grid point if 'none' time interpolation was specified.
-    if tint == 'none':
-        time_index = int(math.floor(time_index + 0.5))
+    if dataset_title in giverny_datasets:
+        # dt between timepoints.
+        dt = get_time_dt(dataset_title, query_type)
+        # addition to map the time to a correct time index in the filename.
+        time_index_shift = get_time_index_shift(dataset_title, query_type)
+
+        # convert the timepoint to a time index.
+        time_index = (timepoint / dt) + time_index_shift
+        # round the time index the nearest time index grid point if 'none' time interpolation was specified.
+        if tint == 'none':
+            time_index = int(math.floor(time_index + 0.5))
+    else:
+        # do not convert the timepoint to a time index for datasets processed by pyJHTDB.
+        time_index = timepoint
     
     return time_index
 
@@ -694,9 +705,9 @@ def get_interpolation_tsv_header(dataset_title, variable_name, timepoint, timepo
         'energy_function':point_header + '\te',
         'energy_gradient':point_header + '\tdedx\tdedy\tdedz',
         'energy_hessian':point_header + '\td2edxdx\td2edxdy\td2edxdz\td2edydy\td2edydz\td2edzdz',
-        'temperature_function':point_header + '\tt',
-        'temperature_gradient':point_header + '\tdtdx\tdtdy\tdtdz',
-        'temperature_hessian':point_header + '\td2tdxdx\td2tdxdy\td2tdxdz\td2tdydy\td2tdydz\td2tdzdz',
+        'temperature_function':point_header + '\t\u03b8',
+        'temperature_gradient':point_header + '\td\u03b8dx\td\u03b8dy\td\u03b8dz',
+        'temperature_hessian':point_header + '\td2\u03b8dxdx\td2\u03b8dxdy\td2\u03b8dxdz\td2\u03b8dydy\td2\u03b8dydz\td2\u03b8dzdz',
         'force_function':point_header + '\tfx\tfy\tfz',
         'magneticfield_function':point_header + '\tbx\tby\tbz',
         'magneticfield_gradient':point_header + '\tdbxdx\tdbxdy\tdbxdz\tdbydx\tdbydy\tdbydz\tdbzdx\tdbzdy\tdbzdz',
@@ -710,9 +721,9 @@ def get_interpolation_tsv_header(dataset_title, variable_name, timepoint, timepo
                                                  '\td2aydxdx\td2aydxdy\td2aydxdz\td2aydydy\td2aydydz\td2aydzdz' + \
                                                  '\td2azdxdx\td2azdxdy\td2azdxdz\td2azdydy\td2azdydz\td2azdzdz',
         'vectorpotential_laplacian':point_header + '\tgrad2ax\tgrad2ay\tgrad2az',
-        'density_function':point_header + '\trho',
-        'density_gradient':point_header + '\tdrhodx\tdrhody\tdrhodz',
-        'density_hessian':point_header + '\td2rhodxdx\td2rhodxdy\td2rhodxdz\td2rhodydy\td2rhodydz\td2rhodzdz',
+        'density_function':point_header + '\t\u03c1',
+        'density_gradient':point_header + '\td\u03c1dx\td\u03c1dy\td\u03c1dz',
+        'density_hessian':point_header + '\td2\u03c1dxdx\td2\u03c1dxdy\td2\u03c1dxdz\td2\u03c1dydy\td2\u03c1dydz\td2\u03c1dzdz',
         'position_function':point_header + '\tx\ty\tz'
     }[f'{variable_name}_{operator}']
 

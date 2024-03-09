@@ -143,6 +143,9 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     
     # initialize lJHTDB gSOAP resources and add the user's authorization token.
     if dataset_title not in giverny_datasets:
+        if auth_token == 'edu.jhu.pha.turbulence.testing-201406' and len(points) > 4096:
+            raise Exception(f'too many points requested for the testing auth token: {len(points)} > 4096')
+        
         lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
         lJHTDB.initialize()
     
@@ -170,6 +173,14 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
         # checking the memory usage of the program.
         tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # get the output header.
+    output_header = get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
+    
+    # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+    # so that the array is filled with the missing placeholder values (-999.9).
+    result = np.full((len(points), len(result_header)), fill_value = c['missing_value_placeholder'], dtype = 'f')
     
     # process the data query, retrieve interpolation/differentiation results for the various datasets.
     if dataset_title in giverny_datasets:
@@ -331,9 +342,11 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
             # get the results.
             result = lJHTDB.getData(timepoint, points_tmp, data_set = dataset_title, sinterp = sint, tinterp = tint, getFunction = f'get{datatype}')
     
+    # checks to make sure that data was read in for all points.
+    if c['missing_value_placeholder'] in result or result.shape != (len(points), len(result_header)):
+        raise Exception(f'result was not filled correctly')
+    
     # insert the output header at the beginning of output_data.
-    output_header = get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
-    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     result = pd.DataFrame(data = result, columns = result_header)
     
     # free up gSOAP resources.
@@ -405,8 +418,8 @@ def getData_housekeeping_procedures(query_type, cube, dataset_title, points, var
     check_dataset_title(dataset_title)
     # check that the user-input variable is a valid variable name.
     check_variable(var_original, dataset_title)
-    # check that the points are all within axes domain for the dataset.
-    check_points_domain(dataset_title, points)
+    # check that not too many points were queried and the points are all within axes domain for the dataset.
+    check_points(dataset_title, points, c['max_data_points'])
     # check that the user-input timepoint is a valid timepoint for the dataset.
     check_timepoint(timepoint_original, dataset_title, query_type)
     # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.

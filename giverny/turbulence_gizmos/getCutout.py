@@ -49,22 +49,22 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # total size of data, in GBs, requested by the user's box.
     requested_data_size = (num_datapoints * c['bytes_per_datapoint'] * num_values_per_datapoint) / float(1024**3)
     # maximum number of datapoints that can be read in. currently set to 3 GBs worth of datapoints.
-    max_datapoints = int((c['max_data_size'] * (1024**3)) / (c['bytes_per_datapoint'] * float(num_values_per_datapoint)))
+    max_datapoints = int((c['max_cutout_size'] * (1024**3)) / (c['bytes_per_datapoint'] * float(num_values_per_datapoint)))
     # approximate max size of a cube representing the maximum data points. this number is rounded down.
     approx_max_cube = int(max_datapoints**(1/3))
 
-    if requested_data_size > c['max_data_size']:
-        raise ValueError(f'Please specify a box with fewer than {max_datapoints} data points. This represents an approximate cube size ' + \
+    if requested_data_size > c['max_cutout_size']:
+        raise ValueError(f'please specify a box with fewer than {max_datapoints} data points. this represents an approximate cube size ' + \
                          f'of ({approx_max_cube} x {approx_max_cube} x {approx_max_cube}).')
 
     # begin processing of data.
     # -----
-    print('Note: For larger boxes, e.g. 512-cubed and up, processing will take approximately 1 minute or more...\n' + '-' * 5)
+    print('note: for larger boxes, e.g. 512-cubed and up, processing will take approximately 1 minute or more...\n' + '-' * 5)
     sys.stdout.flush()
     
     # -----
     # get a map of the database files where all the data points are in.
-    print('\nStep 1: Determining which database files the user-specified box is found in...\n' + '-' * 25)
+    print('\nstep 1: determining which database files the user-specified box is found in...\n' + '-' * 25)
     sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
@@ -81,12 +81,12 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # calculate how much time it takes to run step 1.
     end_time_step1 = time.perf_counter()
 
-    print('Successfully completed.\n' + '-' * 5)
+    print('successfully completed.\n' + '-' * 5)
     sys.stdout.flush()
 
     # -----
     # read the data.
-    print('\nStep 2: Reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
+    print('\nstep 2: reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
     sys.stdout.flush()
     
     # calculate how much time it takes to run step 3.
@@ -100,7 +100,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # determines if the database files will be read sequentially with base python, or in parallel with dask.
     if num_db_disks == 1:
         # sequential processing.
-        print('Database files are being read sequentially...')
+        print('database files are being read sequentially...')
         sys.stdout.flush()
         
         result_output_data = cube.read_database_files_sequentially(user_single_db_boxes)
@@ -152,7 +152,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # calculate how much time it takes to run step 3.
     end_time_step2 = time.perf_counter()
     
-    print('\nSuccessfully completed.\n' + '-' * 5)
+    print('\nsuccessfully completed.\n' + '-' * 5)
     sys.stdout.flush()
 
     end_time = time.perf_counter()
