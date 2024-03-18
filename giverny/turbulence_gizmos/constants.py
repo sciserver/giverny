@@ -14,15 +14,17 @@ def get_constants():
         - decimals: number of decimals to round to for precision of xcoor, ycoor, and zcoor in the xarray output.
         - chunk_size: cube size of the zarr chunks. the value is the length of one side of the cube.
         - file_size: cube size of an entire file. the value is the length of one side of the cube.
+        - pyJHTDB_testing_token: the current testing token for accessing datasets through pyJHTDB.
     """
     return {
         'database_file_disk_index':-4,
         'dask_maximum_processes':4,
         'missing_value_placeholder':-999.9,
         'bytes_per_datapoint':4,
-        'max_cutout_size':3.0,
+        'max_cutout_size':16.0,
         'max_data_points':2 * 10**6,
         'decimals':7,
         'chunk_size':64,
-        'file_size':512
+        'file_size':512,
+        'pyJHTDB_testing_token':'edu.jhu.pha.turbulence.testing-201406'
     }

@@ -9,7 +9,8 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 
 def getCutout_process_data(cube, axes_ranges, var, timepoint,
                            axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original,
-                           time_step = 1, filter_width = 1):
+                           time_step = 1, filter_width = 1,
+                           verbose = False):
     # calculate how much time it takes to run the code.
     start_time = time.perf_counter()
 
@@ -30,42 +31,21 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     sint_specified = 'none'
     tint = 'none'
     option = ['none', 'none']
-    
     # initialize cube constants.
     cube.init_constants(query_type, var, var_original, var_dimension_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
 
     # used for determining the indices in the output array for each x, y, z datapoint.
     axes_min = axes_ranges[:, 0]
-    
-    # number of original datapoints along each axis specified by the user. used for checking that the user did not request
-    # too much data.
-    axes_lengths_original = axes_ranges_original[:, 1] - axes_ranges_original[:, 0] + 1
 
     # used for creating the 3-D output array using numpy.
     axes_lengths = axes_ranges[:, 1] - axes_ranges[:, 0] + 1
 
-    # total number of datapoints, used for checking if the user requested too much data.
-    num_datapoints = np.prod(axes_lengths_original)
-    # total size of data, in GBs, requested by the user's box.
-    requested_data_size = (num_datapoints * c['bytes_per_datapoint'] * num_values_per_datapoint) / float(1024**3)
-    # maximum number of datapoints that can be read in. currently set to 3 GBs worth of datapoints.
-    max_datapoints = int((c['max_cutout_size'] * (1024**3)) / (c['bytes_per_datapoint'] * float(num_values_per_datapoint)))
-    # approximate max size of a cube representing the maximum data points. this number is rounded down.
-    approx_max_cube = int(max_datapoints**(1/3))
-
-    if requested_data_size > c['max_cutout_size']:
-        raise ValueError(f'please specify a box with fewer than {max_datapoints} data points. this represents an approximate cube size ' + \
-                         f'of ({approx_max_cube} x {approx_max_cube} x {approx_max_cube}).')
-
     # begin processing of data.
     # -----
-    print('note: for larger boxes, e.g. 512-cubed and up, processing will take approximately 1 minute or more...\n' + '-' * 5)
-    sys.stdout.flush()
-    
-    # -----
     # get a map of the database files where all the data points are in.
-    print('\nstep 1: determining which database files the user-specified box is found in...\n' + '-' * 25)
-    sys.stdout.flush()
+    if verbose:
+        print('\nstep 1: determining which database files the user-specified box is found in...\n' + '-' * 25)
+        sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
     start_time_step1 = time.perf_counter()
@@ -74,20 +54,23 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
 
     num_db_files = sum(len(value) for value in user_single_db_boxes.values())
     num_db_disks = len(user_single_db_boxes)
-    print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
-    print(f'number of hard disks that the database files are distributed on:\n{num_db_disks}\n')
-    sys.stdout.flush()
+    if verbose:
+        print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
+        print(f'number of hard disks that the database files are distributed on:\n{num_db_disks}\n')
+        sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
     end_time_step1 = time.perf_counter()
 
-    print('successfully completed.\n' + '-' * 5)
-    sys.stdout.flush()
+    if verbose:
+        print('successfully completed.\n' + '-' * 5)
+        sys.stdout.flush()
 
     # -----
     # read the data.
-    print('\nstep 2: reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
-    sys.stdout.flush()
+    if verbose:
+        print('\nstep 2: reading the data from all of the database files and storing the values into a matrix...\n' + '-' * 25)
+        sys.stdout.flush()
     
     # calculate how much time it takes to run step 3.
     start_time_step2 = time.perf_counter()
@@ -100,8 +83,9 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # determines if the database files will be read sequentially with base python, or in parallel with dask.
     if num_db_disks == 1:
         # sequential processing.
-        print('database files are being read sequentially...')
-        sys.stdout.flush()
+        if verbose:
+            print('database files are being read sequentially...')
+            sys.stdout.flush()
         
         result_output_data = cube.read_database_files_sequentially(user_single_db_boxes)
     else:
@@ -114,57 +98,25 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
                     result[1][1] - axes_min[1] : result[2][1] - axes_min[1] + 1,
                     result[1][0] - axes_min[0] : result[2][0] - axes_min[0] + 1] = result[0]
     
-    # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
-    # exceeds the cube resolution (cube.N). note: no copies of the data values should be made, hence data_value_multiplier equals 1.
-    axes_multipliers = np.ceil(axes_lengths_original / cube.N).astype(int)
-    data_value_multiplier = 1
-    
-    # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than the cube resolution along any axis.
-    if np.any(axes_multipliers > 1):
-        output_data = np.tile(output_data, (axes_multipliers[2], axes_multipliers[1], axes_multipliers[0], data_value_multiplier))
-        # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
-        output_data = np.copy(output_data[0 : axes_lengths_original[2], 0 : axes_lengths_original[1], 0 : axes_lengths_original[0], :])
-    
-    # create axis coordinate ranges, shifted to 0-based indices, to store in the xarray metadata.
-    z_coords = np.around(np.arange(axes_ranges_original[2][0] - 1, axes_ranges_original[2][1], strides[2], dtype = np.float32) * cube.dx, decimals = c['decimals'])
-    y_coords = np.around(np.arange(axes_ranges_original[1][0] - 1, axes_ranges_original[1][1], strides[1], dtype = np.float32) * cube.dx, decimals = c['decimals'])
-    x_coords = np.around(np.arange(axes_ranges_original[0][0] - 1, axes_ranges_original[0][1], strides[0], dtype = np.float32) * cube.dx, decimals = c['decimals'])
-    
-    # set the dataset name to be used in the hdf5 file.
-    h5_dataset_name = cube.dataset_name
-    
-    # apply the strides to output_data.
-    output_data = xr.DataArray(data = output_data[::strides[2], ::strides[1], ::strides[0], :],
-                               dims = ['zcoor', 'ycoor', 'xcoor', 'values'])
-    
-    output_data = xr.Dataset(data_vars = {h5_dataset_name:output_data},
-                             coords = {'zcoor':z_coords, 'ycoor':y_coords, 'xcoor':x_coords}, 
-                             attrs = {'dataset':dataset_title, 't_start':timepoint_original, 't_end':timepoint_original, 't_step':time_step,
-                                      'x_start':axes_ranges_original[0][0], 'y_start':axes_ranges_original[1][0], 'z_start':axes_ranges_original[2][0], 
-                                      'x_end':axes_ranges_original[0][1], 'y_end':axes_ranges_original[1][1], 'z_end':axes_ranges_original[2][1],
-                                      'x_step':strides[0], 'y_step':strides[1], 'z_step':strides[2],
-                                      'filterWidth':filter_width})
-    
-    # checks to make sure that data was read in for all points.
-    if c['missing_value_placeholder'] in output_data:
-        raise Exception(f'output_data was not filled correctly')
-    
     # calculate how much time it takes to run step 3.
     end_time_step2 = time.perf_counter()
     
-    print('\nsuccessfully completed.\n' + '-' * 5)
-    sys.stdout.flush()
+    if verbose:
+        print('\nsuccessfully completed.\n' + '-' * 5)
+        sys.stdout.flush()
 
     end_time = time.perf_counter()
     
     # see how long the program took to run.
-    print(f'\nstep 1 time elapsed = {end_time_step1 - start_time_step1:0.3f} seconds ({(end_time_step1 - start_time_step1) / 60:0.3f} minutes)')
-    print(f'step 2 time elapsed = {end_time_step2 - start_time_step2:0.3f} seconds ({(end_time_step2 - start_time_step2) / 60:0.3f} minutes)')
-    # print(f'step 3 time elapsed = {end_time_step3 - start_time_step3:0.3f} seconds ({(end_time_step3 - start_time_step3) / 60:0.3f} minutes)')
-    print(f'total time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
-    sys.stdout.flush()
+    if verbose:
+        print(f'\nstep 1 time elapsed = {end_time_step1 - start_time_step1:0.3f} seconds ({(end_time_step1 - start_time_step1) / 60:0.3f} minutes)')
+        print(f'step 2 time elapsed = {end_time_step2 - start_time_step2:0.3f} seconds ({(end_time_step2 - start_time_step2) / 60:0.3f} minutes)')
+        # print(f'step 3 time elapsed = {end_time_step3 - start_time_step3:0.3f} seconds ({(end_time_step3 - start_time_step3) / 60:0.3f} minutes)')
+        print(f'total time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
     
-    print('\nquery completed successfully.\n' + '-' * 5)
-    sys.stdout.flush()
+    if verbose:
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
     
     return output_data

@@ -41,18 +41,21 @@ class turb_dataset():
         # check that dataset_title is a valid dataset title.
         check_dataset_title(dataset_title)
         
+        # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
+        self.dataset_title = dataset_title
+        
         # cube size.
-        self.N = get_dataset_resolution(dataset_title)
+        self.N = get_dataset_resolution(self.dataset_title)
+        # cube spacing (dx, dy, dz).
+        self.spacing = get_dataset_spacing(self.dataset_title)
+        self.dx, self.dy, self.dz = self.spacing
         
         # setting up morton curve.
-        self.bits = int(math.ceil(math.log(self.N, 2)))
+        self.bits = int(math.ceil(math.log(max(self.N), 2)))
         self.mortoncurve = morton.Morton(dimensions = cube_dimensions, bits = self.bits)
         
         # interpolation lookup table resolution.
         self.lookup_N = 10**5
-        
-        # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
-        self.dataset_title = dataset_title
         
         # get the SciServer user name.
         user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
@@ -293,6 +296,7 @@ class turb_dataset():
     def init_cornercode_file_map(self, dataset_title, N, read_metadata = False, rewrite_metadata = False):
         """
         pickled db file cornercodes to filenames map.
+            note: this function assumes the dataset is cubic (nx = ny = nz).
         """
         # pickled db file cornercodes to production filenames map.
         pickle_filename = dataset_title + f'_cornercode_file_map.pickle'
@@ -321,7 +325,7 @@ class turb_dataset():
         if read_metadata:
             self.cornercode_file_map = self.read_pickle_file(pickle_filename)
     
-    def init_interpolation_lookup_table(self, dx = 1, sint = 'none', read_metadata = False, rewrite_metadata = False):
+    def init_interpolation_lookup_table(self, sint = 'none', read_metadata = False, rewrite_metadata = False):
         """
         pickled interpolation lookup table.
         """
@@ -354,16 +358,6 @@ class turb_dataset():
             # pickled interpolation coefficient lookup table.
             self.lookup_table = self.read_pickle_file(f'{sint}_lookup_table.pickle')
             
-            if sint in ['fd4noint_g', 'fd6noint_g', 'fd8noint_g',
-                        'fd4lag4_g']:
-                # divide the lookup_table values by (/ dx) for this dataset if the interpolation method is fd4/6/8noint_g or fd4lag4_g.
-                self.lookup_table /= dx
-            elif sint in ['fd4noint_h', 'fd6noint_h', 'fd8noint_h',
-                          'fd4noint_l', 'fd6noint_l', 'fd8noint_l',
-                          'fd4lag4_l']:
-                # divide the lookup_table values by (/ dx / dx) for this dataset if the interpolation method is fd4/6/8noint_h/l or fd4lag4_l.
-                self.lookup_table = self.lookup_table / dx / dx
-            
             # read in the function interpolation lookup table that is used in the calculation of other interpolation methods.
             if sint in ['fd4lag4_g', 'm1q4_g', 'm2q8_g',
                         'fd4lag4_l',
@@ -386,8 +380,8 @@ class turb_dataset():
                 # convert sint to the needed gradient interpolation name.
                 sint_name = sint.replace('_h', '_l')
                 
-                # pickled laplacian coefficient lookup table. divide the laplacian_lookup_table values by (/ dx / dx) for this dataset.
-                self.laplacian_lookup_table = self.read_pickle_file(f'{sint_name}_lookup_table.pickle') / dx / dx
+                # pickled laplacian coefficient lookup table.
+                self.laplacian_lookup_table = self.read_pickle_file(f'{sint_name}_lookup_table.pickle')
                 
     def init_interpolation_cube_size_lookup_table(self, sint = 'none', sint_specified = 'none', read_metadata = False, rewrite_metadata = False):
         """
@@ -440,7 +434,7 @@ class turb_dataset():
             self.cube_min_index, self.cube_max_index = interp_cube_sizes[sint_cube_size]
             
             # get the interpolation bucket dimension length for sint_cube_size. used for defining the zeros plane at z = 0 (ground) for calculating
-            # the w-component of velocity at z-points queried in the range [self.dx / 2, self.dx) of the 'sabl2048*' datasets. 
+            # the w-component of velocity at z-points queried in the range [dz / 2, dz) of the 'sabl2048*' datasets. 
             self.cube_dim = self.cube_min_index + self.cube_max_index + 1
             
             # convert self.cube_min_index and self.cube_max_index for defining the buckets of the 'linear*' step-down methods. all of the 'linear*' methods
@@ -452,14 +446,14 @@ class turb_dataset():
                 self.cube_min_index = np.array([self.cube_min_index, self.cube_min_index, 0])
                 self.cube_max_index = np.array([self.cube_max_index, self.cube_max_index, 2])
     
-    def init_constants(self, query_type, var, var_original, var_dimension_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option,
+    def init_constants(self, query_type, var, var_original, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option,
                        num_values_per_datapoint, c):
         """
         initialize the constants.
         """
         self.var = var
         self.var_name = var_original
-        self.var_dimension_offsets = var_dimension_offsets
+        self.var_offsets = var_offsets
         self.timepoint = timepoint
         self.timepoint_original = timepoint_original
         self.timepoint_end, self.delta_t = option
@@ -479,9 +473,6 @@ class turb_dataset():
         self.file_size = c['file_size']
         self.query_type = query_type
         
-        # cube dx.
-        self.dx = get_dataset_dx(self.dataset_title, self.query_type)
-        
         # set the byte order for reading the data from the files.
         self.dt = np.dtype(np.float32)
         self.dt = self.dt.newbyteorder('<')
@@ -490,7 +481,10 @@ class turb_dataset():
         self.timepoint_digits = get_timepoint_digits(self.dataset_title)
         
         # retrieve the dimension offsets.
-        self.dimension_offsets = get_dataset_dimension_offsets(self.dataset_title, self.var_dimension_offsets)
+        self.dimension_offsets = get_dataset_dimension_offsets(self.dataset_title, self.var_offsets)
+        
+        # retrieve the coor offsets.
+        self.coor_offsets = get_dataset_coor_offsets(self.dataset_title, self.var_offsets)
         
         # set the dataset name to be used in the cutout hdf5 file.
         self.dataset_name = get_output_variable_name(self.var_name) + '_' + str(self.timepoint_original).zfill(4)
@@ -499,23 +493,24 @@ class turb_dataset():
         giverny_datasets = get_giverny_datasets()
         
         if self.dataset_title in giverny_datasets:
-            # initialize the interpolation cube size lookup table.
-            self.init_interpolation_cube_size_lookup_table(self.sint, self.sint_specified, read_metadata = True)
-        
+            if query_type == 'getdata':
+                # initialize the interpolation cube size lookup table.
+                self.init_interpolation_cube_size_lookup_table(self.sint, self.sint_specified, read_metadata = True)
+                
+                # defining the zeros plane at z = 0 (ground) for calculating the w-component of velocity at z-points queried in the range [dz / 2, dz) of the
+                # 'sabl2048*' datasets.
+                bucket_zero_plane = np.zeros((self.cube_dim, self.cube_dim, self.num_values_per_datapoint), dtype = np.float32)
+                # interpolate function variables.
+                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.sint_specified, self.spacing, bucket_zero_plane, self.lookup_N]
+                
+                # getData variables.
+                self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.file_size]
+            elif query_type == 'getcutout':
+                # getCutout variables.
+                self.getcutout_vars = [self.file_size]
+                
             # variables needed to open the zarr file for reading. variables are put together for easier passing into the dask worker functions.
             self.open_file_vars = [self.var_name, self.timepoint, self.timepoint_digits, self.dt]
-
-            # defining the zeros plane at z = 0 (ground) for calculating the w-component of velocity at z-points queried in the range [self.dx / 2, self.dx) of the
-            # 'sabl2048*' datasets.
-            bucket_zero_plane = np.zeros((self.cube_dim, self.cube_dim, self.num_values_per_datapoint), dtype = np.float32)
-            # interpolate function variables.
-            self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.sint_specified, self.dx, bucket_zero_plane, self.lookup_N]
-
-            # getCutout variables.
-            self.getcutout_vars = [self.file_size]
-
-            # getData variables.
-            self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.file_size]
     
     """
     interpolation functions.
@@ -746,10 +741,21 @@ class turb_dataset():
          - p is an np.array(3) containing the three coordinates.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, sint_specified, dx, bucket_zero_plane, lookup_N = interpolate_vars
+        cube_min_index, cube_max_index, sint, sint_specified, spacing, bucket_zero_plane, lookup_N = interpolate_vars
+        dx, dy, dz = spacing
         
-        if sint in ['lag4', 'm1q4', 'lag6', 'lag8', 'm2q8']:
-            # function interpolations.
+        """
+        'none' function interpolation.
+        """
+        def none():
+            ix = np.floor(p + 0.5).astype(np.int32)
+            
+            return np.array(u[ix[2], ix[1], ix[0], :])
+        
+        """
+        function interpolations.
+        """
+        def lag_spline():
             ix = p.astype(np.int32)
             fr = p - ix
             
@@ -762,9 +768,12 @@ class turb_dataset():
             gk = np.einsum('i,j,k', gz, gy, gx)
 
             return np.einsum('ijk,ijkl->l', gk, u)
-        elif sint == 'linear':
-            # function linear interpolation (step-down for 'lag8', 'lag6', 'lag4', 'm2q8', 'm1q4'). this method assumes the linear interpolation
-            # is being applied along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        
+        """
+        function linear interpolation (step-down for 'lag8', 'lag6', 'lag4', 'm2q8', 'm1q4'). this method assumes the linear interpolation
+        is being applied along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        """
+        def linear():
             ix = p.astype(np.int32)
             fr = p - ix
             
@@ -780,7 +789,7 @@ class turb_dataset():
             
             if z_bottom_flag == 'zero_ground':
                 # get the bucket z-plane above the point. for this particular case, the "top" boundary is math.floor(p[2]) because this handles 
-                # z-points between the ground (z = 0) and the 1st z-grid point (z = self.dx). applies to the 'velocity_w' variable of the 'sabl2048*' datasets. 
+                # z-points between the ground (z = 0) and the 1st z-grid point (z = dz). applies to the 'velocity_w' variable of the 'sabl2048*' datasets. 
                 z_top = math.floor(p[2])
                 uz_top = u[z_top, :, :, :]
                 
@@ -802,36 +811,12 @@ class turb_dataset():
             fn_bottom  = np.einsum('ij,ijl->l', gk, uz_bottom)
             
             return fn_bottom + (fn_top - fn_bottom) * fr[2]
-        elif sint == 'none':
-            # 'none' function interpolation.
-            ix = np.floor(p + 0.5).astype(np.int32)
-            
-            return np.array(u[ix[2], ix[1], ix[0], :])
-        elif sint in ['fd4noint_g', 'fd6noint_g', 'fd8noint_g',
-                      'fd4noint_l', 'fd6noint_l', 'fd8noint_l']:
-            # gradient and laplacian finite differences.
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
-            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
-            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
-
-            dvdx = np.inner(fd_coeff, component_x.T)  
-            dvdy = np.inner(fd_coeff, component_y.T)
-            dvdz = np.inner(fd_coeff, component_z.T)
-            
-            # return gradient values.
-            if '_g' in sint:
-                return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            # return laplacian values.
-            elif '_l' in sint:
-                return dvdx + dvdy + dvdz
-        elif sint in ['linear_g', 'linear_l']:
-            # gradient and laplacian linear region finite differences. this method assumes the linear interpolation is being applied
-            # along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        
+        """
+        gradient linear region finite differences. this method assumes the linear interpolation is being applied
+        along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        """
+        def linear_gradient():
             ix = p.astype(np.int32)
             # diagonal coefficients.
             fd_coeff = self.lookup_table
@@ -847,20 +832,136 @@ class turb_dataset():
             # get the z-gridpoint below the specified point. if z_bottom is 'zero_ground' then the z-gridpoint below the specified point is set to 0.
             component_z_bottom = 0.0 if z_bottom == 'zero_ground' else u[ix[2] + z_bottom, ix[1], ix[0], :]
             # the linear dvdz divisor equals the spacing between the top and bottom z-gridpoints.
-            dvdz_divisor = z_divisor * dx
+            dvdz_divisor = z_divisor * dz
 
-            dvdx = np.inner(fd_coeff, component_x.T)  
-            dvdy = np.inner(fd_coeff, component_y.T)
+            dvdx = np.inner(fd_coeff, component_x.T) / dx
+            dvdy = np.inner(fd_coeff, component_y.T) / dy
             dvdz = (component_z_top - component_z_bottom) / dvdz_divisor
             
-            # return gradient values.
-            if '_g' in sint:
-                return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            # return laplacian values.
-            elif '_l' in sint:
-                return dvdx + dvdy + dvdz
-        elif sint in ['fd4noint_h', 'fd6noint_h', 'fd8noint_h']:
-            # hessian finite differences.
+            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+            
+        """
+        laplacian linear region finite differences. this method assumes the linear interpolation is being applied
+        along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        """
+        def linear_laplacian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_top: top bucket index, and z_divisor: number of grid points to divide by.
+            z_bottom, z_top, z_divisor = u_info
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
+            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
+            # get the z-gridpoint above the specified point. 
+            component_z_top = u[ix[2] + z_top, ix[1], ix[0], :]
+            # get the z-gridpoint below the specified point. if z_bottom is 'zero_ground' then the z-gridpoint below the specified point is set to 0.
+            component_z_bottom = 0.0 if z_bottom == 'zero_ground' else u[ix[2] + z_bottom, ix[1], ix[0], :]
+            # the linear dvdz divisor equals the spacing between the top and bottom z-gridpoints.
+            dvdz_divisor = z_divisor * dz
+
+            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
+            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
+            dvdz = (component_z_top - component_z_bottom) / dvdz_divisor
+            
+            return dvdx + dvdy + dvdz
+        
+        """
+        hessian linear region finite differences. this method assumes the linear interpolation is being applied
+        along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
+        """
+        def linear_hessian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff_l = self.laplacian_lookup_table
+            # off-diagonal coefficients.
+            fd_coeff_h = self.lookup_table
+            
+            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_middle: middle bucket index, and z_top: top bucket index.
+            z_bottom, z_middle, z_top = u_info
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
+            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
+
+            uii = np.inner(fd_coeff_l, component_x.T) / dx / dx
+            ujj = np.inner(fd_coeff_l, component_y.T) / dy / dy
+
+            # off-diagonal components.
+            if sint_specified == 'fd4noint_h':
+                component_xy = np.array([u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            elif sint_specified == 'fd6noint_h':
+                component_xy = np.array([u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
+                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            elif sint_specified == 'fd8noint_h':
+                component_xy = np.array([u[ix[2],ix[1]+4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]-4,:],u[ix[2],ix[1]+4,ix[0]-4,:],
+                                         u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
+                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            
+            uij = np.inner(fd_coeff_h, component_xy.T) / dx / dy
+            
+            if z_bottom == 'zero_ground':
+                # sets all values at z_bottom (z = 0) equal to 0 because this handles the boundary condition gridpoint at z = 0. applies to
+                # the 'velocity_w' variable of the 'sabl2048*' datasets.
+                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :])) / (dz * dz)
+
+                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :]) / (4 * dx * dz)
+                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :]) / (4 * dy * dz)
+            else:
+                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :]) + u[z_bottom, ix[1], ix[0], :]) / (dz * dz)
+
+                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :] - u[z_bottom, ix[1], ix[0] + 1, :] + u[z_bottom, ix[1], ix[0] - 1, :]) / (4 * dx * dz)
+                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :] - u[z_bottom, ix[1] + 1, ix[0], :] + u[z_bottom, ix[1] - 1, ix[0], :]) / (4 * dy * dz)
+            
+            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
+        
+        """
+        gradient finite differences.
+        """
+        def fdnoint_gradient():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
+            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
+            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
+
+            dvdx = np.inner(fd_coeff, component_x.T) / dx
+            dvdy = np.inner(fd_coeff, component_y.T) / dy
+            dvdz = np.inner(fd_coeff, component_z.T) / dz
+            
+            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+            
+        """
+        laplacian finite differences.
+        """
+        def fdnoint_laplacian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
+            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
+            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
+
+            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
+            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
+            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
+            
+            return dvdx + dvdy + dvdz
+        
+        """
+        hessian finite differences.
+        """
+        def fdnoint_hessian():
             ix = p.astype(np.int32)
             # diagonal coefficients.
             fd_coeff_l = self.laplacian_lookup_table
@@ -872,9 +973,9 @@ class turb_dataset():
             component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
             component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
 
-            uii = np.inner(fd_coeff_l, component_x.T)  
-            ujj = np.inner(fd_coeff_l, component_y.T)
-            ukk = np.inner(fd_coeff_l, component_z.T)
+            uii = np.inner(fd_coeff_l, component_x.T) / dx / dx
+            ujj = np.inner(fd_coeff_l, component_y.T) / dy / dy
+            ukk = np.inner(fd_coeff_l, component_z.T) / dz / dz
 
             # off-diagonal components.
             if sint == 'fd4noint_h':
@@ -908,62 +1009,16 @@ class turb_dataset():
                                          u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
                                          u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
             
-            uij = np.inner(fd_coeff_h, component_xy.T) 
-            uik = np.inner(fd_coeff_h, component_xz.T) 
-            ujk = np.inner(fd_coeff_h, component_yz.T)
+            uij = np.inner(fd_coeff_h, component_xy.T) / dx / dy
+            uik = np.inner(fd_coeff_h, component_xz.T) / dx / dz
+            ujk = np.inner(fd_coeff_h, component_yz.T) / dy / dz
             
             return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
-        elif sint == 'linear_h':
-            # hessian linear region finite differences. this method assumes the linear interpolation is being applied
-            # along the z-axis (i.e. 'sabl2048low' and 'sabl2048high' datasets).
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff_l = self.laplacian_lookup_table
-            # off-diagonal coefficients.
-            fd_coeff_h = self.lookup_table
-            
-            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_middle: middle bucket index, and z_top: top bucket index.
-            z_bottom, z_middle, z_top = u_info
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-
-            uii = np.inner(fd_coeff_l, component_x.T)
-            ujj = np.inner(fd_coeff_l, component_y.T)
-
-            # off-diagonal components.
-            if sint_specified == 'fd4noint_h':
-                component_xy = np.array([u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            elif sint_specified == 'fd6noint_h':
-                component_xy = np.array([u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            elif sint_specified == 'fd8noint_h':
-                component_xy = np.array([u[ix[2],ix[1]+4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]-4,:],u[ix[2],ix[1]+4,ix[0]-4,:],
-                                         u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            
-            uij = np.inner(fd_coeff_h, component_xy.T)
-            
-            if z_bottom == 'zero_ground':
-                # sets all values at z_bottom (z = 0) equal to 0 because this handles the boundary condition gridpoint at z = 0. applies to
-                # the 'velocity_w' variable of the 'sabl2048*' datasets.
-                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :])) / (dx * dx)
-
-                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :]) / (4 * dx * dx)
-                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :]) / (4 * dx * dx)
-            else:
-                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :]) + u[z_bottom, ix[1], ix[0], :]) / (dx * dx)
-
-                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :] - u[z_bottom, ix[1], ix[0] + 1, :] + u[z_bottom, ix[1], ix[0] - 1, :]) / (4 * dx * dx)
-                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :] - u[z_bottom, ix[1] + 1, ix[0], :] + u[z_bottom, ix[1] - 1, ix[0], :]) / (4 * dx * dx)
-            
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
-        elif sint in ['m1q4_g', 'm2q8_g']:
-            # gradient spline differentiations. 
+        
+        """
+        gradient spline differentiations.
+        """
+        def spline_gradient():
             ix = p.astype(np.int32)
             fr = p - ix
             
@@ -981,18 +1036,19 @@ class turb_dataset():
             gk_y = np.einsum('i,j,k', gz, gy_G, gx)
             gk_z = np.einsum('i,j,k', gz_G, gy, gx)
             
-            d = u / dx
-            
             # dudx, dvdx, dwdx.
-            dvdx = np.einsum('ijk,ijkl->l', gk_x, d)
+            dvdx = np.einsum('ijk,ijkl->l', gk_x, u) / dx
             # dudy, dvdy, dwdy.
-            dvdy = np.einsum('ijk,ijkl->l', gk_y, d)
+            dvdy = np.einsum('ijk,ijkl->l', gk_y, u) / dy
             # dudz, dvdz, dwdz.
-            dvdz = np.einsum('ijk,ijkl->l', gk_z, d)
+            dvdz = np.einsum('ijk,ijkl->l', gk_z, u) / dz
             
             return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-        elif sint == 'm2q8_h':
-            # hessian spline differentiation.
+        
+        """
+        hessian spline differentiation.
+        """
+        def spline_hessian():
             ix = p.astype(np.int32)
             fr = p - ix
             
@@ -1017,19 +1073,54 @@ class turb_dataset():
             gk_xy = np.einsum('i,j,k', gz, gy_G, gx_G)
             gk_xz = np.einsum('i,j,k', gz_G, gy, gx_G)
             gk_yz = np.einsum('i,j,k', gz_G, gy_G, gx)
+
+            uii = np.einsum('ijk,ijkl->l', gk_xx, u) / dx / dx
+            ujj = np.einsum('ijk,ijkl->l', gk_yy, u) / dy / dy
+            ukk = np.einsum('ijk,ijkl->l', gk_zz, u) / dz / dz
+            uij = np.einsum('ijk,ijkl->l', gk_xy, u) / dx / dy
+            uik = np.einsum('ijk,ijkl->l', gk_xz, u) / dx / dz
+            ujk = np.einsum('ijk,ijkl->l', gk_yz, u) / dy / dz                    
+
+            return np.stack((uii, uij, uik, ujj, ujk, ukk), axis = 1).flatten()
+        
+        """
+        gradient finite difference with function interpolation.
+        """
+        def fd4lag4_gradient():
+            ix = p.astype(np.int32)
+            fr = p - ix      
             
-            d = u / dx / dx
+            # function interpolation coefficients.
+            gx = self.function_lookup_table[int(lookup_N * fr[0])]
+            gy = self.function_lookup_table[int(lookup_N * fr[1])]
+            gz = self.function_lookup_table[int(lookup_N * fr[2])]
+            
+            # finite difference coefficients.
+            gx_F = self.lookup_table[int(lookup_N * fr[0])]
+            gy_F = self.lookup_table[int(lookup_N * fr[1])]
+            gz_F = self.lookup_table[int(lookup_N * fr[2])]
+            
+            gk_x = np.einsum('i,j,k', gz, gy, gx_F)
+            gk_y = np.einsum('i,j,k', gz, gy_F, gx)
+            gk_z = np.einsum('i,j,k', gz_F, gy, gx)
 
-            uii = np.einsum('ijk,ijkl->l', gk_xx, d)
-            ujj = np.einsum('ijk,ijkl->l', gk_yy, d)
-            ukk = np.einsum('ijk,ijkl->l', gk_zz, d)
-            uij = np.einsum('ijk,ijkl->l', gk_xy, d)
-            uik = np.einsum('ijk,ijkl->l', gk_xz, d)
-            ujk = np.einsum('ijk,ijkl->l', gk_yz, d)                              
-
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
-        elif sint in ['fd4lag4_g', 'fd4lag4_l']:
-            # gradient and laplacian finite difference with function interpolation.
+            d_x = u[ix[2] - 1 : ix[2] + 3, ix[1] - 1 : ix[1] + 3, ix[0] - 3 : ix[0] + 5, :]           
+            d_y = u[ix[2] - 1 : ix[2] + 3, ix[1] - 3 : ix[1] + 5, ix[0] - 1 : ix[0] + 3, :]           
+            d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
+            
+            # dudx,dvdx,dwdx.
+            dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / dx
+            # dudy,dvdy,dwdy.
+            dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / dy
+            # dudz,dvdz,dwdz.
+            dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / dz
+            
+            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+            
+        """
+        laplacian finite difference with function interpolation.
+        """
+        def fd4lag4_laplacian():
             ix = p.astype(np.int32)
             fr = p - ix      
             
@@ -1052,20 +1143,40 @@ class turb_dataset():
             d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
             
             # dudx,dvdx,dwdx.
-            dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x)
+            dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / dx / dx
             # dudy,dvdy,dwdy.
-            dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y)
+            dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / dy / dy
             # dudz,dvdz,dwdz.
-            dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z)
+            dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / dz / dz
             
-            if sint == 'fd4lag4_g':
-                return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            elif sint == 'fd4lag4_l':
-                dudxyz = dvdx[0] + dvdy[0] + dvdz[0]
-                dvdxyz = dvdx[1] + dvdy[1] + dvdz[1]
-                dwdxyz = dvdx[2] + dvdy[2] + dvdz[2]
+            dudxyz = dvdx[0] + dvdy[0] + dvdz[0]
+            dvdxyz = dvdx[1] + dvdy[1] + dvdz[1]
+            dwdxyz = dvdx[2] + dvdy[2] + dvdz[2]
 
-                return np.array([dudxyz, dvdxyz, dwdxyz])
+            return np.array([dudxyz, dvdxyz, dwdxyz])
+        
+        # interpolate functions map.
+        interpolate_functions = {
+            'none': none,
+            'lag4': lag_spline, 'lag6': lag_spline, 'lag8': lag_spline,
+            'm1q4': lag_spline, 'm2q8': lag_spline,
+            'linear': linear,
+            'linear_g': linear_gradient,
+            'linear_l': linear_laplacian,
+            'linear_h': linear_hessian,
+            'fd4noint_g': fdnoint_gradient, 'fd6noint_g': fdnoint_gradient, 'fd8noint_g': fdnoint_gradient,
+            'fd4noint_l': fdnoint_laplacian, 'fd6noint_l': fdnoint_laplacian, 'fd8noint_l': fdnoint_laplacian,
+            'fd4noint_h': fdnoint_hessian, 'fd6noint_h': fdnoint_hessian, 'fd8noint_h': fdnoint_hessian,
+            'm1q4_g': spline_gradient, 'm2q8_g': spline_gradient,
+            'm2q8_h': spline_hessian,
+            'fd4lag4_g': fd4lag4_gradient,
+            'fd4lag4_l': fd4lag4_laplacian
+        }
+        
+        # interpolation function to call.
+        interpolate_function = interpolate_functions[sint]
+        
+        return interpolate_function()
         
     """
     common functions.
@@ -1168,7 +1279,7 @@ class turb_dataset():
                 while current_x <= box_max_xyz[0]:
                     # database file name and corresponding minimum morton limit for the origin point of the box.  
                     min_corner_xyz = [current_x, current_y, current_z]
-                    min_corner_info = self.get_file_for_mortoncode(self.mortoncurve.pack(min_corner_xyz[0] % self.N, min_corner_xyz[1] % self.N, min_corner_xyz[2] % self.N))
+                    min_corner_info = self.get_file_for_mortoncode(self.mortoncurve.pack(min_corner_xyz[0] % self.N[0], min_corner_xyz[1] % self.N[1], min_corner_xyz[2] % self.N[2]))
                     min_corner_db_file = min_corner_info[0]
                     min_corner_basename = os.path.basename(min_corner_db_file)
                     database_file_disk = min_corner_db_file.split(os.sep)[self.database_file_disk_index]
@@ -1176,7 +1287,7 @@ class turb_dataset():
                     max_corner_xyz = self.mortoncurve.unpack(min_corner_info[2])
                     
                     # calculate the number of periodic cubes that the user-specified box expands into beyond the boundary along each axis.
-                    cube_ms = [math.floor(float(min_corner_xyz[q]) / float(self.N)) * self.N for q in range(3)]
+                    cube_ms = [math.floor(float(min_corner_xyz[q]) / float(self.N[q])) * self.N[q] for q in range(3)]
                     
                     # specify the box that is fully inside a database file.
                     box = [[min_corner_xyz[i], min(max_corner_xyz[i] + cube_ms[i], box_max_xyz[i])] for i in range(3)]
@@ -1272,16 +1383,16 @@ class turb_dataset():
         chunk_size_array = np.array([self.chunk_size, self.chunk_size, self.chunk_size]) - 1
         
         # convert the points to the center point position within their own bucket.
-        center_points = (((points + self.dx * self.dimension_offsets) / self.dx) % 1) + self.cube_min_index
+        center_points = (((points + self.spacing * self.dimension_offsets) / self.spacing) % 1) + self.cube_min_index
         # convert the points to gridded datapoints. there is a +0.5 point shift because the finite differencing methods would otherwise add +0.5 to center_points when
         # interpolating the values. shifting the datapoints up by +0.5 adjusts the bucket up one grid point so the center_points do not needed to be shifted up by +0.5.
         sint_datapoint_shift = self.sint_specified if 'linear' in self.sint else self.sint
         if sint_datapoint_shift in ['fd4noint_g', 'fd6noint_g', 'fd8noint_g',
                                     'fd4noint_l', 'fd6noint_l', 'fd8noint_l',
                                     'fd4noint_h', 'fd6noint_h', 'fd8noint_h']:
-            datapoints = np.floor((points + self.dx * (self.dimension_offsets + 0.5)) / self.dx).astype(int) % self.N
+            datapoints = np.floor((points + self.spacing * (self.dimension_offsets + 0.5)) / self.spacing).astype(int) % self.N
         else:
-            datapoints = np.floor((points + self.dx * self.dimension_offsets) / self.dx).astype(int) % self.N
+            datapoints = np.floor((points + self.spacing * self.dimension_offsets) / self.spacing).astype(int) % self.N
         
         # adjust center_points and datapoints for the 'linear*' methods to make sure that the buckets do not wrap around the z-axis since it is not periodic. the values
         # in buckets_info are used in the 'linear*' methods in the spatial_interpolate function.
@@ -1289,117 +1400,117 @@ class turb_dataset():
         if self.dataset_title in ['sabl2048low', 'sabl2048high']:
             if self.sint == 'linear':
                 # adjustments for the 'linear' step-down method for the interpolation functions (i.e. lag4/6/8, m1q4, m2q8). 
-                if self.var_dimension_offsets == 'energy':
+                if self.var_offsets == 'energy':
                     # ground boundary condition of the 'energy' variable.
                     # condition to test the points against.
-                    where_condition = points[:, 2] < self.dx
-                    # update center_points z-axis because the points are below self.dx, which is the first gridpoint for the 'energy' variable.
+                    where_condition = points[:, 2] < self.dz
+                    # update center_points z-axis because the points are below self.dz, which is the first gridpoint for the 'energy' variable.
                     center_points[:, 2] = np.where(where_condition, np.floor(center_points[:, 2]), center_points[:, 2])
-                    # shift datapoints up by 1 gridpoint because points < self.dx are below the first gridpoint. the ground boundary condition will be applied for the
-                    # 'energy' variable, which is that e(z = 0) = e(z = self.dx).
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N, datapoints[:, 2])
-                elif self.var_dimension_offsets == 'velocity_w':
+                    # shift datapoints up by 1 gridpoint because points < self.dz are below the first gridpoint. the ground boundary condition will be applied for the
+                    # 'energy' variable, which is that e(z = 0) = e(z = self.dz).
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N[2], datapoints[:, 2])
+                elif self.var_offsets == 'velocity_w':
                     # ground boundary condition of the w-component of the 'velocity' variable.
-                    where_condition = points[:, 2] < self.dx
+                    where_condition = points[:, 2] < self.dz
                     # update the z_bottom_flag of buckets_info for points that satisfy where_condition. 'zero_ground' is handled inside the spatial_interpolate function.
                     buckets_info[np.where(where_condition), 0] = 'zero_ground'
-                    # shift datapoints up by 1 gridpoint because points < self.dx are below the first gridpoint. the ground boundary condition will be applied for the
+                    # shift datapoints up by 1 gridpoint because points < self.dz are below the first gridpoint. the ground boundary condition will be applied for the
                     # w-component of the 'velocity' variable, which is that w(z = 0) = 0.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N, datapoints[:, 2])
-                elif self.var_dimension_offsets in ['pressure', 'temperature', 'velocity_uv']:
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N[2], datapoints[:, 2])
+                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
                     # sky boundary condition of the 'pressure', 'temperature', and (u,v)-components of the 'velocity variables.
-                    where_condition = points[:, 2] == (2047.5 * self.dx)
+                    where_condition = points[:, 2] == (2047.5 * self.dz)
                     # update center_points z-axis because datapoints will be shifted down by 1 gridpoint.
                     center_points[:, 2] = np.where(where_condition, center_points[:, 2] + 1, center_points[:, 2])
                     # shift datapoints down by 1 gridpoint to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
             elif self.sint in ['linear_g', 'linear_l']:
                 # adjustments for the 'linear_g' and 'linear_l' step-down methods for the finite differencing functions (i.e. fd4/6/8noint, fd4lag4).
-                if self.var_dimension_offsets in ['energy', 'velocity_w']:
+                if self.var_offsets in ['energy', 'velocity_w']:
                     # fd2 ground boundary condition.
-                    if self.var_dimension_offsets == 'energy':
-                        where_condition = points[:, 2] < (1.5 * self.dx)
+                    if self.var_offsets == 'energy':
+                        where_condition = points[:, 2] < (1.5 * self.dz)
                         buckets_info[np.where(where_condition), :] = [0, 1, 2]
                     else:
-                        where_condition = points[:, 2] < (1.5 * self.dx)
+                        where_condition = points[:, 2] < (1.5 * self.dz)
                         buckets_info[np.where(where_condition), :] = ['zero_ground', 2, 2]
                     
                     # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
                     # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dx), points[:, 2] < (2047.5 * self.dx))
+                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dz), points[:, 2] < (2047.5 * self.dz))
                     buckets_info[np.where(where_condition), :] = [0, 2, 2]
                     # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
                     
                     # fd1 sky region.
-                    where_condition = points[:, 2] == (2047.5 * self.dx)
+                    where_condition = points[:, 2] == (2047.5 * self.dz)
                     buckets_info[np.where(where_condition), :] = [1, 2, 1]
                     # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N, datapoints[:, 2])
-                elif self.var_dimension_offsets in ['pressure', 'temperature', 'velocity_uv']:
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
+                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
                     # fd1 ground region.
-                    where_condition = points[:, 2] < self.dx
+                    where_condition = points[:, 2] < self.dz
                     buckets_info[np.where(where_condition), :] = [0, 1, 1]
                     
                     # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
                     # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= self.dx, points[:, 2] < (2047 * self.dx))
+                    where_condition = np.logical_and(points[:, 2] >= self.dz, points[:, 2] < (2047 * self.dz))
                     buckets_info[np.where(where_condition), :] = [0, 2, 2]
                     # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
                     
                     # fd1 sky region.
-                    where_condition = points[:, 2] >= (2047 * self.dx)
+                    where_condition = points[:, 2] >= (2047 * self.dz)
                     buckets_info[np.where(where_condition), :] = [1, 2, 1]
                     # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
             elif self.sint == 'linear_h':
                 # adjustments for the 'linear_h' step-down methods for the finite differencing functions (i.e. fd4/6/8noint, m2q8).
-                if self.var_dimension_offsets in ['energy', 'velocity_w']:
+                if self.var_offsets in ['energy', 'velocity_w']:
                     # fd2 ground boundary condition.
-                    if self.var_dimension_offsets == 'energy':
-                        where_condition = points[:, 2] < (1.5 * self.dx)
+                    if self.var_offsets == 'energy':
+                        where_condition = points[:, 2] < (1.5 * self.dz)
                         buckets_info[np.where(where_condition), :] = [0, 0, 1]
                     else:
-                        where_condition = points[:, 2] < (1.5 * self.dx)
+                        where_condition = points[:, 2] < (1.5 * self.dz)
                         buckets_info[np.where(where_condition), :] = ['zero_ground', 0, 1]
                     
                     # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
                     # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dx), points[:, 2] < (2047.5 * self.dx))
+                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dz), points[:, 2] < (2047.5 * self.dz))
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
                     # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
                     
                     # fd2 sky boundary condition.
-                    where_condition = points[:, 2] == (2047.5 * self.dx)
+                    where_condition = points[:, 2] == (2047.5 * self.dz)
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
                     # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N, datapoints[:, 2])
-                elif self.var_dimension_offsets in ['pressure', 'temperature', 'velocity_uv']:
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
+                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
                     # fd2 ground boundary condition.
-                    where_condition = points[:, 2] < self.dx
+                    where_condition = points[:, 2] < self.dz
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
                     
                     # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
                     # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= self.dx, points[:, 2] < (2046 * self.dx))
+                    where_condition = np.logical_and(points[:, 2] >= self.dz, points[:, 2] < (2046 * self.dz))
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
                     # # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
                     
                     # fd2 sky boundary conditions.
-                    where_condition = np.logical_and(points[:, 2] >= (2046 * self.dx), points[:, 2] < (2047 * self.dx))
+                    where_condition = np.logical_and(points[:, 2] >= (2046 * self.dz), points[:, 2] < (2047 * self.dz))
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 1 gridpoint because points >= (2046 * self.dx) do not satisfy having one z-gridpoint above and below the datapoint
+                    # shift datapoints down by 1 gridpoint because points >= (2046 * self.dz) do not satisfy having one z-gridpoint above and below the datapoint
                     # for calculating the linear fd2 hessian in the boundary region.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
                     
-                    where_condition = points[:, 2] >= (2047 * self.dx)
+                    where_condition = points[:, 2] >= (2047 * self.dz)
                     buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 2 gridpoints because points >= (2047 * self.dx) do not satisfy having one z-gridpoint above and below the datapoint
+                    # shift datapoints down by 2 gridpoints because points >= (2047 * self.dz) do not satisfy having one z-gridpoint above and below the datapoint
                     # for calculating the linear fd2 hessian in the boundary region.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N, datapoints[:, 2])
+                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
         
         # calculate the minimum and maximum chunk (x, y, z) corner point for each point in datapoints.
         chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size)) % self.N
@@ -1727,9 +1838,9 @@ class turb_dataset():
     def get_chunk_origin_groups(self, chunk_min_x, chunk_min_y, chunk_min_z, chunk_max_x, chunk_max_y, chunk_max_z, N, chunk_size):
         # get arrays of the chunk origin points for each bucket.
         return np.array([[x, y, z]
-                         for z in range(chunk_min_z, (chunk_max_z if chunk_min_z <= chunk_max_z else N + chunk_max_z) + 1, chunk_size)
-                         for y in range(chunk_min_y, (chunk_max_y if chunk_min_y <= chunk_max_y else N + chunk_max_y) + 1, chunk_size)
-                         for x in range(chunk_min_x, (chunk_max_x if chunk_min_x <= chunk_max_x else N + chunk_max_x) + 1, chunk_size)])
+                         for z in range(chunk_min_z, (chunk_max_z if chunk_min_z <= chunk_max_z else N[2] + chunk_max_z) + 1, chunk_size)
+                         for y in range(chunk_min_y, (chunk_max_y if chunk_min_y <= chunk_max_y else N[1] + chunk_max_y) + 1, chunk_size)
+                         for x in range(chunk_min_x, (chunk_max_x if chunk_min_x <= chunk_max_x else N[0] + chunk_max_x) + 1, chunk_size)])
     
     def read_natives_sequentially_variable(self, db_native_map, native_output_data):
         # native data.
@@ -1842,11 +1953,11 @@ class turb_dataset():
         reads and interpolates the user-requested native points in a single database volume.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, sint_specified, dx = interpolate_vars[:5]
+        cube_min_index, cube_max_index, sint, sint_specified = interpolate_vars[:4]
         
         # initialize the interpolation lookup table. use sint_specified when one of the 'linear*' step-down methods is being used.
         sint_lookup_table = sint_specified if 'linear' in sint else sint
-        self.init_interpolation_lookup_table(dx = dx, sint = sint_lookup_table, read_metadata = True)
+        self.init_interpolation_lookup_table(sint = sint_lookup_table, read_metadata = True)
         
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
@@ -1885,7 +1996,7 @@ class turb_dataset():
         reads and interpolates the user-requested visitor points.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, sint_specified, dx = interpolate_vars[:5]
+        cube_min_index, cube_max_index, sint, sint_specified = interpolate_vars[:4]
         dataset_title, num_values_per_datapoint, N, chunk_size, file_size = getdata_vars
         
         # get map of the filepaths for all of the dataset files.
@@ -1896,7 +2007,7 @@ class turb_dataset():
         
         # initialize the interpolation lookup table. use sint_specified when one of the 'linear*' step-down methods is being used.
         sint_lookup_table = sint_specified if 'linear' in sint else sint
-        self.init_interpolation_lookup_table(dx = dx, sint = sint_lookup_table, read_metadata = True)
+        self.init_interpolation_lookup_table(sint = sint_lookup_table, read_metadata = True)
 
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []

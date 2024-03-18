@@ -1,7 +1,9 @@
 turbulence - stable release version 2.1.1 (14 December 2023)
 
 version 2.1.1 updates:
-    - built getData function for querying legacy datasets.
+    - built getData and getCutout functions for querying all datasets.
+    - added stable atmospheric boundary layer ("sabl") datasets and z-axis linear step-down interpolation methods
+      to handle them.
 version 1.2.7 updates:
     - added user interface for choosing how to save output files.
     - reformatted interpolation/differentiation output to match legacy code.

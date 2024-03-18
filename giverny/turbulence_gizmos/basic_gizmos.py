@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 # tqdm is used in the getdata jupyter notebook single point time series.
 from tqdm import tqdm
 from collections import defaultdict
+from giverny.turbulence_gizmos.variable_dy_grid_ys import *
 
 """
 user-input checking gizmos.
 """
 def check_dataset_title(dataset_title):
     # check that dataset_title is a valid dataset title. 'isotropic4096' dataset is not yet converted to zarr.
-    valid_dataset_titles = ['isotropic8192', 'isotropic4096', 'isotropic1024coarse', 'isotropic1024fine',
+    valid_dataset_titles = ['isotropic1024coarse', 'isotropic1024fine', 'isotropic4096', 'isotropic8192',
                             'sabl2048low', 'sabl2048high',
                             'rotstrat4096',
                             'mhd1024', 'mixing',
@@ -21,29 +22,39 @@ def check_dataset_title(dataset_title):
                             'transition_bl']
     
     if dataset_title not in valid_dataset_titles:
-        raise Exception(f"'{dataset_title}' (case-sensitive) is not a valid dataset title:\n{valid_dataset_titles}")
+        formatted_valid_datasets_titles = [', '.join(valid_dataset_titles[:4]), ', '.join(valid_dataset_titles[4: 6]), ', '.join(valid_dataset_titles[6:])]
+        raise Exception(f"'{dataset_title}' (case-sensitive) is not a valid dataset title:\n" + \
+                        f"[{formatted_valid_datasets_titles[0]},\n " + \
+                        f"{formatted_valid_datasets_titles[1]},\n " + \
+                        f"{formatted_valid_datasets_titles[2]}]")
         
     return
 
-def check_variable(variable, dataset_title):
+def check_variable(variable, dataset_title, query_type):
     # check that variable is a valid variable name.
     valid_variables = {
-        'isotropic1024coarse':['pressure', 'velocity', 'force', 'position'],
-        'isotropic1024fine':['pressure', 'velocity', 'force', 'position'],
-        'isotropic4096':['pressure', 'velocity'],
-        'isotropic8192':['pressure', 'velocity'],
-        'sabl2048low':['pressure', 'velocity', 'temperature', 'energy'],
-        'sabl2048high':['pressure', 'velocity', 'temperature', 'energy'],
-        'rotstrat4096':['velocity', 'temperature'],
-        'mhd1024':['pressure', 'velocity', 'magneticfield', 'vectorpotential', 'force', 'position'],
-        'mixing':['pressure', 'velocity', 'density', 'position'],
-        'channel':['pressure', 'velocity', 'position'],
-        'channel5200':['pressure', 'velocity'],
-        'transition_bl':['pressure', 'velocity', 'position']
-    }[dataset_title]
+        'isotropic1024coarse': {'getdata': ['pressure', 'velocity', 'force', 'position'],
+                                'getcutout': ['pressure', 'velocity']},
+        'isotropic1024fine': {'getdata': ['pressure', 'velocity', 'force', 'position'],
+                              'getcutout': ['pressure', 'velocity']},
+        'isotropic4096': defaultdict(lambda: ['pressure', 'velocity']),
+        'isotropic8192': defaultdict(lambda: ['pressure', 'velocity']),
+        'sabl2048low': defaultdict(lambda: ['pressure', 'velocity', 'temperature', 'energy']),
+        'sabl2048high': defaultdict(lambda: ['pressure', 'velocity', 'temperature', 'energy']),
+        'rotstrat4096': defaultdict(lambda: ['velocity', 'temperature']),
+        'mhd1024': {'getdata': ['pressure', 'velocity', 'magneticfield', 'vectorpotential', 'force', 'position'],
+                    'getcutout': ['pressure', 'velocity', 'magneticfield', 'vectorpotential']},
+        'mixing': {'getdata': ['pressure', 'velocity', 'density', 'position'],
+                   'getcutout': ['pressure', 'velocity', 'density']},
+        'channel': {'getdata': ['pressure', 'velocity', 'position'],
+                    'getcutout': ['pressure', 'velocity']},
+        'channel5200': defaultdict(lambda: ['pressure', 'velocity']),
+        'transition_bl': {'getdata': ['pressure', 'velocity', 'position'],
+                          'getcutout': ['pressure', 'velocity']}
+    }[dataset_title][query_type]
     
     if variable not in valid_variables:
-        raise Exception(f"'{variable}' (case-sensitive) is not a valid variable for '{dataset_title}':\n{valid_variables}")
+        raise Exception(f"'{variable}' (case-sensitive) is not a valid variable for ('{dataset_title}', '{query_type}'):\n{valid_variables}")
         
     return
 
@@ -52,15 +63,15 @@ def check_timepoint(timepoint, dataset_title, query_type):
     valid_timepoints = {
         'isotropic1024coarse': {'getdata': (0.0, 10.056, 0.002), 'getcutout': range(1, 5024 + 1)},
         'isotropic1024fine': {'getdata': (0.0, 0.0198, 0.0002), 'getcutout': range(1, 100 + 1)},
-        'isotropic4096': {'getdata': range(1, 1 + 1), 'getcutout': range(1, 1 + 1)},
+        'isotropic4096': {'getdata': range(0, 0 + 1), 'getcutout': range(1, 1 + 1)},
         'isotropic8192': {'getdata': range(0, 5 + 1), 'getcutout': range(1, 6 + 1)},
         'sabl2048low': {'getdata': range(0, 19 + 1), 'getcutout': range(1, 20 + 1)},
-        'sabl2048high': {'getdata': (0.0, 7.2, 0.075), 'getcutout': range(1, 97 + 1)},
-        'rotstrat4096': {'getdata': range(1, 5 + 1), 'getcutout': range(1, 5 + 1)},
+        'sabl2048high': {'getdata': (0.0, 7.425, 0.075), 'getcutout': range(1, 100 + 1)},
+        'rotstrat4096': {'getdata': range(0, 4 + 1), 'getcutout': range(1, 5 + 1)},
         'mhd1024': {'getdata': (0.0, 2.56, 0.0025), 'getcutout': range(1, 1025 + 1)},
         'mixing': {'getdata': (0.0, 40.44, 0.04), 'getcutout': range(1, 1012 + 1)},
         'channel': {'getdata': (0.0, 25.9935, 0.0065), 'getcutout': range(1, 4000 + 1)},
-        'channel5200': {'getdata': range(1, 11 + 1), 'getcutout': range(1, 11 + 1)},
+        'channel5200': {'getdata': range(0, 10 + 1), 'getcutout': range(1, 11 + 1)},
         'transition_bl': {'getdata': (0.0, 1175.0, 0.25), 'getcutout': range(1, 4701 + 1)}
     }[dataset_title][query_type]
     
@@ -88,8 +99,8 @@ def check_points(dataset_title, points, max_num_points):
         'isotropic1024fine': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
         'isotropic4096': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
         'isotropic8192': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
-        'sabl2048low': ['modulo[0, 399.8046875]', 'modulo[0, 399.8046875]', [0.09765625, 399.90234375]],
-        'sabl2048high': ['modulo[0, 399.8046875]', 'modulo[0, 399.8046875]', [0.09765625, 399.90234375]],
+        'sabl2048low': ['modulo[0, 400]', 'modulo[0, 400]', [0.09765625, 399.90234375]],
+        'sabl2048high': ['modulo[0, 400]', 'modulo[0, 400]', [0.09765625, 399.90234375]],
         'rotstrat4096': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
         'mhd1024': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
         'mixing': ['modulo[0, 2pi]', 'modulo[0, 2pi]', 'modulo[0, 2pi]'],
@@ -242,77 +253,140 @@ def check_option_parameter(option, timepoint_start):
         
     return
 
-def check_axes_ranges(axes_ranges):
-    # check that the axis ranges are all specified as minimum and maximum integer values.
-    for axis_range in axes_ranges:
-        if len(axis_range) != 2:
-            raise Exception(f'axis range, {axis_range}, is not correctly specified as [minimum, maximum]')
-            
-        for val in axis_range:
-            if type(val) != int:
-                raise Exception(f'{val} in axis range, {list(axis_range)}, is not an integer')
+def check_axes_ranges(dataset_title, axes_ranges):
+    axes_resolution = {
+        'isotropic1024coarse': np.array([1024, 1024, 1024]),
+        'isotropic1024fine': np.array([1024, 1024, 1024]),
+        'isotropic4096': np.array([4096, 4096, 4096]),
+        'isotropic8192': np.array([8192, 8192, 8192]),
+        'sabl2048low': np.array([2048, 2048, 2048]),
+        'sabl2048high': np.array([2048, 2048, 2048]),
+        'rotstrat4096': np.array([4096, 4096, 4096]),
+        'mhd1024': np.array([1024, 1024, 1024]),
+        'mixing': np.array([1024, 1024, 1024]),
+        'channel': np.array([2048, 512, 1536]),
+        'channel5200': np.array([10240, 1536, 7680]),
+        'transition_bl': np.array([3320, 224, 2048])
+    }[dataset_title]
+    
+    axes_periodic = {
+        'isotropic1024coarse': np.array([True, True, True]),
+        'isotropic1024fine': np.array([True, True, True]),
+        'isotropic4096': np.array([True, True, True]),
+        'isotropic8192': np.array([True, True, True]),
+        'sabl2048low': np.array([True, True, False]),
+        'sabl2048high': np.array([True, True, False]),
+        'rotstrat4096': np.array([True, True, True]),
+        'mhd1024': np.array([True, True, True]),
+        'mixing': np.array([True, True, True]),
+        'channel': np.array([True, False, True]),
+        'channel5200': np.array([True, False, True]),
+        'transition_bl': np.array([False, False, True])
+    }[dataset_title]
+    
+    if axes_ranges.dtype not in [np.int32, np.int64]:
+        raise Exception('all axis range values, [minimum, maximum], should be specified as integers')
+    
+    # check that the axis ranges are all specified as minimum and maximum integer values and are in the domain for the dataset.
+    for axis_index, (axis_resolution, axis_periodic, axis_range) in enumerate(zip(axes_resolution, axes_periodic, axes_ranges)):
+        if len(axis_range) != 2 or axis_range[0] > axis_range[1]:
+            raise Exception(f'axis range, {list(axis_range)}, is not correctly specified as [minimum, maximum]')
+        
+        if not axis_periodic and (axis_range[0] < 1 or axis_range[1] > axis_resolution):
+            axis_name = ['x', 'y', 'z'][axis_index]
+            raise Exception(f'{axis_name}-axis does not have a periodic boundary condition and so must be specified in the domain, [1, {axis_resolution}]')
                 
 def check_strides(strides):
     # check that the strides are all positive integer values.
     for stride in strides:
-        if type(stride) != int or stride < 1:
+        if type(stride) not in [np.int32, np.int64] or stride < 1:
             raise Exception(f'stride, {stride}, is not an integer value >= 1')
 
 """
 mapping gizmos.
 """
 def get_dataset_resolution(dataset_title):
-    # get the number of datapoints (resolution) along each axis of the dataset. non-giverny datasets are not supported 
-    # by this code at this time, so a placeholder value (the largest dimension) is used.
+    # get the number of datapoints (resolution) along each axis of the dataset.
     return {
-        'isotropic1024coarse': 1024,
-        'isotropic1024fine': 1024,
-        'isotropic4096': 4096,
-        'isotropic8192': 8192,
-        'sabl2048low': 2048,
-        'sabl2048high': 2048,
-        'rotstrat4096': 4096,
-        'mhd1024': 1024,
-        'mixing': 1024,
-        'channel': 2048, #[2048, 512, 1536],
-        'channel5200': 10240, #[10240, 1536, 7680],
-        'transition_bl': 3320 #[3320, 224, 2048]
+        'isotropic1024coarse': np.array([1024, 1024, 1024]),
+        'isotropic1024fine': np.array([1024, 1024, 1024]),
+        'isotropic4096': np.array([4096, 4096, 4096]),
+        'isotropic8192': np.array([8192, 8192, 8192]),
+        'sabl2048low': np.array([2048, 2048, 2048]),
+        'sabl2048high': np.array([2048, 2048, 2048]),
+        'rotstrat4096': np.array([4096, 4096, 4096]),
+        'mhd1024': np.array([1024, 1024, 1024]),
+        'mixing': np.array([1024, 1024, 1024]),
+        'channel': np.array([2048, 512, 1536]),
+        'channel5200': np.array([10240, 1536, 7680]),
+        'transition_bl': np.array([3320, 224, 2048])
     }[dataset_title]
 
-def get_dataset_dx(dataset_title, query_type):
-    # get the dataset spacing between datapoints along each axis of the dataset. non-giverny datasets are not supported 
-    # by this code at this time, so a placeholder value (the largest dimension) is used.
+def get_dataset_spacing(dataset_title):
+    """
+    get the dataset spacing between datapoints along each axis of the dataset.
+    """
+    # variable dy grid y-values.
+    channel_ys = get_channel_ys()
+    channel5200_ys = get_channel5200_ys()
+    transition_bl_ys = get_transition_bl_ys()
+    
     return {
-        'isotropic1024coarse': defaultdict(lambda: 2 * np.pi / 1024),
-        'isotropic1024fine': defaultdict(lambda: 2 * np.pi / 1024),
-        'isotropic4096': defaultdict(lambda: 2 * np.pi / 4096),
-        'isotropic8192': defaultdict(lambda: 2 * np.pi / 8192),
-        'sabl2048low': defaultdict(lambda: 2 * np.pi / 2048, {'getdata': 0.1953125}),
-        'sabl2048high': defaultdict(lambda: 2 * np.pi / 2048, {'getdata': 0.1953125}),
-        'rotstrat4096': defaultdict(lambda: 2 * np.pi / 4096),
-        'mhd1024': defaultdict(lambda: 2 * np.pi / 1024),
-        'mixing': defaultdict(lambda: 2 * np.pi / 1024),
-        'channel': defaultdict(lambda: 2 * np.pi / 2048), #[2048, 512, 1536],
-        'channel5200': defaultdict(lambda: 2 * np.pi / 10240), #[10240, 1536, 7680],
-        'transition_bl': defaultdict(lambda: 2 * np.pi / 3320) #[3320, 224, 2048]
-    }[dataset_title][query_type]
+        'isotropic1024coarse': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 1024,
+        'isotropic1024fine': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 1024,
+        'isotropic4096': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 4096,
+        'isotropic8192': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 8192,
+        'sabl2048low': np.array([0.1953125, 0.1953125, 0.1953125]),
+        'sabl2048high': np.array([0.1953125, 0.1953125, 0.1953125]),
+        'rotstrat4096': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 4096,
+        'mhd1024': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 1024,
+        'mixing': np.array([2 * np.pi, 2 * np.pi, 2 * np.pi]) / 1024,
+        'channel': np.array([8 * np.pi / 2048, channel_ys, 3 * np.pi / 1536], dtype = object),
+        'channel5200': np.array([8 * np.pi / 10240, channel5200_ys, 3 * np.pi / 7680], dtype = object),
+        'transition_bl': np.array([0.292210466, transition_bl_ys, 0.117244748], dtype = object)
+    }[dataset_title]
 
 def get_dataset_dimension_offsets(dataset_title, variable):
-    # get the dataset dimension offset between each axis of the dataset. non-giverny datasets are not supported 
-    # by this code at this time, so a placeholder value (0) is used.
+    """
+    get the dimension offset between each axis of the dataset, i.e. the relative spacing (dx, dy, dz) if any of the axes
+    are staggered. e.g. np.array([0, 0, -1.0]) for the z-axis 'energy' variable of the 'sabl2048high' dataset is offset from the 
+    x- and y-axes by +dz (so we have go down by 1 dz when converting between the points domain and grid indices). fraction and integer
+    multiples of the spacing are specified for accuracy in the calculation before multiplying by the spacing.
+    """
     return {
-        'isotropic1024coarse': defaultdict(lambda: 0),
-        'isotropic1024fine': defaultdict(lambda: 0),
-        'isotropic4096': defaultdict(lambda: 0),
-        'isotropic8192': defaultdict(lambda: 0),
+        'isotropic1024coarse': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic1024fine': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic4096': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic8192': defaultdict(lambda: np.array([0, 0, 0])),
         'sabl2048low': defaultdict(lambda: np.array([0, 0, -0.5]), {'energy': np.array([0, 0, -1.0]), 'velocity_uv': np.array([0, 0, -0.5]), 'velocity_w': np.array([0, 0, -1.0])}),
         'sabl2048high': defaultdict(lambda: np.array([0, 0, -0.5]), {'energy': np.array([0, 0, -1.0]), 'velocity_uv': np.array([0, 0, -0.5]), 'velocity_w': np.array([0, 0, -1.0])}),
-        'rotstrat4096': defaultdict(lambda: 0),
-        'mhd1024': defaultdict(lambda: 0),
-        'mixing': defaultdict(lambda: 0),
-        'channel': defaultdict(lambda: 0),
-        'channel5200': defaultdict(lambda: 0),
-        'transition_bl': defaultdict(lambda: 0)
+        'rotstrat4096': defaultdict(lambda: np.array([0, 0, 0])),
+        'mhd1024': defaultdict(lambda: np.array([0, 0, 0])),
+        'mixing': defaultdict(lambda: np.array([0, 0, 0])),
+        'channel': defaultdict(lambda: np.array([0, 0, 0])),
+        'channel5200': defaultdict(lambda: np.array([0, 0, 0])),
+        'transition_bl': defaultdict(lambda: np.array([0, 0, 0]))
+    }[dataset_title][variable]
+
+def get_dataset_coor_offsets(dataset_title, variable):
+    """
+    get the dataset *coor offsets. values are the axes coordinate offsets from 0.
+    """
+    return {
+        'isotropic1024coarse': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic1024fine': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic4096': defaultdict(lambda: np.array([0, 0, 0])),
+        'isotropic8192': defaultdict(lambda: np.array([0, 0, 0])),
+        'sabl2048low': defaultdict(lambda: np.array([0, 0, 0.1953125 / 2]),
+                                   {'energy': np.array([0, 0, 0.1953125]), 'velocity_uv': np.array([0, 0, 0.1953125 / 2]), 'velocity_w': np.array([0, 0, 0.1953125])}),
+        'sabl2048high': defaultdict(lambda: np.array([0, 0, 0.1953125 / 2]),
+                                    {'energy': np.array([0, 0, 0.1953125]), 'velocity_uv': np.array([0, 0, 0.1953125 / 2]), 'velocity_w': np.array([0, 0, 0.1953125])}),
+        'rotstrat4096': defaultdict(lambda: np.array([0, 0, 0])),
+        'mhd1024': defaultdict(lambda: np.array([0, 0, 0])),
+        'mixing': defaultdict(lambda: np.array([0, 0, 0])),
+        'channel': defaultdict(lambda: np.array([0, 0, 0])),
+        'channel5200': defaultdict(lambda: np.array([0, 0, 0])),
+        'transition_bl': defaultdict(lambda: np.array([30.2185, 0, 0]))
     }[dataset_title][variable]
 
 def get_sabl_points_map(cube, points):
@@ -325,7 +399,7 @@ def get_sabl_points_map(cube, points):
 
     # dataset paramters.
     specified_sint = cube.sint
-    dataset_dx = cube.dx
+    dataset_dz = cube.dz
     dataset_var_name = cube.var_name
 
     # constants.
@@ -345,7 +419,7 @@ def get_sabl_points_map(cube, points):
                                           'fd4lag4_g': ['m1q4_g', 'linear_g'],
                                           'fd4lag4_l': ['fd6noint_l', 'fd4noint_l', 'linear_l']}
 
-    # map the minium z-axis index (dx multiplier) for each variable and interpolation method. default values correspond to 'energy' and 'velocity' variables.
+    # map the minium z-axis index (dz multiplier) for each variable and interpolation method. default values correspond to 'energy' and 'velocity' variables.
     # the (w) component of 'velocity' is more restrictive on the interpolation method at the lower z-axis boundary. 'linear' index is the 0 index because
     # the comparison is >=, not >. the points are constrained by the check_points function such that user cannot specify points outside the domain.
     interpolation_min_index_map = defaultdict(lambda: {'lag8': 4, 'lag6': 3, 'lag4': 2,
@@ -384,7 +458,7 @@ def get_sabl_points_map(cube, points):
                                                       }
                                              )
 
-    # map the minium z-axis index (dx multiplier) for each variable and interpolation method. default values correspond to 'temperature', 'pressure', and 'velocity' variables.
+    # map the minium z-axis index (dz multiplier) for each variable and interpolation method. default values correspond to 'temperature', 'pressure', and 'velocity' variables.
     # the (u, v) components of 'velocity' are more restrictive on the interpolation method at the upper z-axis boundary. 'linear' index is the domain (2048) + 1 because
     # the comparison is <, not <=. the points are constrained by the check_points function such that user cannot specify points outside the domain.
     interpolation_max_index_map = defaultdict(lambda: {'lag8': 2044.5, 'lag6': 2045.5, 'lag4': 2046.5,
@@ -413,8 +487,8 @@ def get_sabl_points_map(cube, points):
                                              )
 
     # minimum and maximum positions along the z-axis for the user-specified sint method.
-    min_z = interpolation_min_index_map[dataset_var_name][specified_sint] * dataset_dx
-    max_z = interpolation_max_index_map[dataset_var_name][specified_sint] * dataset_dx
+    min_z = interpolation_min_index_map[dataset_var_name][specified_sint] * dataset_dz
+    max_z = interpolation_max_index_map[dataset_var_name][specified_sint] * dataset_dz
 
     # determine the points that are between min_z and max_z.
     sint_points = np.logical_and(points[:, 2] >= min_z, points[:, 2] < max_z)
@@ -438,8 +512,8 @@ def get_sabl_points_map(cube, points):
     while mapped_points_count < points_len:
         step_down_method_sint = step_down_method_sints[sint_counter]
 
-        step_down_min_z = interpolation_min_index_map[dataset_var_name][step_down_method_sint] * dataset_dx
-        step_down_max_z = interpolation_max_index_map[dataset_var_name][step_down_method_sint] * dataset_dx
+        step_down_min_z = interpolation_min_index_map[dataset_var_name][step_down_method_sint] * dataset_dz
+        step_down_max_z = interpolation_max_index_map[dataset_var_name][step_down_method_sint] * dataset_dz
 
         # determine the points that are between step_down_min_z and step_down_max_z, but also were not assigned to a larger bucket interpolation method.
         sint_points = np.logical_and(np.logical_and(points[:, 2] >= step_down_min_z, points[:, 2] < step_down_max_z),
@@ -497,15 +571,15 @@ def get_time_index_shift(dataset_title, query_type):
     return {
         'isotropic1024coarse': defaultdict(lambda: -1, {'getdata': 0}),
         'isotropic1024fine': defaultdict(lambda: -1, {'getdata': 0}),
-        'isotropic4096': defaultdict(lambda: -1),
+        'isotropic4096': defaultdict(lambda: -1, {'getdata': 0}),
         'isotropic8192': defaultdict(lambda: -1, {'getdata': 0}),
         'sabl2048low': defaultdict(lambda: -1, {'getdata': 0}),
         'sabl2048high': defaultdict(lambda: 0, {'getdata': 1}),
-        'rotstrat4096': defaultdict(lambda: -1),
+        'rotstrat4096': defaultdict(lambda: -1, {'getdata': 0}),
         'mhd1024': defaultdict(lambda: -1, {'getdata': 0}),
         'mixing': defaultdict(lambda: -1, {'getdata': 0}),
         'channel': defaultdict(lambda: -1, {'getdata': 0}),
-        'channel5200': defaultdict(lambda: -1),
+        'channel5200': defaultdict(lambda: -1, {'getdata': 0}),
         'transition_bl': defaultdict(lambda: -1, {'getdata': 0})
     }[dataset_title][query_type]
 
@@ -541,6 +615,10 @@ def get_giverny_datasets():
 def get_manual_sql_metadata_datasets():
     # get the dataset titles for which the sql metadata table needs to be manually created.
     return ['sabl2048low', 'sabl2048high']
+
+def get_irregular_mesh_ygrid_datasets():
+    # get the dataset titles that are irregular mesh y-grids (nonconstant dy).
+    return['channel', 'channel5200', 'transition_bl']
 
 def get_filename_prefix(dataset_title):
     # get the common filename prefix for each database file in the dataset. some filename prefixes are placeholders because they are processed
@@ -742,19 +820,34 @@ def get_axes_ranges_num_datapoints(axes_ranges):
     # number of datapoints along each axis.
     return axes_ranges[:, 1] - axes_ranges[:, 0] + 1
 
-def convert_to_0_based_ranges(axes_ranges, cube_resolution):
+def convert_to_0_based_ranges(dataset_title, axes_ranges):
+    """
+    convert the axes ranges to 0-based indices (giverny datasets) from 1-based user input. indices are left as 1-based for pyJHTDB datasets.
+        - truncates the axes ranges if they are longer than the cube size along each axis dimension. this is done so that each point is 
+          only read from a data file once. periodic axes ranges that are specified longer than the axis dimension will be tiled after reading
+          from the files.
+    """
+    cube_resolution = get_dataset_resolution(dataset_title)
+
     # calculate the number of datapoints along each axis range.
     axes_lengths = get_axes_ranges_num_datapoints(axes_ranges)
+    # make a copy of axes_ranges for adjusting the axes ranges as needed to simplify the queries.
+    converted_axes_ranges = np.array(axes_ranges)
     
-    # convert the 1-based axes ranges to 0-based axes ranges.
-    axes_ranges = axes_ranges - 1
+    # retrieve the list of datasets processed by the giverny code.
+    giverny_datasets = get_giverny_datasets()
     
+    # adjust the axes ranges to 0-based indices for datasets processed by giverny. the pyJHTDB code handles this for datasets it processes.
+    if dataset_title in giverny_datasets:
+        # convert the 1-based axes ranges to 0-based axes ranges.
+        converted_axes_ranges = converted_axes_ranges - 1
+
     # truncate the axes range if necessary.
-    for axis_index, axis_range in enumerate(axes_ranges):
-        if axes_lengths[axis_index] > cube_resolution:
-            axes_ranges[axis_index, 1] = axes_ranges[axis_index, 0] + cube_resolution - 1
+    for axis_index in range(len(converted_axes_ranges)):
+        if axes_lengths[axis_index] > cube_resolution[axis_index]:
+            converted_axes_ranges[axis_index, 1] = converted_axes_ranges[axis_index, 0] + cube_resolution[axis_index] - 1
     
-    return axes_ranges
+    return converted_axes_ranges
     
 """
 output folder gizmos.
@@ -770,7 +863,7 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
     """
     write the interpolation results to a tsv file.
     """
-    print('Writing the interpolation .tsv file...')
+    print('writing the interpolation .tsv file...')
     sys.stdout.flush()
 
     # create the output folder if it does not already exist.
@@ -793,7 +886,7 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
         # write output_data to the tsv file.
         writer.writerows(output_data)
 
-    print('\nFile written successfully.')
+    print('\nfile written successfully.')
     print('-----')
     sys.stdout.flush()
             
@@ -801,7 +894,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, axes_ranges, output_filen
     """
     write the hdf5 and xmf files for the getCutout result.
     """
-    print('Writing the cutout .h5 and .xmf files...')
+    print('writing the cutout .h5 and .xmf files...')
     sys.stdout.flush()
     
     # write output_data to a hdf5 file.
@@ -822,37 +915,70 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, axes_ranges, output_filen
     # get the output timepoint.
     xmf_timepoint = cube.timepoint_original
     
-    output_str = f"""<?xml version=\"1.0\" ?>
-    <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
-    <Xdmf Version=\"2.0\">
-      <Domain>
-          <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
-            <Time Value=\"{xmf_timepoint}\"/>
-            <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
-            <Geometry GeometryType=\"VXVYVZ\">
-              <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                {output_filename}.h5:/xcoor
-              </DataItem>
-              <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                {output_filename}.h5:/ycoor
-              </DataItem>
-              <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                {output_filename}.h5:/zcoor
-              </DataItem>
-            </Geometry>
-            <Attribute Name=\"{h5_var_name}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
-              <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                {output_filename}.h5:/{h5_dataset_name}
-              </DataItem>
-            </Attribute>
-          </Grid>
-      </Domain>
-    </Xdmf>"""
+    if cube.dataset_title in ['sabl2048low', 'sabl2048high'] and cube.var_name == 'velocity':
+        # split up "zcoor" into "zcoor_uv" and "zcoor_w" for the "velocity" variable of the "sabl" datasets.
+        output_str = f"""<?xml version=\"1.0\" ?>
+        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+        <Xdmf Version=\"2.0\">
+          <Domain>
+              <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+                <Time Value=\"{xmf_timepoint}\"/>
+                <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+                <Geometry GeometryType=\"VXVYVZ\">
+                  <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/xcoor
+                  </DataItem>
+                  <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/ycoor
+                  </DataItem>
+                  <DataItem Name=\"Zcoor_uv\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/zcoor_uv
+                  </DataItem>
+                  <DataItem Name=\"Zcoor_w\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/zcoor_w
+                  </DataItem>
+                </Geometry>
+                <Attribute Name=\"{h5_var_name}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+                  <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/{h5_dataset_name}
+                  </DataItem>
+                </Attribute>
+              </Grid>
+          </Domain>
+        </Xdmf>"""
+    else:
+        # handle other datasets and variables.
+        output_str = f"""<?xml version=\"1.0\" ?>
+        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+        <Xdmf Version=\"2.0\">
+          <Domain>
+              <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+                <Time Value=\"{xmf_timepoint}\"/>
+                <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+                <Geometry GeometryType=\"VXVYVZ\">
+                  <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/xcoor
+                  </DataItem>
+                  <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/ycoor
+                  </DataItem>
+                  <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/zcoor
+                  </DataItem>
+                </Geometry>
+                <Attribute Name=\"{h5_var_name}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+                  <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+                    {output_filename}.h5:/{h5_dataset_name}
+                  </DataItem>
+                </Attribute>
+              </Grid>
+          </Domain>
+        </Xdmf>"""
 
     with open(cube.output_path.joinpath(output_filename + '.xmf'), 'w') as output_file:
         output_file.write(output_str)
     
-    print('\nFiles written successfully.')
+    print('\nfiles written successfully.')
     print('-----')
     sys.stdout.flush()
 
@@ -864,6 +990,7 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     # dictionaries.
     # -----
     variable = cube.var_name
+    dataset_title = cube.dataset_title
     
     # variable identifier, e.g. "vel" for "velocity".
     variable_id = get_variable_identifier(variable)
@@ -876,7 +1003,7 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     # exception handling.
     # -----
     # check that the user-input x-, y-, and z-axis plot ranges are all specified correctly as [minimum, maximum] integer values.
-    check_axes_ranges(plot_ranges)
+    check_axes_ranges(dataset_title, plot_ranges)
     
     # check that the user specified a valid value index.
     if value_index_original not in value_name_map[variable_id]:
@@ -899,13 +1026,23 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     if np.count_nonzero(num_axes_equal_min_max == True) != 1:
         raise Exception(f'only one axis (x, y, or z) should be specified as a single point, e.g. z_plot_range = [3, 3], to create a contour plot')
         
-    # convert the requested plot ranges to the domain [0, 2 * pi].
+    # datasets that have an irregular y-grid.
+    irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets()
+    
+    # convert the requested plot ranges to the data domain.
     xcoor_values = np.around(np.arange(plot_ranges_min[0] - 1, plot_ranges_max[0], strides[0], dtype = np.float32) * cube.dx, cube.decimals)
-    ycoor_values = np.around(np.arange(plot_ranges_min[1] - 1, plot_ranges_max[1], strides[1], dtype = np.float32) * cube.dx, cube.decimals)
-    zcoor_values = np.around(np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], strides[2], dtype = np.float32) * cube.dx, cube.decimals)
+    xcoor_values += cube.coor_offsets[0]
+    if dataset_title in irregular_ygrid_datasets:
+        # note: this assumes that the y-axis of the irregular grid datasets is non-periodic.
+        ycoor_values = cube.dy[np.arange(plot_ranges_min[1] - 1, plot_ranges_max[1], strides[1])]
+    else:
+        ycoor_values = np.around(np.arange(plot_ranges_min[1] - 1, plot_ranges_max[1], strides[1], dtype = np.float32) * cube.dy, cube.decimals)
+        ycoor_values += cube.coor_offsets[1]
+    zcoor_values = np.around(np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], strides[2], dtype = np.float32) * cube.dz, cube.decimals)
+    zcoor_values += cube.coor_offsets[2]
 
     # generate the plot.
-    print('Generating contour plot...')
+    print('generating contour plot...')
     print('-----')
     sys.stdout.flush()
     
@@ -917,13 +1054,20 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     value_name = value_name_map[variable_id][value_index_original]
     
     # get the formatted dataset title for use in the plot title.
-    output_dataset_title = get_output_title(cube.dataset_title)
+    output_dataset_title = get_output_title(dataset_title)
     
     # specify the subset (or full) axes ranges to use for plotting. cutout_data is of the format [z-range, y-range, x-range, output value index].
-    plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
-                                                   ycoor = ycoor_values, 
-                                                   zcoor = zcoor_values,
-                                                   values = value_index)
+    if dataset_title in ['sabl2048low', 'sabl2048high'] and variable == 'velocity':
+        # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
+        plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
+                                                       ycoor = ycoor_values, 
+                                                       zcoor_uv = zcoor_values,
+                                                       values = value_index)
+    else:
+        plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
+                                                       ycoor = ycoor_values, 
+                                                       zcoor = zcoor_values,
+                                                       values = value_index)
     
     # raise exception if only one point is going to be plotted along more than 1 axis. a contour plot requires more 
     # than 1 point along 2 axes. this check is required in case the user specifies a stride along an axis that 
@@ -931,25 +1075,34 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     if plot_data.shape.count(1) > 1:
         raise Exception('the contour plot could not be created because more than 1 axis only had 1 datapoint')
     
+    # map the axis name ('x', 'y', and 'z') to dx, dy, and dz respectively.
+    axis_index_map = {'x': 0, 'y': 1, 'z': 2}
+    # map the axis variable ('xcoor', 'ycoor', and 'zcoor') to xcoor_values, ycoor_values, and zcoor_values respectively.
+    axis_coor_values_map = {'xcoor': xcoor_values, 'ycoor': ycoor_values, 'zcoor': zcoor_values}
+    # map the axis variable ('xcoor', 'ycoor', and 'zcoor') to the plot ranges along the respective axis.
+    axis_plot_ranges_map = {'xcoor': plot_ranges[0], 'ycoor': plot_ranges[1], 'zcoor': plot_ranges[2]}
+    
     # create the figure.
     fig = plt.figure(figsize = (11, 8.5), dpi = 300)
     fig.set_facecolor('white')
     ax = fig.add_subplot(111)
     cf = plot_data.plot(ax = ax, cmap = colormap, center = False,
                         cbar_kwargs = {'label': None})
+    plt.gca().set_aspect('equal')
 
     # plot labels.
-    # convert the [0, 2 * pi] domain plot label to the integer index in the [1, 8192] domain.
-    original_axis_title = ax.get_title().replace('coor', '').split('=')
+    # convert the data domain plot label to the integer index in the [1, 8192] domain.
+    original_axis_title = ax.get_title().replace('coor', '').replace('_uv', '').split('=')
     plane_axis = original_axis_title[0].strip()
-    plane_point = int(np.round(float(original_axis_title[-1].strip()) / cube.dx)) + 1
+    # plot_ranges_min = plot_ranges_max for plane_axis.
+    plane_point = plot_ranges_min[axis_index_map[plane_axis]]
     axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(cutout_data.attrs['t_start'])
     title_str = f'{output_dataset_title}\n{variable} ({value_name}) contour plot ({axis_title})'
     # get the x-axis and y-axis variable names (e.g. 'x' and 'y') before the axis labels are appended to.
-    x_axis_variable = ax.get_xlabel()
-    y_axis_variable = ax.get_ylabel()
-    x_label = str(x_axis_variable).split('coor')[0].strip()
-    y_label = str(y_axis_variable).split('coor')[0].strip()
+    x_axis_variable = ax.get_xlabel().replace('_uv', '')
+    y_axis_variable = ax.get_ylabel().replace('_uv', '')
+    x_label = x_axis_variable.strip().replace('coor', '')
+    y_label = y_axis_variable.strip().replace('coor', '')
     x_axis_stride = cutout_data.attrs[f'{x_label}_step']
     y_axis_stride = cutout_data.attrs[f'{y_label}_step']
     plt.title(title_str, fontsize = 16, weight = 'bold')
@@ -958,14 +1111,10 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     xlims = ax.get_xlim()
     ylims = ax.get_ylim()
     # adjust the axis ticks to the center of each datapoint.
-    x_ticks = [xlims[0] + ((x_axis_stride * cube.dx) / 2), xlims[1] - ((x_axis_stride * cube.dx) / 2)]
-    y_ticks = [ylims[0] + ((y_axis_stride * cube.dx) / 2), ylims[1] - ((y_axis_stride * cube.dx) / 2)]
-    # axis datapoints.
-    x_axis_points = np.rint(plot_data.coords[x_axis_variable].values / cube.dx) + 1
-    y_axis_points = np.rint(plot_data.coords[y_axis_variable].values / cube.dx) + 1
-    plt.xticks(x_ticks, [int(x_axis_points[0]), int(x_axis_points[-1])])
-    plt.yticks(y_ticks, [int(y_axis_points[0]), int(y_axis_points[-1])])
-    
+    x_ticks = [axis_coor_values_map[x_axis_variable][0], axis_coor_values_map[x_axis_variable][-1]]
+    y_ticks = [axis_coor_values_map[y_axis_variable][0], axis_coor_values_map[y_axis_variable][-1]]
+    plt.xticks(x_ticks, [axis_plot_ranges_map[x_axis_variable][0], axis_plot_ranges_map[x_axis_variable][-1]])
+    plt.yticks(y_ticks, [axis_plot_ranges_map[y_axis_variable][0], axis_plot_ranges_map[y_axis_variable][-1]])
     # save the figure.
     plt.tight_layout()
     plt.savefig(cube.output_path.joinpath(output_filename + '.png'))
@@ -979,7 +1128,7 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     plt.close()
     
     print('-----')
-    print('Contour plot created successfully.')
+    print('contour plot created successfully.')
     sys.stdout.flush()
 
 def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
@@ -997,12 +1146,28 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     if not(np.all(axes_ranges[:, 0] <= endpoints_min) and np.all(endpoints_max <= axes_ranges[:, 1])):
         raise Exception(f'the specified point(s) are not all bounded by the box volume defined by:\n{axes_ranges}')
     
-    # convert the requested plot ranges to 0-based indices and then to their corresponding values in the domain [0, 2 * pi].
+    # datasets that have an irregular y-grid.
+    irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets()
+    
+    # convert the requested plot ranges to 0-based indices and then to their corresponding values in the data domain.
     xcoor_values = np.around(np.arange(endpoints_min[0] - 1, endpoints_max[0], strides[0], dtype = np.float32) * cube.dx, cube.decimals)
-    ycoor_values = np.around(np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1], dtype = np.float32) * cube.dx, cube.decimals)
-    zcoor_values = np.around(np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2], dtype = np.float32) * cube.dx, cube.decimals)
+    xcoor_values += cube.coor_offsets[0]
+    if cube.dataset_title in irregular_ygrid_datasets:
+        # note: this assumes that the y-axis of the irregular grid datasets is non-periodic.
+        ycoor_values = cube.dy[np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1])]
+    else:
+        ycoor_values = np.around(np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1], dtype = np.float32) * cube.dy, cube.decimals)
+        ycoor_values += cube.coor_offsets[1]
+    zcoor_values = np.around(np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2], dtype = np.float32) * cube.dz, cube.decimals)
+    zcoor_values += cube.coor_offsets[2]
 
     # value(s) corresponding to the specified (x, y, z) datapoint(s).
-    return output_data[cube.dataset_name].sel(xcoor = xcoor_values,
-                                              ycoor = ycoor_values,
-                                              zcoor = zcoor_values)
+    if cube.dataset_title in ['sabl2048low', 'sabl2048high'] and cube.var_name == 'velocity':
+        # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
+        return output_data[cube.dataset_name].sel(xcoor = xcoor_values,
+                                                  ycoor = ycoor_values,
+                                                  zcoor_uv = zcoor_values)
+    else:
+        return output_data[cube.dataset_name].sel(xcoor = xcoor_values,
+                                                  ycoor = ycoor_values,
+                                                  zcoor = zcoor_values)

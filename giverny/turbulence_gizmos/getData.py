@@ -10,7 +10,6 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 def getData_process_data(cube, points,
                          var, timepoint, tint, sint,
                          var_original, var_dimension_offsets, timepoint_original, sint_specified, option,
-                         time_step = 1, filter_width = 1,
                          verbose = False):
     # data constants.
     # -----
