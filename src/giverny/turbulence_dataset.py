@@ -14,7 +14,6 @@ import pandas as pd
 import SciServer.CasJobs as cj
 from threading import Thread
 from collections import defaultdict
-from SciServer import Authentication
 from dask.distributed import Client, LocalCluster
 from giverny.turbulence_gizmos.constants import get_constants
 from giverny.turbulence_gizmos.basic_gizmos import *
@@ -63,12 +62,12 @@ class turb_dataset():
         # interpolation lookup table resolution.
         self.lookup_N = 10**5
         
-        # get the SciServer user name.
-        user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
-        
         # set the directory for saving any output files.
         self.output_path = output_path.strip()
         if self.output_path == '':
+            # get the SciServer user name. note: these notebooks are designed for use in a SciServer container.
+            user = os.getcwd().strip().split('/')[5]
+            
             self.output_path = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_output')
         else:
             self.output_path = pathlib.Path(self.output_path)
@@ -86,7 +85,7 @@ class turb_dataset():
         self.pickle_dir_backup = pathlib.Path(f'/home/idies/workspace/turb/data02_01/zarr/turbulence_metadata_back')
         
         # set the local directory for writing the pickled metadata files if the primary and backup directories are inaccessible.
-        self.pickle_dir_local = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_metadata')
+        self.pickle_dir_local = self.output_path.joinpath('turbulence_metadata')
         
         # create the local pickle directory if it does not already exist.
         create_output_folder(self.pickle_dir_local)

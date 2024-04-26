@@ -1,5 +1,8 @@
-turbulence - stable release version 2.1.7 (29 March 2024)
+turbulence - stable release version 2.1.8 (26 April 2024)
 
+version 2.1.8 updates:
+    - removed SciServer.Authentication package.
+    - changed local pickled metadata folder path.
 version 2.1.7 updates:
     - code cleanup.
     - updated linear interpolation function names for the sabl datasets.
