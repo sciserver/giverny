@@ -1,5 +1,9 @@
-turbulence - stable release version 2.1.8 (26 April 2024)
+turbulence - stable release version 2.1.9 (29 April 2024)
 
+version 2.1.9 updates:
+    - reverted dask cluster and client creation, and shutdown, to when a query is made.
+      - preserves compute resources.
+      - fixes issue when running the notebook in a REST container.
 version 2.1.8 updates:
     - removed SciServer.Authentication package.
     - changed local pickled metadata folder path.

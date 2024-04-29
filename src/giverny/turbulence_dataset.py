@@ -27,12 +27,6 @@ finally:
     import morton
 
 class turb_dataset():
-    dask_maximum_processes = None
-    cluster = None
-    client = None
-    last_submit_time = None
-    last_gather_time = None
-    
     def __init__(self, dataset_title = '', output_path = '', auth_token = '', cube_dimensions = 3, rewrite_dataset_metadata = False, rewrite_interpolation_metadata = False):
         """
         initialize the class.
@@ -44,7 +38,7 @@ class turb_dataset():
         check_dataset_title(dataset_title)
         
         # dask maximum processes constant.
-        turb_dataset.dask_maximum_processes = get_constants()['dask_maximum_processes']
+        self.dask_maximum_processes = get_constants()['dask_maximum_processes']
         
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
         self.dataset_title = dataset_title
@@ -91,31 +85,13 @@ class turb_dataset():
         create_output_folder(self.pickle_dir_local)
         
         """
-        read/write metadata files, and initialize the dask cluster and client.
+        read/write metadata files.
         """
         # retrieve the list of datasets processed by the giverny code.
         giverny_datasets = get_giverny_datasets()
         
-        # only read/write the metadata files, and start the dask cluster and client, if the dataset being queried is handled by this code.
+        # only read/write the metadata files if the dataset being queried is handled by this code.
         if self.dataset_title in giverny_datasets:
-            # initialize the dask cluster and client.
-            try:
-                # restart the cluster if the all the workers are not available.
-                if len(turb_dataset.client.scheduler_info()['workers']) != turb_dataset.dask_maximum_processes:
-                    # close the client and cluster gracefully.
-                    turb_dataset.client.close()
-                    turb_dataset.cluster.close()
-                    
-                    # restart the cluster and client.
-                    turb_dataset.initialize_dask()
-                
-                # resets the last submit and gather times.
-                turb_dataset.last_submit_time = time.time()
-                turb_dataset.last_gather_time = time.time()
-            except:
-                # start the cluster and client.
-                turb_dataset.initialize_dask()
-            
             # get a cache of the metadata for the database files.
             self.init_cache(read_metadata = True, rewrite_metadata = rewrite_dataset_metadata)
 
@@ -132,56 +108,6 @@ class turb_dataset():
 
                 # initialize the interpolation cube size lookup table.
                 self.init_interpolation_cube_size_lookup_table(read_metadata = False, rewrite_metadata = rewrite_interpolation_metadata)
-    
-    @classmethod
-    def monitor_cluster_activity(cls):
-        """
-        close the dask cluster if maximum idle time (300 seconds/5 minutes) has been exceeded or if the cluster is still active long after the last query
-        was submitted (7200 seconds/2 hours). a single query should not take 2 hours to run given the limits on the number of points and size of a cutout
-        that can be queried at once. so, if an exception is thrown during processing and the user does not restart the query, then the cluster will shut down
-        after 2 hours to make sure that resources allocated to the dask cluster are freed. the cluster is also shut down if a keyboard interrupt occurs because
-        the workers can become detached from the cluster.
-        """
-        while True:
-            if ((cls.last_gather_time >= cls.last_submit_time) and (time.time() - cls.last_gather_time) > 300) or \
-                ((cls.last_gather_time < cls.last_submit_time) and (time.time() - cls.last_submit_time) > 7200):
-                # close the client and cluster.
-                cls.client.close()
-                cls.cluster.close()
-
-                # reset the last submit and gather times.
-                cls.last_submit_time = time.time()
-                cls.last_gather_time = time.time()
-
-                break
-            
-            # check every 5 seconds.
-            time.sleep(5)
-    
-    @classmethod
-    def initialize_dask(cls):
-        """
-        initialize the dask cluster to be used by all instances.
-        """
-        with warnings.catch_warnings(record = True) as caught_warnings:
-            # spin up local dask cluster and client.
-            cls.cluster = LocalCluster(n_workers = cls.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
-            cls.client = Client(cls.cluster)
-            
-        # iterate over and display any caught warnings.
-        for caught_warning in caught_warnings:
-            if caught_warning.category.__name__ != 'UserWarning' or 'Perhaps you already have a cluster running?' not in str(caught_warning.message):
-                # display the warning messages if they are unexpected. bypasses the warning for a cluster already running in another notebook as they are
-                # automatically shutdown.
-                warnings.showwarning(caught_warning.message, caught_warning.category, caught_warning.filename, caught_warning.lineno)
-        
-        # initialize the last submit and gather times.
-        cls.last_submit_time = time.time()
-        cls.last_gather_time = time.time()
-        
-        # start a thread to monitor if the cluster is idle or running for too long.
-        monitor_thread = Thread(target = cls.monitor_cluster_activity)
-        monitor_thread.start()
     
     """
     initialization functions.
@@ -1367,8 +1293,12 @@ class turb_dataset():
         return result_output_data
     
     def read_database_files_parallel_getcutout(self, user_single_db_boxes):
+        # spin up local dask cluster and client.
+        cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
+        client = Client(cluster)
+        
         # available workers.
-        workers = list(turb_dataset.client.scheduler_info()['workers'])
+        workers = list(client.scheduler_info()['workers'])
         num_workers = len(workers)
         
         result_output_data = []
@@ -1377,14 +1307,18 @@ class turb_dataset():
             worker = workers[disk_index % num_workers]
             
             # read in the voxel data from all of the database files on this disk.
-            result_output_data.append(turb_dataset.client.submit(self.get_points_getcutout, user_single_db_boxes[database_file_disk],
-                                                                 self.getcutout_vars, self.open_file_vars,
-                                                                 workers = worker, pure = False))
+            result_output_data.append(client.submit(self.get_points_getcutout, user_single_db_boxes[database_file_disk],
+                                                    self.getcutout_vars, self.open_file_vars,
+                                                    workers = worker, pure = False))
         
         # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = turb_dataset.client.gather(result_output_data)        
+        result_output_data = client.gather(result_output_data)        
         # flattens result_output_data to match the formatting as when the data is processed sequentially.
         result_output_data = [element for result in result_output_data for element in result]
+        
+        # close the dask client and cluster.
+        client.close()
+        cluster.close()
         
         return result_output_data
     
@@ -1903,8 +1837,12 @@ class turb_dataset():
     def read_visitors_parallel_getdata(self, db_visitor_map, visitor_output_data):
         # visitor data.
         if len(db_visitor_map) != 0:
+            # spin up local dask cluster and client.
+            cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
+            client = Client(cluster)
+            
             # available workers.
-            workers = list(turb_dataset.client.scheduler_info()['workers'])
+            workers = list(client.scheduler_info()['workers'])
             num_workers = len(workers)
             
             # calculate how many chunks to use for splitting up the visitor map data.
@@ -1920,15 +1858,19 @@ class turb_dataset():
             # scatter the chunks to their own worker and submit each chunk for parallel processing.
             for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
                 # submit the chunk for parallel processing.
-                temp_visitor_output_data.append(turb_dataset.client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                                           self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                                           workers = worker, pure = False))
+                temp_visitor_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
+                                                              self.getdata_vars, self.open_file_vars, self.interpolate_vars,
+                                                              workers = worker, pure = False))
                 
             # gather all of the results once they are finished being run in parallel by dask.
-            temp_visitor_output_data = turb_dataset.client.gather(temp_visitor_output_data)
+            temp_visitor_output_data = client.gather(temp_visitor_output_data)
             # flattens result_output_data to match the formatting as when the data is processed sequentially.
             temp_visitor_output_data = [element for result in temp_visitor_output_data for element in result]
 
+            # close the dask client and cluster.
+            client.close()
+            cluster.close()
+            
             # update visitor_output_data.
             visitor_output_data += temp_visitor_output_data
             
@@ -1954,8 +1896,12 @@ class turb_dataset():
         return result_output_data
     
     def read_database_files_parallel_getdata(self, db_native_map, db_visitor_map):
+        # spin up local dask cluster and client.
+        cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
+        client = Client(cluster)
+        
         # available workers.
-        workers = list(turb_dataset.client.scheduler_info()['workers'])
+        workers = list(client.scheduler_info()['workers'])
         num_workers = len(workers)
         
         result_output_data = []
@@ -1967,9 +1913,9 @@ class turb_dataset():
                 worker = workers[disk_index % num_workers] 
                 
                 # submit the data for parallel processing.
-                result_output_data.append(turb_dataset.client.submit(self.get_points_native_getdata, db_native_map[database_file_disk],
-                                                                     self.open_file_vars, self.interpolate_vars,
-                                                                     workers = worker, pure = False))
+                result_output_data.append(client.submit(self.get_points_native_getdata, db_native_map[database_file_disk],
+                                                        self.open_file_vars, self.interpolate_vars,
+                                                        workers = worker, pure = False))
         
         # visitor buckets.
         # -----
@@ -1986,15 +1932,19 @@ class turb_dataset():
             # scatter the chunks to their own worker and submit the chunk for parallel processing.
             for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
                 # submit the data for parallel processing.
-                result_output_data.append(turb_dataset.client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                                     self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                                     workers = worker, pure = False))
+                result_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
+                                                        self.getdata_vars, self.open_file_vars, self.interpolate_vars,
+                                                        workers = worker, pure = False))
         
         # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = turb_dataset.client.gather(result_output_data)        
+        result_output_data = client.gather(result_output_data)        
         # flattens result_output_data to match the formatting as when the data is processed sequentially.
         result_output_data = [element for result in result_output_data for element in result]
-                
+        
+        # close the dask client and cluster.
+        client.close()
+        cluster.close()
+        
         return result_output_data
     
     def get_points_native_getdata(self, db_native_map_data,

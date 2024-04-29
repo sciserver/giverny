@@ -66,7 +66,7 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
     # housekeeping procedures.
     # -----
     var, var_offsets, axes_ranges, timepoint = \
-        getCutout_housekeeping_procedures(query_type, giverny_datasets, dataset_title, axes_ranges_original, strides, var_original, timepoint_original, c)
+        getCutout_housekeeping_procedures(query_type, dataset_title, axes_ranges_original, strides, var_original, timepoint_original)
     
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -84,18 +84,7 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
 
     if requested_data_size > max_cutout_size:
         raise ValueError(f'max cutout size, {max_cutout_size} GB, exceeded. please specify a box with fewer than {max_datapoints + 1:,} data points.')
-    
-    # initialize lJHTDB gSOAP resources and add the user's authorization token.
-    if dataset_title not in giverny_datasets:
-        if auth_token == c['pyJHTDB_testing_token'] and num_datapoints > 4096:
-            turb_email = c['turbulence_email_address']
-            raise Exception(f'too many points requested for the testing authorization token: {num_datapoints} > 4096\n\n' + \
-                            f'an authorization token can be requested by email from {turb_email}\n' + \
-                            f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
         
-        lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
-        lJHTDB.initialize()
-    
     # placeholder values for getData settings.
     spatial_method = 'none'
     spatial_method_specified = 'none'
@@ -104,10 +93,6 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
     cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
-    
-    # update the last submit time.
-    if dataset_title in giverny_datasets:
-        turb_dataset.last_submit_time = time.time()
     
     # -----
     # starting the tracemalloc library.
@@ -134,6 +119,16 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
         """
         get the results for the legacy datasets processed by pyJHTDB.
         """
+        # initialize lJHTDB gSOAP resources and add the user's authorization token.
+        if auth_token == c['pyJHTDB_testing_token'] and num_datapoints > 4096:
+            turb_email = c['turbulence_email_address']
+            raise Exception(f'too many points requested for the testing authorization token: {num_datapoints} > 4096\n\n' + \
+                            f'an authorization token can be requested by email from {turb_email}\n' + \
+                            f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+        
+        lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
+        lJHTDB.initialize()
+        
         # get the field (variable) integer for the legacy datasets.
         field = field_map[var_original]
         
@@ -143,8 +138,7 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
                                      step = np.array([strides[0], strides[1], strides[2]], dtype = int),
                                      filter_width = filter_width)
     
-    # free up gSOAP resources.
-    if dataset_title not in giverny_datasets:
+        # free up gSOAP resources.
         lJHTDB.finalize()
         
     # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
@@ -228,13 +222,9 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    # update the last gather time.
-    if dataset_title in giverny_datasets:
-        turb_dataset.last_gather_time = time.time()
-    
     return result
 
-def getCutout_housekeeping_procedures(query_type, giverny_datasets, dataset_title, axes_ranges_original, strides, var_original, timepoint_original, c):
+def getCutout_housekeeping_procedures(query_type, dataset_title, axes_ranges_original, strides, var_original, timepoint_original):
     """
     complete all of the getCutout housekeeping procedures before data processing.
         - convert 1-based axes ranges to 0-based.
@@ -267,25 +257,6 @@ def getCutout_housekeeping_procedures(query_type, giverny_datasets, dataset_titl
     
     # set var_offsets to var_original for getCutout. 'velocity' is handled differently in getData for the 'sabl2048low' and 'sabl2048high' datasets.
     var_offsets = var_original
-    
-    # initialize the dask cluster and client if there is an issue with the workers, e.g. the workers died after a keyboard interruption.
-    if dataset_title in giverny_datasets:
-        try:
-            # restart the cluster if the all the workers are not available.
-            if len(turb_dataset.client.scheduler_info()['workers']) != c['dask_maximum_processes']:
-                # close the client and cluster gracefully.
-                turb_dataset.client.close()
-                turb_dataset.cluster.close()
-
-                # restart the cluster and client.
-                turb_dataset.initialize_dask()
-                
-            # resets the last submit and gather times.
-            turb_dataset.last_submit_time = time.time()
-            turb_dataset.last_gather_time = time.time()
-        except:
-            # start the cluster and client.
-            turb_dataset.initialize_dask()
     
     return (var, var_offsets, axes_ranges, timepoint)
 
@@ -335,20 +306,9 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     # -----
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
     points, var, var_offsets, timepoint, temporal_method, spatial_method, spatial_method_specified, spatial_operator, datatype = \
-        getData_housekeeping_procedures(query_type, giverny_datasets, cube, dataset_title, points, var_original, timepoint_original,
+        getData_housekeeping_procedures(query_type, dataset_title, points, var_original, timepoint_original,
                                         temporal_method_original, spatial_method_original, spatial_operator_original,
                                         option, c)
-    
-    # initialize lJHTDB gSOAP resources and add the user's authorization token.
-    if dataset_title not in giverny_datasets:
-        if auth_token == c['pyJHTDB_testing_token'] and len(points) > 4096:
-            turb_email = c['turbulence_email_address']
-            raise Exception(f'too many points requested for the testing authorization token: {len(points)} > 4096\n\n' + \
-                            f'an authorization token can be requested by email from {turb_email}\n' + \
-                            f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
-        
-        lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
-        lJHTDB.initialize()
     
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -356,10 +316,6 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
     cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
-    
-    # update the last submit time.
-    if dataset_title in giverny_datasets:
-        turb_dataset.last_submit_time = time.time()
     
     # -----
     # starting the tracemalloc library.
@@ -482,6 +438,16 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
         """
         get the results for the legacy datasets processed by pyJHTDB.
         """
+        # initialize lJHTDB gSOAP resources and add the user's authorization token.
+        if auth_token == c['pyJHTDB_testing_token'] and len(points) > 4096:
+            turb_email = c['turbulence_email_address']
+            raise Exception(f'too many points requested for the testing authorization token: {len(points)} > 4096\n\n' + \
+                            f'an authorization token can be requested by email from {turb_email}\n' + \
+                            f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+        
+        lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
+        lJHTDB.initialize()
+        
         # recast the points array as np.float32 because np.float64 does not work for the legacy datasets.
         points_tmp = points.astype(np.float32)
 
@@ -511,8 +477,7 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
             # get the results.
             result = lJHTDB.getData(timepoint, points_tmp, data_set = dataset_title, sinterp = sint, tinterp = tint, getFunction = f'get{datatype}')
     
-    # free up gSOAP resources.
-    if dataset_title not in giverny_datasets:
+        # free up gSOAP resources.
         lJHTDB.finalize()
     
     # get the output header.
@@ -554,10 +519,6 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    # update the last gather time.
-    if dataset_title in giverny_datasets:
-        turb_dataset.last_gather_time = time.time()
-    
     return result
 
 def pchip(time, times, results, dt):
@@ -583,7 +544,7 @@ def pchip(time, times, results, dt):
     
     return interpolated_results
 
-def getData_housekeeping_procedures(query_type, giverny_datasets, cube, dataset_title, points, var_original, timepoint_original,
+def getData_housekeeping_procedures(query_type, dataset_title, points, var_original, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,
                                     option, c):
     """
@@ -635,24 +596,5 @@ def getData_housekeeping_procedures(query_type, giverny_datasets, cube, dataset_
     
     # define datatype from the datatype_var and datatype_operator variables.
     datatype = f'{datatype_var}{datatype_operator.title()}'
-    
-    # initialize the dask cluster and client if there is an issue with the workers, e.g. the workers died after a keyboard interruption.
-    if dataset_title in giverny_datasets:
-        try:
-            # restart the cluster if the all the workers are not available.
-            if len(turb_dataset.client.scheduler_info()['workers']) != c['dask_maximum_processes']:
-                # close the client and cluster gracefully.
-                turb_dataset.client.close()
-                turb_dataset.cluster.close()
-
-                # restart the cluster and client.
-                turb_dataset.initialize_dask()
-                
-            # resets the last submit and gather times.
-            turb_dataset.last_submit_time = time.time()
-            turb_dataset.last_gather_time = time.time()
-        except:
-            # start the cluster and client.
-            turb_dataset.initialize_dask()
     
     return (points, var, var_offsets, timepoint, temporal_method, spatial_method, spatial_method_specified, spatial_operator, datatype)
