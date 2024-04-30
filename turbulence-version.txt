@@ -1,5 +1,9 @@
-turbulence - stable release version 2.1.9 (29 April 2024)
+turbulence - stable release version 2.1.10 (30 April 2024)
 
+version 2.1.10 updates:
+    - fixed timepoints for the discrete time index datasets processed by pyJHTDB.
+      - isotropic4096, rotstrat4096, and channel5200
+    - simplified dask cluster and client code.
 version 2.1.9 updates:
     - reverted dask cluster and client creation, and shutdown, to when a query is made.
       - preserves compute resources.

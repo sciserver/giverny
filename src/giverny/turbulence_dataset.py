@@ -14,7 +14,7 @@ import pandas as pd
 import SciServer.CasJobs as cj
 from threading import Thread
 from collections import defaultdict
-from dask.distributed import Client, LocalCluster
+from dask.distributed import Client, LocalCluster, wait
 from giverny.turbulence_gizmos.constants import get_constants
 from giverny.turbulence_gizmos.basic_gizmos import *
 
@@ -1294,31 +1294,29 @@ class turb_dataset():
     
     def read_database_files_parallel_getcutout(self, user_single_db_boxes):
         # spin up local dask cluster and client.
-        cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
-        client = Client(cluster)
-        
-        # available workers.
-        workers = list(client.scheduler_info()['workers'])
-        num_workers = len(workers)
-        
-        result_output_data = []
-        # iterate over the hard disk drives that the database files are stored on.
-        for disk_index, database_file_disk in enumerate(user_single_db_boxes):
-            worker = workers[disk_index % num_workers]
-            
-            # read in the voxel data from all of the database files on this disk.
-            result_output_data.append(client.submit(self.get_points_getcutout, user_single_db_boxes[database_file_disk],
-                                                    self.getcutout_vars, self.open_file_vars,
-                                                    workers = worker, pure = False))
-        
-        # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = client.gather(result_output_data)        
-        # flattens result_output_data to match the formatting as when the data is processed sequentially.
-        result_output_data = [element for result in result_output_data for element in result]
-        
-        # close the dask client and cluster.
-        client.close()
-        cluster.close()
+        with LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
+            with Client(cluster) as client:
+                # available workers.
+                workers = list(client.scheduler_info()['workers'])
+                num_workers = len(workers)
+
+                result_output_data = []
+                # iterate over the hard disk drives that the database files are stored on.
+                for disk_index, database_file_disk in enumerate(user_single_db_boxes):
+                    worker = workers[disk_index % num_workers]
+
+                    # read in the voxel data from all of the database files on this disk.
+                    result_output_data.append(client.submit(self.get_points_getcutout, user_single_db_boxes[database_file_disk],
+                                                            self.getcutout_vars, self.open_file_vars,
+                                                            workers = worker, pure = False))
+
+                # wait for the tasks to be completed.
+                wait(result_output_data)
+
+                # gather all of the results once they are finished being run in parallel by dask.
+                result_output_data = client.gather(result_output_data)        
+                # flattens result_output_data to match the formatting as when the data is processed sequentially.
+                result_output_data = [element for result in result_output_data for element in result]
         
         return result_output_data
     
@@ -1838,41 +1836,39 @@ class turb_dataset():
         # visitor data.
         if len(db_visitor_map) != 0:
             # spin up local dask cluster and client.
-            cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
-            client = Client(cluster)
-            
-            # available workers.
-            workers = list(client.scheduler_info()['workers'])
-            num_workers = len(workers)
-            
-            # calculate how many chunks to use for splitting up the visitor map data.
-            num_visitor_points = len(db_visitor_map)
-            num_chunks = num_workers
-            if num_visitor_points < num_workers:
-                num_chunks = num_visitor_points
+            with LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
+                with Client(cluster) as client:
+                    # available workers.
+                    workers = list(client.scheduler_info()['workers'])
+                    num_workers = len(workers)
 
-            # chunk db_visitor_map.
-            db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
+                    # calculate how many chunks to use for splitting up the visitor map data.
+                    num_visitor_points = len(db_visitor_map)
+                    num_chunks = num_workers
+                    if num_visitor_points < num_workers:
+                        num_chunks = num_visitor_points
 
-            temp_visitor_output_data = []
-            # scatter the chunks to their own worker and submit each chunk for parallel processing.
-            for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # submit the chunk for parallel processing.
-                temp_visitor_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                              self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                              workers = worker, pure = False))
-                
-            # gather all of the results once they are finished being run in parallel by dask.
-            temp_visitor_output_data = client.gather(temp_visitor_output_data)
-            # flattens result_output_data to match the formatting as when the data is processed sequentially.
-            temp_visitor_output_data = [element for result in temp_visitor_output_data for element in result]
+                    # chunk db_visitor_map.
+                    db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
 
-            # close the dask client and cluster.
-            client.close()
-            cluster.close()
+                    tmp_visitor_output_data = []
+                    # scatter the chunks to their own worker and submit each chunk for parallel processing.
+                    for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
+                        # submit the chunk for parallel processing.
+                        tmp_visitor_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
+                                                                     self.getdata_vars, self.open_file_vars, self.interpolate_vars,
+                                                                     workers = worker, pure = False))
+
+                    # wait for the tasks to be completed.
+                    wait(tmp_visitor_output_data)
+
+                    # gather all of the results once they are finished being run in parallel by dask.
+                    tmp_visitor_output_data = client.gather(tmp_visitor_output_data)
+                    # flattens result_output_data to match the formatting as when the data is processed sequentially.
+                    tmp_visitor_output_data = [element for result in tmp_visitor_output_data for element in result]
             
             # update visitor_output_data.
-            visitor_output_data += temp_visitor_output_data
+            visitor_output_data += tmp_visitor_output_data
             
     def read_database_files_sequential_getdata(self, db_native_map, db_visitor_map):
         # create empty lists for filling the output data.
@@ -1897,53 +1893,51 @@ class turb_dataset():
     
     def read_database_files_parallel_getdata(self, db_native_map, db_visitor_map):
         # spin up local dask cluster and client.
-        cluster = LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR)
-        client = Client(cluster)
-        
-        # available workers.
-        workers = list(client.scheduler_info()['workers'])
-        num_workers = len(workers)
-        
-        result_output_data = []
-        # native buckets.
-        # -----
-        if len(db_native_map) != 0:
-            # iterate over the db volumes.
-            for disk_index, database_file_disk in enumerate(db_native_map):
-                worker = workers[disk_index % num_workers] 
-                
-                # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_points_native_getdata, db_native_map[database_file_disk],
-                                                        self.open_file_vars, self.interpolate_vars,
-                                                        workers = worker, pure = False))
-        
-        # visitor buckets.
-        # -----
-        if len(db_visitor_map) != 0:
-            # calculate how many chunks to use for splitting up the visitor map data.
-            num_visitor_points = len(db_visitor_map)
-            num_chunks = num_workers
-            if num_visitor_points < num_workers:
-                num_chunks = num_visitor_points
+        with LocalCluster(n_workers = self.dask_maximum_processes, processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
+            with Client(cluster) as client:
+                # available workers.
+                workers = list(client.scheduler_info()['workers'])
+                num_workers = len(workers)
 
-            # chunk db_visitor_map.
-            db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
+                result_output_data = []
+                # native buckets.
+                # -----
+                if len(db_native_map) != 0:
+                    # iterate over the db volumes.
+                    for disk_index, database_file_disk in enumerate(db_native_map):
+                        worker = workers[disk_index % num_workers] 
 
-            # scatter the chunks to their own worker and submit the chunk for parallel processing.
-            for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                        self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                        workers = worker, pure = False))
-        
-        # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = client.gather(result_output_data)        
-        # flattens result_output_data to match the formatting as when the data is processed sequentially.
-        result_output_data = [element for result in result_output_data for element in result]
-        
-        # close the dask client and cluster.
-        client.close()
-        cluster.close()
+                        # submit the data for parallel processing.
+                        result_output_data.append(client.submit(self.get_points_native_getdata, db_native_map[database_file_disk],
+                                                                self.open_file_vars, self.interpolate_vars,
+                                                                workers = worker, pure = False))
+
+                # visitor buckets.
+                # -----
+                if len(db_visitor_map) != 0:
+                    # calculate how many chunks to use for splitting up the visitor map data.
+                    num_visitor_points = len(db_visitor_map)
+                    num_chunks = num_workers
+                    if num_visitor_points < num_workers:
+                        num_chunks = num_visitor_points
+
+                    # chunk db_visitor_map.
+                    db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
+
+                    # scatter the chunks to their own worker and submit the chunk for parallel processing.
+                    for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
+                        # submit the data for parallel processing.
+                        result_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
+                                                                self.getdata_vars, self.open_file_vars, self.interpolate_vars,
+                                                                workers = worker, pure = False))
+
+                # wait for the tasks to be completed.
+                wait(result_output_data)
+
+                # gather all of the results once they are finished being run in parallel by dask.
+                result_output_data = client.gather(result_output_data)        
+                # flattens result_output_data to match the formatting as when the data is processed sequentially.
+                result_output_data = [element for result in result_output_data for element in result]
         
         return result_output_data
     
