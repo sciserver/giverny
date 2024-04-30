@@ -571,18 +571,18 @@ def get_time_index_shift(dataset_title, query_type):
     the pyJHTDB datasets.
     """
     return {
-        'isotropic1024coarse': defaultdict(lambda: -1),
-        'isotropic1024fine': defaultdict(lambda: -1),
-        'isotropic4096': defaultdict(lambda: -1),
+        'isotropic1024coarse': defaultdict(lambda: -1, {'getdata': 0}),
+        'isotropic1024fine': defaultdict(lambda: -1, {'getdata': 0}),
+        'isotropic4096': defaultdict(lambda: -1, {'getdata': -1}),
         'isotropic8192': defaultdict(lambda: -1),
         'sabl2048low': defaultdict(lambda: -1),
         'sabl2048high': defaultdict(lambda: 0, {'getdata': 1}),
-        'rotstrat4096': defaultdict(lambda: -1),
-        'mhd1024': defaultdict(lambda: -1),
-        'mixing': defaultdict(lambda: -1),
-        'channel': defaultdict(lambda: -1),
-        'channel5200': defaultdict(lambda: -1),
-        'transition_bl': defaultdict(lambda: -1)
+        'rotstrat4096': defaultdict(lambda: -1, {'getdata': -1}),
+        'mhd1024': defaultdict(lambda: -1, {'getdata': 0}),
+        'mixing': defaultdict(lambda: -1, {'getdata': 0}),
+        'channel': defaultdict(lambda: -1, {'getdata': 0}),
+        'channel5200': defaultdict(lambda: -1, {'getdata': -1}),
+        'transition_bl': defaultdict(lambda: -1, {'getdata': 0})
     }[dataset_title][query_type]
 
 def get_time_index_from_timepoint(dataset_title, timepoint, tint, query_type):
@@ -593,11 +593,12 @@ def get_time_index_from_timepoint(dataset_title, timepoint, tint, query_type):
     """
     giverny_datasets = get_giverny_datasets()
     
+    # addition to map the time to a correct time index in the filename.
+    time_index_shift = get_time_index_shift(dataset_title, query_type)
+    
     if dataset_title in giverny_datasets:
         # dt between timepoints.
         dt = get_time_dt(dataset_title, query_type)
-        # addition to map the time to a correct time index in the filename.
-        time_index_shift = get_time_index_shift(dataset_title, query_type)
 
         # convert the timepoint to a time index.
         time_index = (timepoint / dt) + time_index_shift
@@ -607,7 +608,11 @@ def get_time_index_from_timepoint(dataset_title, timepoint, tint, query_type):
     else:
         # do not convert the timepoint to a time index for datasets processed by pyJHTDB.
         time_index = timepoint
-    
+        
+        # convert the time index to a 0-based index for the low-resolution pyJHTDB time index datasets.
+        if query_type == 'getdata':
+            time_index += time_index_shift
+        
     return time_index
 
 def get_giverny_datasets():
