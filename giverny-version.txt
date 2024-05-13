@@ -1,5 +1,22 @@
-turbulence - stable release version 2.1.10 (30 April 2024)
+giverny - stable release version 2.2.4 (12 May 2024)
+    - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.2.4 updates:
+    - fixed README SciServer hyperlinks.
+version 2.2.3 updates:
+    - added time series queries as one call to the backend code, rather than separate calls for each
+      timepoint in the series.
+version 2.2.2 updates:
+    - fixed import dependency in turbulence_toolkit.py
+    - moved dask cluster creation to turbulence_toolkit.py to fix bottleneck with pchip interpolation and
+      visitor points.
+    - creation of givernylocal PyPI package.
+version 2.2.1 updates:
+    - creation of giverny PyPI package.
+version 2.1.12 updates:
+    - add package __init__.py files.
+version 2.1.11 updates:
+    - updated giverny package metadata.
 version 2.1.10 updates:
     - fixed timepoints for the discrete time index datasets processed by pyJHTDB.
       - isotropic4096, rotstrat4096, and channel5200

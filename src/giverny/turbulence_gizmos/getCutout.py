@@ -1,3 +1,24 @@
+########################################################################
+#
+#  Copyright 2024 Johns Hopkins University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Contact: turbulence@pha.jhu.edu
+# Website: http://turbulence.pha.jhu.edu/
+#
+########################################################################
+
 import sys
 import math
 import time
@@ -5,7 +26,7 @@ import numpy as np
 from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
 
 def getCutout_process_data(cube, axes_ranges, var, timepoint,
-                           axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original, c,
+                           axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original, c, client,
                            verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -78,7 +99,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
         result_output_data = cube.read_database_files_sequential_getcutout(user_single_db_boxes)
     else:
         # parallel processing.
-        result_output_data = cube.read_database_files_parallel_getcutout(user_single_db_boxes)
+        result_output_data = cube.read_database_files_parallel_getcutout(user_single_db_boxes, client)
     
     # iterate over the results to fill output_data.
     for result in result_output_data:
