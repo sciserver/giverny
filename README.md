@@ -28,7 +28,7 @@ pip install givernylocal
 ```
 If you're running unix (i.e. some MacOS or GNU/Linux variant), you will probably need to have a `sudo` in front of the `pip` command. If you don't have `pip` on your system, it is quite easy to get it following the instructions at [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
-Prerequisites: numpy>=1.23.4, matplotlib>=3.6.2, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, requests>=2.31.0
+Prerequisites: numpy>=1.23.4, matplotlib>=3.6.2, pandas>=1.5.1, xarray>=2022.11.0, requests>=2.31.0
 
 ## Configuration
 
