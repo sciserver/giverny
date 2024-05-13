@@ -8,12 +8,12 @@ Demo notebooks for the SciServer compute environment are provided at the [JHU Tu
 
 To use giverny through Sciserver:
 ```
-Login to [SciServer](http://turbulence.pha.jhu.edu/) (may need to create a new account first).
+Login to [SciServer](https://sciserver.org/) (may need to create a new account first).
 Click on *Compute* and then *Create container* (You could also run jobs in batch mode, by selecting Compute Jobs).
 Type in *Container name*, select *SciServer Essentials (Test)* in *Compute Image*, mark *Turbulence (filedb)* in *Data volumes*, and then click on *Create*.
 Click on the container you just created, then you could start using giverny with Python or IPython Notebook.
 ```
-Please go to [SciServer](http://turbulence.pha.jhu.edu/) for more information on SciServer as well as the help on SciServer.
+Please go to [SciServer](https://sciserver.org/) for more information on SciServer as well as the help on SciServer.
 
 Prerequisites: numpy>=1.23.4, scipy>=1.9.3, sympy>=1.12, h5py>=3.7.0, matplotlib>=3.6.2, wurlitzer>=3.0.3, morton-py>=1.3, dill>=0.3.6, zarr>=2.13.3, 
 dask>=2022.11.0, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, pyJHTDB>=20210108.0, SciServer>=2.1.0
