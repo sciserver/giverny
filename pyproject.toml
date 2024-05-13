@@ -1,15 +1,35 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "giverny"
-version = "0.0.1"
-authors = []
-description = "giverny"
+version = "2.2.3"
+description = "codebase to query the Johns Hopkins Turbulence Database (JHTDB) datasets"
+authors = ["Johns Hopkins Turbulence Database Group"]
+license = "LICENSE.txt"
 readme = "README.md"
-requires-python = ">=3.7"
-classifiers = []
+
+[[tool.poetry.packages]]
+include = "giverny"
+from = "src"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+numpy = ">=1.23.4"
+scipy = ">=1.9.3"
+sympy = ">=1.12"
+h5py = ">=3.7.0"
+matplotlib = ">=3.6.2"
+wurlitzer = ">=3.0.3"
+morton-py = ">=1.3"
+dill = ">=0.3.6"
+zarr = ">=2.13.3"
+dask = ">=2022.11.0"
+pandas = ">=1.5.1"
+xarray = ">=2022.11.0"
+tqdm = ">=4.64.1"
+pyJHTDB = ">=20210108.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [project.urls]
 "Homepage" = "https://github.com/sciserver/turbulence2"

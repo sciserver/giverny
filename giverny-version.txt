@@ -1,0 +1,103 @@
+giverny - stable release version 2.2.3 (12 May 2024)
+    - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
+
+version 2.2.3 updates:
+    - added time series queries as one call to the backend code, rather than separate calls for each
+      timepoint in the series.
+version 2.2.2 updates:
+    - fixed import dependency in turbulence_toolkit.py
+    - moved dask cluster creation to turbulence_toolkit.py to fix bottleneck with pchip interpolation and
+      visitor points.
+    - creation of givernylocal PyPI package.
+version 2.2.1 updates:
+    - creation of giverny PyPI package.
+version 2.1.12 updates:
+    - add package __init__.py files.
+version 2.1.11 updates:
+    - updated giverny package metadata.
+version 2.1.10 updates:
+    - fixed timepoints for the discrete time index datasets processed by pyJHTDB.
+      - isotropic4096, rotstrat4096, and channel5200
+    - simplified dask cluster and client code.
+version 2.1.9 updates:
+    - reverted dask cluster and client creation, and shutdown, to when a query is made.
+      - preserves compute resources.
+      - fixes issue when running the notebook in a REST container.
+version 2.1.8 updates:
+    - removed SciServer.Authentication package.
+    - changed local pickled metadata folder path.
+version 2.1.7 updates:
+    - code cleanup.
+    - updated linear interpolation function names for the sabl datasets.
+version 2.1.6 updates:
+    - simplified error checking for getCutout.
+    - added documentation differentiating time points and snapshot number for different datasets.
+    - changed first "timepoint" to 1 for snapshot number datasets in getData to keep consistent with getCutout.
+    - updated memory limit for the dask localcluster to handle the increased maximum cutout size.
+version 2.1.5 updates:
+    - removed check to shutdown the cluster and client in the dask monitoring function if 1 or more
+      of the workers closes unexpectedly.
+version 2.1.4 updates:
+    - fixed chunk volume calculation in getData pre-processing.
+version 2.1.3 updates:
+    - removed python packages that no longer needed to be imported in some files.
+    - small performance improvement to the getData visitor read function.
+version 2.1.2 updates:
+    - fixed dask localcluster and client to close after 5 minutes of idle time in order to free up
+      allocated compute resources when not in use.
+      - the dask client will stay running up to 2 hours during processing. all queries should finish
+        well under 2 hours, but if an exception occurs during processing then the cluster will automatically
+        close if the python kernel remains alive and no other queries are made within 2 hours.
+version 2.1.1 updates:
+    - built getData and getCutout functions for querying all datasets.
+    - added stable atmospheric boundary layer ("sabl") datasets and z-axis linear step-down interpolation methods
+      to handle them.
+version 1.2.7 updates:
+    - added user interface for choosing how to save output files.
+    - reformatted interpolation/differentiation output to match legacy code.
+    - added automatic metadata file generation.
+    - fixed stale variable states when using a dask cluster for concurrent processing.
+    - simplified example point distributions for interpolation queries.
+    - added documentation to the user-interface.
+version 1.2.6 updates:
+    - added documentation to the user interface.
+    - mapped fully overlapped chunk groups for interpolation buckets together.
+version 1.2.5 updates:
+    - added getGradient, getHessian, and getLaplacian functions.
+    - added .xmf file generation for getCutout.
+version 1.2.4 updates:
+    - simplified the metadata files and switched them to be stored on a fileDB node.
+    - fixed HTML documentation in the notebook.
+version 1.2.3 updates:
+    - removed h5py package.
+    - updated HDF5 output file formatting for getCutout.
+      - updated contour plotting and data retrieval functions compatability with xarray.
+    - updated filepathing to reflect new distribution of iso8192 zarr data on fileDB.
+version 1.2.2 updates:
+    - removed "import mmap".
+version 1.2.1 updates:
+    - converted the notebook to process zarr files instead of binary files.
+    - simplified getCutout, getPressure, and getVelocity functions.
+version 1.1.4 updates:
+    - added 'lag4', 'lag6', 'lag8', 'm1q4', and 'm2q8' interpolation methods.
+version 1.1.3 updates:
+    - code simplifications.
+    - removed worker sorting for dask parallel processing.
+    - updated the pickled file directory to a folder in "scratch".
+version 1.1.2 updates:
+    - implemented memory map for reading the voxels.
+    - removed pre-processing step of grouping morton-adjacent voxels that overlap the user-specified box.
+    - simplified identifying database files the user-specified box is in.
+    - added creating pickle files for the database filepaths and SQL metadata.
+    - adjusted the contour plot axes ticks to be centered for each datapoint.
+    - added load balancing for dask worker assignment.
+    - fully vectorized the reading of the database files.
+version 1.1.1 updates:
+    - converted output_array to xarray.
+    - simplied retrieving values for a datapoint (or range of datapoints) by using xarray's built-in functionality.
+    - added contour plot function.
+    - moved isotropic cube class instantiation out of the backend code.
+    - updated dask backend to be fully automated.
+    - implemented improved vectorization.
+    - added stride method.
+    

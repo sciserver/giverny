@@ -26,7 +26,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from giverny.turbulence_gizmos.variable_dy_grid_ys import *
+from givernylocal.turbulence_gizmos.variable_dy_grid_ys import *
 
 """
 user-input checking gizmos.

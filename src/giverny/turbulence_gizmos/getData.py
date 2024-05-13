@@ -1,3 +1,24 @@
+########################################################################
+#
+#  Copyright 2024 Johns Hopkins University
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Contact: turbulence@pha.jhu.edu
+# Website: http://turbulence.pha.jhu.edu/
+#
+########################################################################
+
 import sys
 import math
 import time
@@ -6,7 +27,7 @@ from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
 
 def getData_process_data(cube, points,
                          var, timepoint, tint, sint,
-                         var_original, var_dimension_offsets, timepoint_original, sint_specified, option, c,
+                         var_original, var_dimension_offsets, timepoint_original, sint_specified, option, c, client,
                          verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -54,10 +75,10 @@ def getData_process_data(cube, points,
     # determines if the database files will be read sequentially with base python, or in parallel with dask.
     if len(db_native_map) == 1:
         # sequential processing.
-        result_output_data = cube.read_database_files_sequential_getdata(db_native_map, db_visitor_map)
+        result_output_data = cube.read_database_files_sequential_getdata(db_native_map, db_visitor_map, client)
     else:
         # parallel processing.
-        result_output_data = cube.read_database_files_parallel_getdata(db_native_map, db_visitor_map)
+        result_output_data = cube.read_database_files_parallel_getdata(db_native_map, db_visitor_map, client)
     
     # iterate over the results to fill output_data.
     output_data = []
