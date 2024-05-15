@@ -114,7 +114,7 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
     spatial_method = 'none'
     spatial_method_specified = 'none'
     temporal_method = 'none'
-    option = ['none', 'none']
+    option = [-999.9, -999.9]
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
     cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
@@ -289,7 +289,7 @@ def getCutout_housekeeping_procedures(query_type, dataset_title, axes_ranges_ori
     return (var, var_offsets, axes_ranges, timepoint)
 
 def getData(cube, var_original, timepoint_original_notebook, temporal_method_original, spatial_method_original, spatial_operator_original, points,
-            option = ['none', 'none'],
+            option = [-999.9, -999.9],
             trace_memory = False, verbose = True):
     """
     interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
@@ -354,9 +354,18 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
     
     # default timepoint range which only queries the first timepoint for non-'position' variables and non-time series queries.
     timepoint_range = np.arange(timepoint_original_notebook, timepoint_original_notebook + 1, 2)
-    if option != ['none', 'none'] and var_original != 'position':
+    if var_original != 'position' and option != [-999.9, -999.9]:
         # timepoint range for the 'position' variable and time series queries.
         timepoint_range = np.arange(timepoint_original_notebook, timepoint_end, delta_t)
+        
+        # add in the last timepoint if the final timepoint in the range is delta_t less than timepoint_end. np.arange is not good at handling
+        # floating point step sizes.
+        if math.isclose(timepoint_range[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
+            timepoint_range = np.append(timepoint_range, timepoint_end)
+        
+    # only print the progress bar if verbose output.
+    if verbose:
+        timepoint_range = tqdm(timepoint_range, desc = f'timepoints completed (n = {len(timepoint_range)}) ')
     
     # -----
     # starting the tracemalloc library.
@@ -375,7 +384,7 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         # spin up local dask cluster and client.
         with LocalCluster(n_workers = c['dask_maximum_processes'], processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
             with Client(cluster) as client:
-                for timepoint_original in tqdm(timepoint_range, desc = f'timepoints completed (n = {len(timepoint_range)}) '):
+                for timepoint_original in timepoint_range:
                     # check that the user-input timepoint is a valid timepoint for the dataset.
                     check_timepoint(timepoint_original, dataset_title, query_type)
                     # convert the original input timepoint to the correct time index.
@@ -512,7 +521,7 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         # recast the points array as np.float32 because np.float64 does not work for the legacy datasets.
         points_tmp = points.astype(np.float32)
 
-        for timepoint_original in tqdm(timepoint_range, desc = f'timepoints completed (n = {len(timepoint_range)}) '):
+        for timepoint_original in timepoint_range:
             # check that the user-input timepoint is a valid timepoint for the dataset.
             check_timepoint(timepoint_original, dataset_title, query_type)
             # convert the original input timepoint to the correct time index.
@@ -640,7 +649,7 @@ def getData_housekeeping_procedures(query_type, dataset_title, points, var_origi
     # check that the user-input temporal interpolation (temporal_method) is a valid temporal interpolation method.
     check_temporal_interpolation(dataset_title, var_original, temporal_method)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
-    if var_original == 'position' or option != ['none', 'none']:
+    if var_original == 'position' or option != [-999.9, -999.9]:
         check_option_parameter(option, dataset_title, timepoint_original)
         
         # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
