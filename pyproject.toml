@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "giverny"
-version = "2.2.5"
+version = "2.2.6"
 description = "codebase to query the Johns Hopkins Turbulence Database (JHTDB) datasets"
 authors = ["Johns Hopkins Turbulence Database Group"]
 license = "LICENSE.txt"
@@ -21,7 +21,9 @@ wurlitzer = ">=3.0.3"
 morton-py = ">=1.3"
 dill = ">=0.3.6"
 zarr = ">=2.13.3"
-dask = ">=2022.11.0"
+bokeh = "2.4.3"
+dask = ">=2024.5.0"
+distributed = ">=2024.5.0"
 pandas = ">=1.5.1"
 xarray = ">=2022.11.0"
 tqdm = ">=4.64.1"

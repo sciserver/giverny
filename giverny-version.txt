@@ -1,6 +1,10 @@
-giverny - stable release version 2.2.5 (13 May 2024)
+giverny - stable release version 2.2.6 (15 May 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.2.6 updates:
+    - fixed package dependency installations.
+    - updated time series to include timepoint_end if delta_t lands on it.
+    - changed default 'option' parameter placeholder values.
 version 2.2.5 updates:
     - removed tqdm from the givernylocal package dependency list in the README.
 version 2.2.4 updates:

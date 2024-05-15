@@ -39,7 +39,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     sint = 'none'
     sint_specified = 'none'
     tint = 'none'
-    option = ['none', 'none']
+    option = [-999.9, -999.9]
     # initialize cube constants.
     cube.init_constants(query_type, var, var_original, var_dimension_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
 

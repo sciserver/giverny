@@ -264,7 +264,7 @@ def check_option_parameter(option, dataset_title, timepoint_start):
     # list of datasets which are low-resolution and thus the timepoint is specified as a time index for getdata processing.
     time_index_datasets = ['isotropic4096', 'isotropic8192', 'sabl2048low', 'rotstrat4096', 'channel5200']
 
-    if timepoint_end == 'none' or delta_t == 'none':
+    if timepoint_end == -999.9 or delta_t == -999.9:
         focus_text = '\033[43m'
         default_text = '\033[0m'
         raise Exception(f"'timepoint_end' and 'delta_t' must be specified for the 'position' variable and time series queries, and included in the function call, e.g.:\n" \

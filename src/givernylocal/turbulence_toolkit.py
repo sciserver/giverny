@@ -97,7 +97,7 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
     spatial_method = 'none'
     spatial_method_specified = 'none'
     temporal_method = 'none'
-    option = ['none', 'none']
+    option = [-999.9, -999.9]
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
     cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
@@ -269,7 +269,7 @@ def getCutout_housekeeping_procedures(query_type, dataset_title, axes_ranges_ori
     return (var, var_offsets, axes_ranges, timepoint)
 
 def getData(cube, var_original, timepoint_original, temporal_method_original, spatial_method_original, spatial_operator_original, points,
-            option = ['none', 'none'],
+            option = [-999.9, -999.9],
             trace_memory = False, verbose = True):
     """
     interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
@@ -394,7 +394,7 @@ def getData_housekeeping_procedures(query_type, dataset_title, points, var_origi
     # check that the user-input temporal interpolation (temporal_method) is a valid temporal interpolation method.
     check_temporal_interpolation(dataset_title, var_original, temporal_method)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
-    if var_original == 'position' or option != ['none', 'none']:
+    if var_original == 'position' or option != [-999.9, -999.9]:
         check_option_parameter(option, dataset_title, timepoint_original)
         
         # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
