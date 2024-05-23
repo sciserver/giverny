@@ -676,15 +676,15 @@ def get_value_names():
     # map of the value names for each variable, e.g. "ux" is the x-component of the velocity. 'vel': velocity, 'pr': pressure,
     # 'en': energy, 'temp': temperature, 'frc': force, 'mgnt': magnetic field, 'ptnt': vector potential, 'dnst': density, 'pst': position.
     return {
-        'vel':{1:'ux', 2:'uy', 3:'uz'},
-        'pr':{1:'p'},
-        'en':{1:'e'},
-        'temp':{1:'t'},
-        'frc':{1:'fx', 2:'fy', 3:'fz'},
-        'mgnt':{1:'bx', 2:'by', 3:'bz'},
-        'ptnt':{1:'ax', 2:'ay', 3:'az'},
-        'dnst':{1:'rho'},
-        'pst':{1:'x', 2:'y', 3:'z'}
+        'vel':{0:'ux', 1:'uy', 2:'uz'},
+        'pr':{0:'p'},
+        'en':{0:'e'},
+        'temp':{0:'t'},
+        'frc':{0:'fx', 1:'fy', 2:'fz'},
+        'mgnt':{0:'bx', 1:'by', 2:'bz'},
+        'ptnt':{0:'ax', 1:'ay', 2:'az'},
+        'dnst':{0:'rho'},
+        'pst':{0:'x', 1:'y', 2:'z'}
     }
 
 def get_num_values_per_datapoint(variable_id):
@@ -845,10 +845,6 @@ processing gizmos.
 def assemble_axis_data(axes_data):
     # assemble all of the axis data together into one numpy array.
     return np.array(axes_data, dtype = np.ndarray)
-
-def convert_to_0_based_value(value):
-    # convert the 1-based value to a 0-based value.
-    return value - 1
 
 def get_axes_ranges_num_datapoints(axes_ranges):
     # number of datapoints along each axis.
@@ -1016,7 +1012,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, axes_ranges, output_filen
     print('-----')
     sys.stdout.flush()
 
-def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
+def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
                 colormap = 'inferno'):
     """
     create a contour plot from the getCutout output.
@@ -1040,8 +1036,8 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     check_axes_ranges(dataset_title, plot_ranges)
     
     # check that the user specified a valid value index.
-    if value_index_original not in value_name_map[variable_id]:
-        raise Exception(f"{value_index_original} is not a valid value_index: {list(value_name_map[variable_id].keys())}")
+    if value_index not in value_name_map[variable_id]:
+        raise Exception(f"{value_index} is not a valid value_index: {list(value_name_map[variable_id].keys())}")
         
     # transposed minimum and maximum arrays for both plot_ranges and axes_ranges.
     plot_ranges_min = plot_ranges[:, 0]
@@ -1081,11 +1077,8 @@ def contour_plot(cube, value_index_original, cutout_data, plot_ranges, axes_rang
     sys.stdout.flush()
     
     # -----
-    # convert the 1-based value_index_original to a 0-based index for python.
-    value_index = convert_to_0_based_value(value_index_original)
-    
     # name of the value that is being plotted.
-    value_name = value_name_map[variable_id][value_index_original]
+    value_name = value_name_map[variable_id][value_index]
     
     # get the formatted dataset title for use in the plot title.
     output_dataset_title = get_output_title(dataset_title)
