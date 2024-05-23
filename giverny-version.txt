@@ -1,6 +1,8 @@
-giverny - stable release version 2.2.6 (15 May 2024)
+giverny - stable release version 2.2.7 (22 May 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.2.7 updates:
+    - updated getcutout contour plot variable names to match getdata.
 version 2.2.6 updates:
     - fixed package dependency installations.
     - updated time series to include timepoint_end if delta_t lands on it.
