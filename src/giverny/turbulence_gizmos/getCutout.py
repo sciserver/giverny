@@ -26,7 +26,7 @@ import numpy as np
 from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
 
 def getCutout_process_data(cube, axes_ranges, var, timepoint,
-                           axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original, c, client,
+                           axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original, c,
                            verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -61,7 +61,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     
     user_single_db_boxes = cube.map_chunks_getcutout(axes_ranges)
 
-    num_db_files = sum(len(value) for value in user_single_db_boxes.values())
+    num_db_files = sum(len(value) for value in user_single_db_boxes)
     num_db_disks = len(user_single_db_boxes)
     if verbose:
         print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
@@ -89,17 +89,8 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     output_data = np.full((axes_lengths[2], axes_lengths[1], axes_lengths[0], num_values_per_datapoint),
                            fill_value = c['missing_value_placeholder'], dtype = 'f')
     
-    # determines if the database files will be read sequentially with base python, or in parallel with dask.
-    if num_db_disks == 1:
-        # sequential processing.
-        if verbose:
-            print('database files are being read sequentially...')
-            sys.stdout.flush()
-        
-        result_output_data = cube.read_database_files_sequential_getcutout(user_single_db_boxes)
-    else:
-        # parallel processing.
-        result_output_data = cube.read_database_files_parallel_getcutout(user_single_db_boxes, client)
+    # sequential and parallel processing.
+    result_output_data = cube.read_database_files_getcutout(user_single_db_boxes)
     
     # iterate over the results to fill output_data.
     for result in result_output_data:

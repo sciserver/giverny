@@ -27,7 +27,7 @@ from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
 
 def getData_process_data(cube, points,
                          var, timepoint, tint, sint,
-                         var_original, var_dimension_offsets, timepoint_original, sint_specified, option, c, client,
+                         var_original, var_dimension_offsets, timepoint_original, sint_specified, option, c,
                          verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -72,13 +72,8 @@ def getData_process_data(cube, points,
     # calculate how much time it takes to run step 2.
     start_time_step2 = time.perf_counter()
     
-    # determines if the database files will be read sequentially with base python, or in parallel with dask.
-    if len(db_native_map) == 1:
-        # sequential processing.
-        result_output_data = cube.read_database_files_sequential_getdata(db_native_map, db_visitor_map, client)
-    else:
-        # parallel processing.
-        result_output_data = cube.read_database_files_parallel_getdata(db_native_map, db_visitor_map, client)
+    # sequential and parallel processing.
+    result_output_data = cube.read_database_files_getdata(db_native_map, db_visitor_map)
     
     # iterate over the results to fill output_data.
     output_data = []

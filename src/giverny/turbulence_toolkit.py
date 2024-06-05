@@ -22,13 +22,11 @@
 import sys
 import math
 import time
-import logging
 import tracemalloc
 import numpy as np
 import pandas as pd
 import xarray as xr
 from tqdm.auto import tqdm
-from dask.distributed import Client, LocalCluster
 from giverny.turbulence_dataset import *
 from giverny.turbulence_gizmos.basic_gizmos import *
 from giverny.turbulence_gizmos.constants import get_constants
@@ -137,12 +135,9 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
         """
         get the results for the datasets processed by giverny.
         """
-        # spin up local dask cluster and client.
-        with LocalCluster(n_workers = c['dask_maximum_processes'], processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
-            with Client(cluster) as client:
-                # parse the database files, generate the result matrix.
-                result = getCutout_process_data(cube, axes_ranges, var, timepoint,
-                                                axes_ranges_original, strides, var_original, var_offsets, timepoint_original, c, client)
+        # parse the database files, generate the result matrix.
+        result = getCutout_process_data(cube, axes_ranges, var, timepoint,
+                                        axes_ranges_original, strides, var_original, var_offsets, timepoint_original, c)
     else:
         """
         get the results for the legacy datasets processed by pyJHTDB.
@@ -381,129 +376,126 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         """
         get the results for the datasets processed by giverny.
         """
-        # spin up local dask cluster and client.
-        with LocalCluster(n_workers = c['dask_maximum_processes'], processes = True, memory_limit = '8GiB', silence_logs = logging.ERROR) as cluster:
-            with Client(cluster) as client:
-                for timepoint_original in timepoint_range:
-                    # check that the user-input timepoint is a valid timepoint for the dataset.
-                    check_timepoint(timepoint_original, dataset_title, query_type)
-                    # convert the original input timepoint to the correct time index.
-                    timepoint = get_time_index_from_timepoint(dataset_title, timepoint_original, temporal_method, query_type)
+        for timepoint_original in timepoint_range:
+            # check that the user-input timepoint is a valid timepoint for the dataset.
+            check_timepoint(timepoint_original, dataset_title, query_type)
+            # convert the original input timepoint to the correct time index.
+            timepoint = get_time_index_from_timepoint(dataset_title, timepoint_original, temporal_method, query_type)
 
-                    # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
-                    # so that the array is filled with the missing placeholder value (-999.9).
-                    result = np.array([c['missing_value_placeholder']], dtype = 'f')
+            # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+            # so that the array is filled with the missing placeholder value (-999.9).
+            result = np.array([c['missing_value_placeholder']], dtype = 'f')
 
-                    if dataset_title not in ['sabl2048low', 'sabl2048high']:
-                        # get the results.
-                        result = getData_process_data(cube, points, var, timepoint, temporal_method, spatial_method,
-                                                      var_original, var_offsets, timepoint_original, spatial_method_specified, option, c, client)
-                    else:
-                        # separate points into different interpolation methods for the 'sabl2048low' and 'sabl2048high' datasets if they are near the boundary.
-                        points_map, original_indices_map = get_sabl_points_map(cube, points)
-                        # first key in points_map.
-                        first_key = next(iter(points_map))
-                        # last key in points_map.
-                        last_key = next(reversed(points_map))
+            if dataset_title not in ['sabl2048low', 'sabl2048high']:
+                # get the results.
+                result = getData_process_data(cube, points, var, timepoint, temporal_method, spatial_method,
+                                              var_original, var_offsets, timepoint_original, spatial_method_specified, option, c)
+            else:
+                # separate points into different interpolation methods for the 'sabl2048low' and 'sabl2048high' datasets if they are near the boundary.
+                points_map, original_indices_map = get_sabl_points_map(cube, points)
+                # first key in points_map.
+                first_key = next(iter(points_map))
+                # last key in points_map.
+                last_key = next(reversed(points_map))
 
-                        # update all the timepoints that need to be read.
-                        timepoints = [timepoint]
-                        if temporal_method == 'pchip':
-                            floor_timepoint = math.floor(timepoint)
-                            timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+                # update all the timepoints that need to be read.
+                timepoints = [timepoint]
+                if temporal_method == 'pchip':
+                    floor_timepoint = math.floor(timepoint)
+                    timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
 
-                        # results and their corresponding specified order.
-                        result = []
-                        original_points_indices = []
+                # results and their corresponding specified order.
+                result = []
+                original_points_indices = []
 
-                        for timepoint_i, timepoint_tmp in enumerate(timepoints):
-                            # results for each spatial interpolation method at timepoint_tmp.
-                            result_spatial_methods = []
-                            for spatial_method_tmp in points_map:
-                                # changes spatial_method_specified to 'fd4noint_*' from 'fd4lag4_*/m2q8_*/m1q4_*' if the step-down interpolation method is 'sabl_linear_*' since
-                                # only finite differencing is applied in the linear step-down region of the gradient/hessian/laplacian. replace does *not* affect the
-                                # 'm2q8/m1q4' 'field' interpolations.
-                                spatial_method_specified_tmp = spatial_method_specified.replace('fd4lag4_', 'fd4noint_').replace('m2q8_', 'fd4noint_').replace('m1q4_', 'fd4noint_') \
-                                                                                                if 'sabl_linear' in spatial_method_tmp else spatial_method_specified
+                for timepoint_i, timepoint_tmp in enumerate(timepoints):
+                    # results for each spatial interpolation method at timepoint_tmp.
+                    result_spatial_methods = []
+                    for spatial_method_tmp in points_map:
+                        # changes spatial_method_specified to 'fd4noint_*' from 'fd4lag4_*/m2q8_*/m1q4_*' if the step-down interpolation method is 'sabl_linear_*' since
+                        # only finite differencing is applied in the linear step-down region of the gradient/hessian/laplacian. replace does *not* affect the
+                        # 'm2q8/m1q4' 'field' interpolations.
+                        spatial_method_specified_tmp = spatial_method_specified.replace('fd4lag4_', 'fd4noint_').replace('m2q8_', 'fd4noint_').replace('m1q4_', 'fd4noint_') \
+                                                                                        if 'sabl_linear' in spatial_method_tmp else spatial_method_specified
 
-                                # points to be interpolated with this spatial_method_tmp interpolation method.
-                                points_tmp = points_map[spatial_method_tmp]
+                        # points to be interpolated with this spatial_method_tmp interpolation method.
+                        points_tmp = points_map[spatial_method_tmp]
 
-                                # only keep track of the ordering of points for the first timepoint as duplicates of the ordering are not needed.
-                                if timepoint_i == 0:
-                                    # keep track of the ordering of the points specified by the user.
-                                    for original_point_index in original_indices_map[spatial_method_tmp]:
-                                        original_points_indices.append(original_point_index)
+                        # only keep track of the ordering of points for the first timepoint as duplicates of the ordering are not needed.
+                        if timepoint_i == 0:
+                            # keep track of the ordering of the points specified by the user.
+                            for original_point_index in original_indices_map[spatial_method_tmp]:
+                                original_points_indices.append(original_point_index)
 
-                                if var_original == 'velocity':
-                                    # handles the velocity variable for the 'sabl2048low' and 'sabl2048high' datasets. queries getData twice for the (u, v) and (w) components
-                                    # of velocity separately.
-                                    var_offsets_tmp = 'velocity_uv'
-                                    result_tmp = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                                      var_original, var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c, client)
+                        if var_original == 'velocity':
+                            # handles the velocity variable for the 'sabl2048low' and 'sabl2048high' datasets. queries getData twice for the (u, v) and (w) components
+                            # of velocity separately.
+                            var_offsets_tmp = 'velocity_uv'
+                            result_tmp = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
+                                                              var_original, var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c)
 
-                                    var_offsets_tmp = 'velocity_w'
-                                    result_tmp_w = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                                        var_original, var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c, client)
+                            var_offsets_tmp = 'velocity_w'
+                            result_tmp_w = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
+                                                                var_original, var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c)
 
-                                    # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
-                                    if '_g' in spatial_method_specified:
-                                        # handles the velocity gradient differentiations.
-                                        result_tmp[:, 6:] = result_tmp_w[:, 6:]
-                                    elif '_h' in spatial_method_specified:
-                                        # handles the velocity hessian differentiations.
-                                        result_tmp[:, 12:] = result_tmp_w[:, 12:]
-                                    else:
-                                        # handles the velocity field interpolations and laplacian differentiations.
-                                        result_tmp[:, 2] = result_tmp_w[:, 2]
-                                else:
-                                    # handles all non-velocity variables for the 'sabl2048low' and 'sabl2048high' datasets.    
-                                    # get the results.
-                                    result_tmp = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                                      var_original, var_offsets, timepoint_original, spatial_method_specified_tmp, option, c, client)
+                            # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
+                            if '_g' in spatial_method_specified:
+                                # handles the velocity gradient differentiations.
+                                result_tmp[:, 6:] = result_tmp_w[:, 6:]
+                            elif '_h' in spatial_method_specified:
+                                # handles the velocity hessian differentiations.
+                                result_tmp[:, 12:] = result_tmp_w[:, 12:]
+                            else:
+                                # handles the velocity field interpolations and laplacian differentiations.
+                                result_tmp[:, 2] = result_tmp_w[:, 2]
+                        else:
+                            # handles all non-velocity variables for the 'sabl2048low' and 'sabl2048high' datasets.    
+                            # get the results.
+                            result_tmp = getData_process_data(cube, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
+                                                              var_original, var_offsets, timepoint_original, spatial_method_specified_tmp, option, c)
 
-                                # append the result for this interpolation method.
-                                result_spatial_methods.append(result_tmp)
+                        # append the result for this interpolation method.
+                        result_spatial_methods.append(result_tmp)
 
-                            # append the result for timepoint_tmp.
-                            result.append(np.vstack(result_spatial_methods))
+                    # append the result for timepoint_tmp.
+                    result.append(np.vstack(result_spatial_methods))
 
-                        if temporal_method == 'pchip':
-                            # dt between timepoints.
-                            dt = get_time_dt(dataset_title, query_type)
-                            # addition to map the time index back to the real time. 
-                            time_index_shift = get_time_index_shift(dataset_title, query_type)
-                            # convert the timepoints (time indices) back to real time.
-                            times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
+                if temporal_method == 'pchip':
+                    # dt between timepoints.
+                    dt = get_time_dt(dataset_title, query_type)
+                    # addition to map the time index back to the real time. 
+                    time_index_shift = get_time_index_shift(dataset_title, query_type)
+                    # convert the timepoints (time indices) back to real time.
+                    times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
 
-                            # pchip interpolation.
-                            result = pchip(timepoint_original, times, result, dt)
+                    # pchip interpolation.
+                    result = pchip(timepoint_original, times, result, dt)
 
-                        # stack all of the results together.
-                        result = np.vstack(result)
+                # stack all of the results together.
+                result = np.vstack(result)
 
-                        # re-sort result to match the original ordering of points.
-                        original_points_indices, result = zip(*sorted(zip(original_points_indices, result), key = lambda x: x[0]))
+                # re-sort result to match the original ordering of points.
+                original_points_indices, result = zip(*sorted(zip(original_points_indices, result), key = lambda x: x[0]))
 
-                        # convert the result list to a numpy array.
-                        result = np.array(result)
+                # convert the result list to a numpy array.
+                result = np.array(result)
 
-                        if last_key != spatial_method or temporal_method == 'pchip':
-                            # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
-                            # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
-                            # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
-                            cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
-                                                spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
+                if last_key != spatial_method or temporal_method == 'pchip':
+                    # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
+                    # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
+                    # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
+                    cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
+                                        spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
 
-                    # checks to make sure that data was read in for all points.
-                    if c['missing_value_placeholder'] in result or result.shape != (len(points), len(result_header)):
-                        raise Exception(f'result was not filled correctly')
+            # checks to make sure that data was read in for all points.
+            if c['missing_value_placeholder'] in result or result.shape != (len(points), len(result_header)):
+                raise Exception(f'result was not filled correctly')
 
-                    # insert the output header at the beginning of result.
-                    result = pd.DataFrame(data = result, columns = result_header)
+            # insert the output header at the beginning of result.
+            result = pd.DataFrame(data = result, columns = result_header)
 
-                    # append the result into results.
-                    results.append(result)
+            # append the result into results.
+            results.append(result)
     else:
         """
         get the results for the legacy datasets processed by pyJHTDB.

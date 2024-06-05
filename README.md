@@ -16,7 +16,7 @@ Click on the container you just created, then you could start using giverny with
 Please go to [SciServer](https://sciserver.org/) for more information on SciServer as well as the help on SciServer.
 
 Prerequisites: numpy>=1.23.4, scipy>=1.9.3, sympy>=1.12, h5py>=3.7.0, matplotlib>=3.6.2, wurlitzer>=3.0.3, morton-py>=1.3, dill>=0.3.6, zarr>=2.13.3, 
-dask>=2022.11.0, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, pyJHTDB>=20210108.0, SciServer>=2.1.0
+bokeh>=2.4.3, dask>=2022.11.0, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, pyJHTDB>=20210108.0, SciServer>=2.1.0
 
 ## Use giverny on local computers
 

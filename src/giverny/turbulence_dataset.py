@@ -27,15 +27,15 @@ import math
 import time
 import zarr
 import pathlib
-import warnings
 import subprocess
 import numpy as np
 import pandas as pd
+import dask.bag as db
 import SciServer.CasJobs as cj
-from threading import Thread
+from dask import compute
 from collections import defaultdict
-from dask.distributed import wait
 from giverny.turbulence_gizmos.basic_gizmos import *
+from giverny.turbulence_gizmos.constants import get_constants
 
 # installs morton-py if necessary.
 try:
@@ -50,11 +50,11 @@ class turb_dataset():
         """
         initialize the class.
         """
-        # turn off the dask warning for scattering large objects to the workers.
-        warnings.filterwarnings("ignore", message = ".*Large object of size.*detected in task graph")
-        
         # check that dataset_title is a valid dataset title.
         check_dataset_title(dataset_title)
+        
+        # dask maximum processes constant.
+        self.dask_maximum_processes = get_constants()['dask_maximum_processes']
         
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
         self.dataset_title = dataset_title
@@ -1296,40 +1296,24 @@ class turb_dataset():
 
             current_z = max_corner_xyz[2] + cube_ms[2] + 1
     
-        return single_file_boxes
-        
-    def read_database_files_sequential_getcutout(self, user_single_db_boxes):
-        result_output_data = []
-        # iterate over the hard disk drives that the database files are stored on.
-        for database_file_disk in user_single_db_boxes:
-            # read in the voxel data from all of the database files on this disk.
-            result_output_data += self.get_points_getcutout(user_single_db_boxes[database_file_disk],
-                                                            self.getcutout_vars, self.open_file_vars)
-        
-        return result_output_data
+        return list(single_file_boxes.values())
     
-    def read_database_files_parallel_getcutout(self, user_single_db_boxes, client):
-        # available workers.
-        workers = list(client.scheduler_info()['workers'])
-        num_workers = len(workers)
-
-        result_output_data = []
-        # iterate over the hard disk drives that the database files are stored on.
-        for disk_index, database_file_disk in enumerate(user_single_db_boxes):
-            worker = workers[disk_index % num_workers]
-
-            # read in the voxel data from all of the database files on this disk.
-            result_output_data.append(client.submit(self.get_points_getcutout, user_single_db_boxes[database_file_disk],
-                                                    self.getcutout_vars, self.open_file_vars,
-                                                    workers = worker, pure = False))
-
-        # wait for the tasks to be completed.
-        wait(result_output_data)
-
-        # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = client.gather(result_output_data)        
+    def read_database_files_getcutout(self, user_single_db_boxes):
+        # number of chunks to be read.
+        num_chunks = len(user_single_db_boxes)
+        
+        # split user_single_db_boxes up for processing on each dask worker.
+        num_processes = min(self.dask_maximum_processes, num_chunks)
+        chunk_boxes_split = np.array_split(user_single_db_boxes, num_processes)
+        # create a dask bag from chunk_boxes_split.
+        chunk_boxes_split = db.from_sequence(chunk_boxes_split, npartitions = num_processes)
+        # map the dask bag to the get_points_getcutout function.
+        delayed_results = chunk_boxes_split.map(self.get_points_getcutout, self.getcutout_vars, self.open_file_vars).to_delayed()
+        
+        # compute all of the results in parallel with dask.
+        result_output_data = compute(*delayed_results, scheduler = 'threads')
         # flattens result_output_data to match the formatting as when the data is processed sequentially.
-        result_output_data = [element for result in result_output_data for element in result]
+        result_output_data = [val for result in result_output_data for element in result for val in element]
         
         return result_output_data
     
@@ -1344,22 +1328,23 @@ class turb_dataset():
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
         # iterate over the database files to read the data from.
-        for db_file, db_file_backup in user_single_db_boxes_disk_data:
-            zm = self.open_zarr_file(db_file, db_file_backup, open_file_vars)
-            
-            # iterate over the user box ranges corresponding to the morton voxels that will be read from this database file.
-            for user_box_ranges in user_single_db_boxes_disk_data[db_file, db_file_backup]:
-                # retrieve the minimum and maximum (x, y, z) coordinates of the database file box that is going to be read in.
-                min_xyz = [axis_range[0] for axis_range in user_box_ranges]
-                max_xyz = [axis_range[1] for axis_range in user_box_ranges]
-                # adjust the user box ranges to file size indices.
-                user_box_ranges = np.array(user_box_ranges) % file_size
-                
-                # append the cutout into local_output_data.
-                local_output_data.append((zm[user_box_ranges[2][0] : user_box_ranges[2][1] + 1,
-                                             user_box_ranges[1][0] : user_box_ranges[1][1] + 1,
-                                             user_box_ranges[0][0] : user_box_ranges[0][1] + 1],
-                                             min_xyz, max_xyz))
+        for disk_data in user_single_db_boxes_disk_data:
+            for db_file, db_file_backup in disk_data:
+                zm = self.open_zarr_file(db_file, db_file_backup, open_file_vars)
+
+                # iterate over the user box ranges corresponding to the morton voxels that will be read from this database file.
+                for user_box_ranges in disk_data[db_file, db_file_backup]:
+                    # retrieve the minimum and maximum (x, y, z) coordinates of the database file box that is going to be read in.
+                    min_xyz = [axis_range[0] for axis_range in user_box_ranges]
+                    max_xyz = [axis_range[1] for axis_range in user_box_ranges]
+                    # adjust the user box ranges to file size indices.
+                    user_box_ranges = np.array(user_box_ranges) % file_size
+
+                    # append the cutout into local_output_data.
+                    local_output_data.append((zm[user_box_ranges[2][0] : user_box_ranges[2][1] + 1,
+                                                 user_box_ranges[1][0] : user_box_ranges[1][1] + 1,
+                                                 user_box_ranges[0][0] : user_box_ranges[0][1] + 1],
+                                                 min_xyz, max_xyz))
         
         return local_output_data
             
@@ -1566,7 +1551,7 @@ class turb_dataset():
                 # assign to the visitor map.
                 db_visitor_map.append((point, datapoint, center_point, bucket_info, original_point_index))
         
-        return db_native_map, np.array(db_visitor_map, dtype = object)
+        return list(db_native_map.values()), np.array(db_visitor_map, dtype = object)
     
     def subdivide_chunk_group(self, chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, chunk_size_array, empty_array): 
         chunk_mins = []
@@ -1837,119 +1822,48 @@ class turb_dataset():
                          for y in range(chunk_min_y, (chunk_max_y if chunk_min_y <= chunk_max_y else N[1] + chunk_max_y) + 1, chunk_size)
                          for x in range(chunk_min_x, (chunk_max_x if chunk_min_x <= chunk_max_x else N[0] + chunk_max_x) + 1, chunk_size)])
     
-    def read_natives_sequential_getdata(self, db_native_map, native_output_data):
-        # native data.
-        # iterate over the data volumes that the database files are stored on.
-        for database_file_disk in db_native_map:
-            # read in the voxel data from all of the database files on this disk.
-            native_output_data += self.get_points_native_getdata(db_native_map[database_file_disk],
-                                                                 self.open_file_vars, self.interpolate_vars)
-            
-    def read_visitors_parallel_getdata(self, db_visitor_map, visitor_output_data, client):
-        # visitor data.
-        if len(db_visitor_map) != 0:
-            # available workers.
-            workers = list(client.scheduler_info()['workers'])
-            num_workers = len(workers)
-
-            # calculate how many chunks to use for splitting up the visitor map data.
-            num_visitor_points = len(db_visitor_map)
-            num_chunks = num_workers
-            if num_visitor_points < num_workers:
-                num_chunks = num_visitor_points
-
-            # chunk db_visitor_map.
-            db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
-
-            tmp_visitor_output_data = []
-            # scatter the chunks to their own worker and submit each chunk for parallel processing.
-            for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # submit the chunk for parallel processing.
-                tmp_visitor_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                             self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                             workers = worker, pure = False))
-
-            # wait for the tasks to be completed.
-            wait(tmp_visitor_output_data)
-
-            # gather all of the results once they are finished being run in parallel by dask.
-            tmp_visitor_output_data = client.gather(tmp_visitor_output_data)
-            # flattens result_output_data to match the formatting as when the data is processed sequentially.
-            tmp_visitor_output_data = [element for result in tmp_visitor_output_data for element in result]
-            
-            # update visitor_output_data.
-            visitor_output_data += tmp_visitor_output_data
-            
-    def read_database_files_sequential_getdata(self, db_native_map, db_visitor_map, client):
-        # create empty lists for filling the output data.
-        native_output_data = []
-        visitor_output_data = []
-        
-        # create threads for parallel processing of the native and visitor data.
-        native_thread = Thread(target = self.read_natives_sequential_getdata, args = (db_native_map, native_output_data))
-        visitor_thread = Thread(target = self.read_visitors_parallel_getdata, args = (db_visitor_map, visitor_output_data, client))
-            
-        # start the threads.
-        native_thread.start()
-        visitor_thread.start()
-
-        # wait for the threads to complete.
-        native_thread.join()
-        visitor_thread.join()
-            
-        result_output_data = native_output_data + visitor_output_data
-            
-        return result_output_data
-    
-    def read_database_files_parallel_getdata(self, db_native_map, db_visitor_map, client):
-        # available workers.
-        workers = list(client.scheduler_info()['workers'])
-        num_workers = len(workers)
-
-        result_output_data = []
+    def read_database_files_getdata(self, db_native_map, db_visitor_map):
         # native buckets.
         # -----
+        delayed_native_results = []
         if len(db_native_map) != 0:
-            # iterate over the db volumes.
-            for disk_index, database_file_disk in enumerate(db_native_map):
-                worker = workers[disk_index % num_workers] 
+            # number of chunk groups to be read.
+            num_native_chunk_groups = len(db_native_map)
 
-                # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_points_native_getdata, db_native_map[database_file_disk],
-                                                        self.open_file_vars, self.interpolate_vars,
-                                                        workers = worker, pure = False))
-
+            # split db_native_map up for processing on each dask worker.
+            num_native_processes = min(self.dask_maximum_processes, num_native_chunk_groups)
+            chunk_native_map_split = np.array_split(db_native_map, num_native_processes)
+            # create dask bags from chunk_native_map_split and chunk_visitor_map_split.
+            chunk_native_map_split = db.from_sequence(chunk_native_map_split, npartitions = num_native_processes)
+            # map the dask bag to the get_points_native_getdata function.
+            delayed_native_results = chunk_native_map_split.map(self.get_points_native_getdata, self.open_file_vars, self.interpolate_vars).to_delayed()
+        
         # visitor buckets.
         # -----
+        delayed_visitor_results = []
         if len(db_visitor_map) != 0:
-            # calculate how many chunks to use for splitting up the visitor map data.
-            num_visitor_points = len(db_visitor_map)
-            num_chunks = num_workers
-            if num_visitor_points < num_workers:
-                num_chunks = num_visitor_points
+            # number of chunk groups to be read.
+            num_visitor_chunk_groups = len(db_visitor_map)
 
-            # chunk db_visitor_map.
-            db_visitor_map_split = np.array(np.array_split(db_visitor_map, num_chunks), dtype = object)
-
-            # scatter the chunks to their own worker and submit the chunk for parallel processing.
-            for db_visitor_map_chunk, worker in zip(db_visitor_map_split, workers):
-                # submit the data for parallel processing.
-                result_output_data.append(client.submit(self.get_points_visitor_getdata, db_visitor_map_chunk,
-                                                        self.getdata_vars, self.open_file_vars, self.interpolate_vars,
-                                                        workers = worker, pure = False))
-
-        # wait for the tasks to be completed.
-        wait(result_output_data)
-
-        # gather all of the results once they are finished being run in parallel by dask.
-        result_output_data = client.gather(result_output_data)        
+            # split db_visitor_map up for processing on each dask worker.
+            num_visitor_processes = min(self.dask_maximum_processes, num_visitor_chunk_groups)
+            chunk_visitor_map_split = np.array_split(db_visitor_map, num_visitor_processes)
+            # create dask bags from chunk_visitor_map_split and chunk_visitor_map_split.
+            chunk_visitor_map_split = db.from_sequence(chunk_visitor_map_split, npartitions = num_visitor_processes)
+            # map the dask bag to the get_points_visitor_getdata function.
+            delayed_visitor_results = chunk_visitor_map_split.map(self.get_points_visitor_getdata, self.getdata_vars, self.open_file_vars, self.interpolate_vars).to_delayed()
+        
+        delayed_results = delayed_native_results + delayed_visitor_results
+        
+        # compute all of the results in parallel with dask.
+        result_output_data = compute(*delayed_results, scheduler = 'threads')
         # flattens result_output_data to match the formatting as when the data is processed sequentially.
-        result_output_data = [element for result in result_output_data for element in result]
+        result_output_data = [val for result in result_output_data for element in result for val in element]
         
         return result_output_data
     
     def get_points_native_getdata(self, db_native_map_data,
-                                open_file_vars, interpolate_vars):
+                                  open_file_vars, interpolate_vars):
         """
         reads and interpolates the user-requested native points in a single database volume.
         """
@@ -1963,36 +1877,37 @@ class turb_dataset():
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
         # iterate over the database files and morton sub-boxes to read the data from.
-        for db_file, db_file_backup in db_native_map_data:
-            zs = self.open_zarr_file(db_file, db_file_backup, open_file_vars)
-            
-            db_file_data = db_native_map_data[db_file, db_file_backup]
-            for chunk_key in db_file_data:
-                chunk_data = db_file_data[chunk_key]
-                chunk_min_xyz = chunk_data[0][0]
-                chunk_max_xyz = chunk_data[0][1]
+        for disk_data in db_native_map_data:
+            for db_file, db_file_backup in disk_data:
+                zs = self.open_zarr_file(db_file, db_file_backup, open_file_vars)
 
-                # read in the necessary chunks.
-                zm = zs[chunk_data[0][2][2] : chunk_data[0][3][2] + 1,
-                        chunk_data[0][2][1] : chunk_data[0][3][1] + 1,
-                        chunk_data[0][2][0] : chunk_data[0][3][0] + 1]
-                
-                # iterate over the points to interpolate.
-                for point, datapoint, center_point, bucket_info, original_point_index in chunk_data[1:]:
-                    bucket_min_xyz = datapoint - chunk_min_xyz - cube_min_index
-                    bucket_max_xyz = datapoint - chunk_min_xyz + cube_max_index + 1
+                db_file_data = disk_data[db_file, db_file_backup]
+                for chunk_key in db_file_data:
+                    chunk_data = db_file_data[chunk_key]
+                    chunk_min_xyz = chunk_data[0][0]
+                    chunk_max_xyz = chunk_data[0][1]
 
-                    bucket = zm[bucket_min_xyz[2] : bucket_max_xyz[2],
-                                bucket_min_xyz[1] : bucket_max_xyz[1],
-                                bucket_min_xyz[0] : bucket_max_xyz[0]]
-            
-                    # interpolate the points and use a lookup table for faster interpolations.
-                    local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, bucket_info, interpolate_vars))))
+                    # read in the necessary chunks.
+                    zm = zs[chunk_data[0][2][2] : chunk_data[0][3][2] + 1,
+                            chunk_data[0][2][1] : chunk_data[0][3][1] + 1,
+                            chunk_data[0][2][0] : chunk_data[0][3][0] + 1]
+
+                    # iterate over the points to interpolate.
+                    for point, datapoint, center_point, bucket_info, original_point_index in chunk_data[1:]:
+                        bucket_min_xyz = datapoint - chunk_min_xyz - cube_min_index
+                        bucket_max_xyz = datapoint - chunk_min_xyz + cube_max_index + 1
+
+                        bucket = zm[bucket_min_xyz[2] : bucket_max_xyz[2],
+                                    bucket_min_xyz[1] : bucket_max_xyz[1],
+                                    bucket_min_xyz[0] : bucket_max_xyz[0]]
+
+                        # interpolate the points and use a lookup table for faster interpolations.
+                        local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, bucket_info, interpolate_vars))))
         
         return local_output_data
     
     def get_points_visitor_getdata(self, visitor_data,
-                                        getdata_vars, open_file_vars, interpolate_vars):
+                                   getdata_vars, open_file_vars, interpolate_vars):
         """
         reads and interpolates the user-requested visitor points.
         """
@@ -2091,4 +2006,3 @@ class turb_dataset():
             local_output_data.append((point_data[4], (point_data[0], self.spatial_interpolate(point_data[2], bucket, point_data[3], interpolate_vars))))
         
         return local_output_data
-    

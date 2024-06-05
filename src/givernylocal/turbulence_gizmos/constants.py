@@ -40,7 +40,7 @@ def get_constants():
     """
     return {
         'database_file_disk_index':-4,
-        'dask_maximum_processes':4,
+        'dask_maximum_processes':64,
         'missing_value_placeholder':-999.9,
         'bytes_per_datapoint':4,
         'max_cutout_size':16.0,
