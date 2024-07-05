@@ -350,13 +350,15 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
     # default timepoint range which only queries the first timepoint for non-'position' variables and non-time series queries.
     timepoint_range = np.arange(timepoint_original_notebook, timepoint_original_notebook + 1, 2)
     if var_original != 'position' and option != [-999.9, -999.9]:
-        # timepoint range for the 'position' variable and time series queries.
+        # timepoint range for the time series queries.
         timepoint_range = np.arange(timepoint_original_notebook, timepoint_end, delta_t)
         
         # add in the last timepoint if the final timepoint in the range is delta_t less than timepoint_end. np.arange is not good at handling
         # floating point step sizes.
         if math.isclose(timepoint_range[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
             timepoint_range = np.append(timepoint_range, timepoint_end)
+            
+    num_timepoints = len(timepoint_range)
         
     # only print the progress bar if verbose output.
     if verbose:
@@ -480,11 +482,11 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
                 # convert the result list to a numpy array.
                 result = np.array(result)
 
-                if last_key != spatial_method or temporal_method == 'pchip':
+                if last_key != spatial_method or num_timepoints > 1:
                     # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
                     # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
                     # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
-                    cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
+                    cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original_notebook,
                                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
 
             # checks to make sure that data was read in for all points.
@@ -562,9 +564,6 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         # free up gSOAP resources.
         lJHTDB.finalize()
     
-    # concatenate all results into a single pandas dataframe.
-    result = pd.concat(results)
-    
     # -----
     end_time = time.perf_counter()
     
@@ -593,7 +592,7 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    return result
+    return results
 
 def pchip(time, times, results, dt):
     """

@@ -34,6 +34,7 @@ import dask.bag as db
 import SciServer.CasJobs as cj
 from dask import compute
 from collections import defaultdict
+from SciServer import Authentication
 from giverny.turbulence_gizmos.basic_gizmos import *
 from giverny.turbulence_gizmos.constants import get_constants
 
@@ -76,7 +77,7 @@ class turb_dataset():
         self.output_path = output_path.strip()
         if self.output_path == '':
             # get the SciServer user name. note: these notebooks are designed for use in a SciServer container.
-            user = os.getcwd().strip().split('/')[5]
+            user = Authentication.getKeystoneUserWithToken(Authentication.getToken()).userName
             
             self.output_path = pathlib.Path(f'/home/idies/workspace/Temporary/{user}/scratch/turbulence_output')
         else:

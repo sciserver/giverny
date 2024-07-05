@@ -797,7 +797,7 @@ def get_interpolation_tsv_header(dataset_title, variable_name, timepoint, timepo
             'l':'laplacian'
         }[sint_split[-1]]
     
-    if variable_name == 'position':
+    if variable_name == 'position' or (timepoint_end != -999.9 and delta_t != -999.9):
         point_header = f'dataset: {dataset_title}, variable: {variable_name}, timepoint: {timepoint}, timepoint end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
                        f'spatial method: {method}, spatial operator: {operator}\n'
     else:
@@ -899,22 +899,27 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
     # create the output folder if it does not already exist.
     create_output_folder(cube.output_path)
 
-    # concatenate the points and interpolation_data matrices together.
-    output_data = np.concatenate((points, interpolation_data), axis = 1)
-
     # write the tsv file.
     with open(cube.output_path.joinpath(output_filename + '.tsv'), 'w', newline = '') as output_file:
         # output header.
         output_header = [header_row.split('\t') 
                          for header_row in get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t,
                                                                         cube.sint, cube.tint).split('\n')]
-
+        # append the timepoint column header because the output array is now multi-dimensional with time components to handle time series queries.
+        output_header[-1].insert(0, 'timepoint')
+        
         # create a csv writer object with tab delimiter.
         writer = csv.writer(output_file, delimiter = '\t')
         # write the header row to the tsv file.
         writer.writerows(output_header)
-        # write output_data to the tsv file.
-        writer.writerows(output_data)
+        
+        for time_index, interpolation_time_component in enumerate(interpolation_data):
+            # concatenate the points and interpolation_time_component matrices together.
+            output_data = np.concatenate((points, interpolation_time_component), axis = 1)
+            output_data = np.column_stack((np.full(output_data.shape[0], cube.timepoint_original + time_index * cube.delta_t), output_data))
+            
+            # write output_data to the tsv file.
+            writer.writerows(output_data)
 
     print('\nfile written successfully.')
     print('-----')

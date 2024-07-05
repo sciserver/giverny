@@ -1,6 +1,12 @@
-giverny - stable release version 2.3.1 (5 June 2024)
+giverny - stable release version 2.3.2 (10 June 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.3.2 updates:
+    - formatted (x, y, z) values in the time series demo plot to round to 2 decimal places.
+    - changed to getting the SciServer username from the SciServer.Authentication package.
+    - removed givernylocal getCutout function.
+    - updated result from getData to start with an array dimension for each queried timepoint.
+      - added timepoint column to the interpolation tsv file to account for time series queries.
 version 2.3.1 updates:
     - switched from dask futures to dask delayed for parallel queries in getCutout and getData.
 version 2.2.7 updates:

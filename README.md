@@ -4,7 +4,7 @@ Python codebase for querying the [JHU Turbulence Database Cluster](http://turbul
 ## Use giverny through SciServer (RECOMMENDED)
 The SciServer is a cloud-based data-driven cluster, of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to JHTDB through a 10 Gigabit ethernet connection. SciServer provides containers with the "giverny" library pre-installed.
 
-Demo notebooks for the SciServer compute environment are provided at the [JHU Turbulence github](https://github.com/sciserver/turbulence2).
+Demo notebooks for the SciServer compute environment are provided at the [JHU Turbulence github](https://github.com/sciserver/giverny).
 
 To use giverny through Sciserver:
 ```
@@ -20,7 +20,7 @@ bokeh>=2.4.3, dask>=2022.11.0, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, p
 
 ## Use giverny on local computers
 
-Demo notebooks for the local compute environment are provided at the [JHU Turbulence github](https://github.com/sciserver/turbulence2).
+Demo notebooks for the local compute environment are provided at the [JHU Turbulence github](https://github.com/sciserver/giverny).
 
 If you have *pip*, you can simply do this:
 ```
@@ -28,7 +28,7 @@ pip install givernylocal
 ```
 If you're running unix (i.e. some MacOS or GNU/Linux variant), you will probably need to have a `sudo` in front of the `pip` command. If you don't have `pip` on your system, it is quite easy to get it following the instructions at [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
-Prerequisites: numpy>=1.23.4, matplotlib>=3.6.2, pandas>=1.5.1, xarray>=2022.11.0, requests>=2.31.0
+Prerequisites: numpy>=1.23.4, matplotlib>=3.6.2, pandas>=1.5.1, requests>=2.31.0
 
 ## Configuration
 
