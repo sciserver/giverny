@@ -362,7 +362,7 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
         
     # only print the progress bar if verbose output.
     if verbose:
-        timepoint_range = tqdm(timepoint_range, desc = f'timepoints completed (n = {len(timepoint_range)}) ')
+        timepoint_range = tqdm(timepoint_range, desc = f'times completed (n = {len(timepoint_range)}) ')
     
     # -----
     # starting the tracemalloc library.

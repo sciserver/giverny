@@ -43,7 +43,7 @@ def getData_process_data(cube, points,
     # -----
     # mapping the points to database files and sorting them into native and visitor bucket maps.
     if verbose:
-        print('\nStep 1: Sorting the points to native and visitor bucket maps...\n' + '-' * 25)
+        print('\nstep 1: sorting the points to native and visitor bucket maps...\n' + '-' * 25)
         sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
@@ -61,12 +61,12 @@ def getData_process_data(cube, points,
     end_time_step1 = time.perf_counter()
     
     if verbose:
-        print('\nSuccessfully completed.\n' + '-' * 5)
+        print('\nsuccessfully completed.\n' + '-' * 5)
         sys.stdout.flush()
     
     # read and interpolate the data.
     if verbose:
-        print('\nStep 2: Interpolating and differentiating...\n' + '-' * 25)
+        print('\nstep 2: interpolating and differentiating...\n' + '-' * 25)
         sys.stdout.flush()
     
     # calculate how much time it takes to run step 2.
@@ -92,7 +92,7 @@ def getData_process_data(cube, points,
     end_time_step2 = time.perf_counter()
     
     if verbose:
-        print('\nSuccessfully completed.\n' + '-' * 5)
+        print('\nsuccessfully completed.\n' + '-' * 5)
         sys.stdout.flush()
     
     # -----
