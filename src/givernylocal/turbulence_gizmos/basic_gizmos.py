@@ -100,12 +100,12 @@ def check_timepoint(timepoint, dataset_title, query_type):
     if query_type == 'getcutout' or dataset_title in time_index_datasets: 
         # handles checking datasets with time indices.
         if timepoint not in valid_timepoints:
-            raise Exception(f"{timepoint} is not a valid timepoint for '{dataset_title}': must be an integer and in the inclusive range of " +
+            raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be an integer and in the inclusive range of " +
                             f'[{valid_timepoints[0]}, {valid_timepoints[-1]}]')
     else:
         # handles checking datasets with real times.
         if timepoint < valid_timepoints[0] or timepoint > valid_timepoints[1]:
-            raise Exception(f"{timepoint} is not a valid timepoint for '{dataset_title}': must be in the inclusive range of " +
+            raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be in the inclusive range of " +
                             f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
         
     return
@@ -267,17 +267,17 @@ def check_option_parameter(option, dataset_title, timepoint_start):
     if timepoint_end == -999.9 or delta_t == -999.9:
         focus_text = '\033[43m'
         default_text = '\033[0m'
-        raise Exception(f"'timepoint_end' and 'delta_t' must be specified for the 'position' variable and time series queries, and included in the function call, e.g.:\n" \
-                        f"result = getData(dataset, variable, timepoint, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
+        raise Exception(f"'time_end' and 'delta_t' (option = [time_end, delta_t]) must be specified for the 'position' variable and time series queries, e.g.:\n" \
+                        f"result = getData(dataset, variable, time, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
     elif (timepoint_start + delta_t) > timepoint_end:
-        raise Exception(f"'timepoint' + 'delta_t' is greater than 'timepoint_end': {timepoint_start} + {delta_t} = {timepoint_start + delta_t} > {timepoint_end}")
+        raise Exception(f"'time' + 'delta_t' is greater than 'time_end': {timepoint_start} + {delta_t} = {timepoint_start + delta_t} > {timepoint_end}")
     elif dataset_title in time_index_datasets and delta_t != int(delta_t):
         raise Exception(f"delta_t must be an integer for discrete time index datasets:\n{time_index_datasets}")
 
     # # steps_to_keep was removed as a user-modifiable parameter, so this check is no longer needed. it is commented out in case this is changed in the future.
     # if steps_to_keep > ((timepoint_end - timepoint_start) / delta_t):
     #     raise Exception(f"'steps_to_keep' ({steps_to_keep}) is greater than the number of delta_t ({delta_t}) time steps between " +
-    #                     f"timepoint ({timepoint_start}) and timepoint_end ({timepoint_end}): " +
+    #                     f"time ({timepoint_start}) and time_end ({timepoint_end}): " +
     #                     f"{steps_to_keep} > {((timepoint_end - timepoint_start) / delta_t)} = (({timepoint_end} - {timepoint_start}) / {delta_t})")
         
     return
@@ -798,10 +798,10 @@ def get_interpolation_tsv_header(dataset_title, variable_name, timepoint, timepo
         }[sint_split[-1]]
     
     if variable_name == 'position' or (timepoint_end != -999.9 and delta_t != -999.9):
-        point_header = f'dataset: {dataset_title}, variable: {variable_name}, timepoint: {timepoint}, timepoint end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
                        f'spatial method: {method}, spatial operator: {operator}\n'
     else:
-        point_header = f'dataset: {dataset_title}, variable: {variable_name}, timepoint: {timepoint}, temporal method: {tint}, spatial method: {method}, spatial operator: {operator}\n'
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, temporal method: {tint}, spatial method: {method}, spatial operator: {operator}\n'
     point_header += 'x_point\ty_point\tz_point'
     
     return {
@@ -906,7 +906,7 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
                          for header_row in get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t,
                                                                         cube.sint, cube.tint).split('\n')]
         # append the timepoint column header because the output array is now multi-dimensional with time components to handle time series queries.
-        output_header[-1].insert(0, 'timepoint')
+        output_header[-1].insert(0, 'time')
         
         # create a csv writer object with tab delimiter.
         writer = csv.writer(output_file, delimiter = '\t')

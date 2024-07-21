@@ -1,6 +1,11 @@
-giverny - stable release version 2.3.2 (10 June 2024)
+giverny - stable release version 2.3.3 (19 July 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.3.3 updates:
+    - changed 'timepoint' to 'time' in the notebooks.
+    - moved where 'time' is specified by the user in the notebook.
+    - updated notebook filenames.
+    - fixed givernylocal getData output formatting.
 version 2.3.2 updates:
     - formatted (x, y, z) values in the time series demo plot to round to 2 decimal places.
     - changed to getting the SciServer username from the SciServer.Authentication package.

@@ -113,12 +113,18 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     output_header = get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
     result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     
+    # array lengths.
+    points_len = len(points)
+    timepoint_range_len = len(timepoint_range)
+    result_header_len = len(result_header)
+    
     # checks to make sure that data was read in for all points.
-    if c['missing_value_placeholder'] in result or result.shape != (len(points) * len(timepoint_range), len(result_header)):
+    if c['missing_value_placeholder'] in result or result.shape != (points_len * timepoint_range_len, result_header_len):
         raise Exception(f'result was not filled correctly')
     
-    # insert the output header at the beginning of result.
-    result = pd.DataFrame(data = result, columns = result_header)
+    # insert the output header at the beginning of the result for each timepoint.
+    result = result.reshape((timepoint_range_len, points_len, result_header_len))
+    results = [pd.DataFrame(data = result_array, columns = result_header) for result_array in result]
     
     # -----
     end_time = time.perf_counter()
@@ -148,7 +154,7 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    return result
+    return results
 
 def getData_housekeeping_procedures(query_type, dataset_title, points, var_original, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,
