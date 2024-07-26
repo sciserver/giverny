@@ -33,7 +33,7 @@ jsonschema = "^4.23.0"
 jsonschema-specifications = "^2023.12.1"
 nbformat = "^5.10.4"
 referencing = "^0.35.1"
-rdps-py = "^0.19.1"
+rpds-py = "^0.19.1"
 
 [build-system]
 requires = ["poetry-core"]
