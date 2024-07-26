@@ -1,6 +1,8 @@
-giverny - stable release version 2.3.4 (21 July 2024)
+giverny - stable release version 2.3.5 (25 July 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.3.5 updates:
+    - DEMO notebook tweaks.
 version 2.3.4 updates:
     - corrected the time array for time series plotting.
 version 2.3.3 updates:

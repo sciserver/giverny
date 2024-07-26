@@ -1,5 +1,5 @@
 # giverny
-Python codebase for querying the [JHU Turbulence Database Cluster](http://turbulence.pha.jhu.edu/) library.
+Python (version 3.9+) codebase for querying the [JHU Turbulence Database Cluster](http://turbulence.pha.jhu.edu/) library.
 
 ## Use giverny through SciServer (RECOMMENDED)
 The SciServer is a cloud-based data-driven cluster, of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to JHTDB through a 10 Gigabit ethernet connection. SciServer provides containers with the "giverny" library pre-installed.
