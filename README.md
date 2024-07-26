@@ -17,7 +17,7 @@ Please go to [SciServer](https://sciserver.org/) for more information on SciServ
 
 Prerequisites: numpy>=1.23.4, scipy>=1.9.3, sympy>=1.12, h5py>=3.7.0, matplotlib>=3.6.2, wurlitzer>=3.0.3, morton-py>=1.3, dill>=0.3.6, zarr>=2.13.3, 
 bokeh>=2.4.3, dask>=2022.11.0, pandas>=1.5.1, xarray>=2022.11.0, tqdm>=4.64.1, tenacity>=8.1.0, plotly>=5.11.0, attrs>=23.2.0, jsonschema>=4.23.0, jsonschema-specifications>=2023.12.1, 
-nbformat>=5.10.4, referencing>=0.35.1, rpds-py>=0.19.1, pyJHTDB>=20210108.0, SciServer>=2.1.0
+nbformat>=5.10.4, referencing>=0.35.1, rpds-py>=0.19.1, jupyter-core>=5.7.2, pyJHTDB>=20210108.0, SciServer>=2.1.0
 
 ## Use giverny on local computers
 
@@ -30,7 +30,7 @@ pip install givernylocal
 If you're running unix (i.e. some MacOS or GNU/Linux variant), you will probably need to have a `sudo` in front of the `pip` command. If you don't have `pip` on your system, it is quite easy to get it following the instructions at [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
 Prerequisites: numpy>=1.23.4, matplotlib>=3.6.2, pandas>=1.5.1, requests>=2.31.0, tenacity>=8.1.0, plotly>=5.11.0, attrs>=23.2.0, jsonschema>=4.23.0, jsonschema-specifications>=2023.12.1, 
-nbformat>=5.10.4, referencing>=0.35.1, rpds-py>=0.19.1
+nbformat>=5.10.4, referencing>=0.35.1, rpds-py>=0.19.1, jupyter-core>=5.7.2
 
 ## Configuration
 
