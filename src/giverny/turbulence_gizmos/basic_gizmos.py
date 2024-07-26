@@ -25,7 +25,9 @@ import sys
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from collections import defaultdict
+from plotly.subplots import make_subplots
 from giverny.turbulence_gizmos.variable_dy_grid_ys import *
 
 """
