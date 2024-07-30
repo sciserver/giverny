@@ -106,7 +106,8 @@ def getCutout(cube, var_original, timepoint_original, axes_ranges_original, stri
     max_datapoints = int((max_cutout_size * (1024**3)) / (c['bytes_per_datapoint'] * float(num_values_per_datapoint)))
 
     if requested_data_size > max_cutout_size:
-        raise ValueError(f'max cutout size, {max_cutout_size} GB, exceeded. please specify a box with fewer than {max_datapoints + 1:,} data points.')
+        raise ValueError(f'max cutout size, {max_cutout_size} GB, exceeded. please specify a box with fewer than (xe - xs) * (ye - ys) * (ze - zs) = {max_datapoints + 1:,} ' + \
+                         f'data points, regardless of strides.')
         
     # placeholder values for getData settings.
     spatial_method = 'none'
