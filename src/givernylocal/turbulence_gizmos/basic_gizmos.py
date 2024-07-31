@@ -271,7 +271,7 @@ def check_option_parameter(option, dataset_title, timepoint_start):
         default_text = '\033[0m'
         raise Exception(f"'time_end' and 'delta_t' (option = [time_end, delta_t]) must be specified for the 'position' variable and time series queries, e.g.:\n" \
                         f"result = getData(dataset, variable, time, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
-    elif (timepoint_start + delta_t) > timepoint_end:
+    elif (timepoint_start + delta_t) > timepoint_end and not math.isclose(timepoint_start + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
         raise Exception(f"'time' + 'delta_t' is greater than 'time_end': {timepoint_start} + {delta_t} = {timepoint_start + delta_t} > {timepoint_end}")
     elif dataset_title in time_index_datasets and delta_t != int(delta_t):
         raise Exception(f"delta_t must be an integer for discrete time index datasets:\n{time_index_datasets}")
