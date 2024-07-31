@@ -305,7 +305,7 @@ class turb_dataset():
             tmp_cornercode_file_map = {}
 
             cornercode = 0
-            while cornercode < N ** 3:
+            while cornercode < max(N) ** 3:
                 # get the file info for the db file cornercode.
                 f, db_minLim, db_maxLim = self.get_file_for_mortoncode(cornercode)
 
