@@ -526,6 +526,9 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
             # so that the array is filled with the missing placeholder value (-999.9).
             result = np.array([c['missing_value_placeholder']], dtype = 'f')
 
+            # get the spatial interpolation integer for the legacy datasets.
+            sint = spatial_map[spatial_method_original]
+            
             if datatype == 'Position':
                 timepoint_end, delta_t = option
 
@@ -540,13 +543,12 @@ def getData(cube, var_original, timepoint_original_notebook, temporal_method_ori
                 # as t = np.linspace(timepoint, timepoint_end, steps_to_keep + 1).astype(np.float32).
                 result, t = lJHTDB.getPosition(data_set = dataset_title,
                                                starttime = timepoint, endtime = timepoint_end, dt = delta_t,
-                                               point_coords = points_tmp, steps_to_keep = steps_to_keep)
+                                               point_coords = points_tmp, sinterp = sint, steps_to_keep = steps_to_keep)
 
                 # only return the final point positions to keep consistent with the other "get" functions.
                 result = result[-1]
             else:
-                # get the spatial and temporal interpolation integers for the legacy datasets.
-                sint = spatial_map[spatial_method_original]
+                # get the temporal interpolation integer for the legacy datasets.
                 tint = temporal_map[temporal_method_original]
 
                 # get the results.

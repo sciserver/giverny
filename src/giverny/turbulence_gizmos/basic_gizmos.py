@@ -240,18 +240,18 @@ def check_spatial_interpolation(dataset_title, variable, sint, operator):
 def check_temporal_interpolation(dataset_title, variable, tint):
     # check that the interpolation method is a valid method.
     valid_tints = {
-            'isotropic1024coarse': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']}),
-            'isotropic1024fine': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']}),
+            'isotropic1024coarse': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']}),
+            'isotropic1024fine': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']}),
             'isotropic4096': defaultdict(lambda: ['none']),
             'isotropic8192': defaultdict(lambda: ['none']),
             'sabl2048low': defaultdict(lambda: ['none']),
             'sabl2048high': defaultdict(lambda: ['none', 'pchip']),
             'rotstrat4096': defaultdict(lambda: ['none']),
-            'mhd1024': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']}),
-            'mixing': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']}),
-            'channel': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']}),
+            'mhd1024': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']}),
+            'mixing': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']}),
+            'channel': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']}),
             'channel5200': defaultdict(lambda: ['none']),
-            'transition_bl': defaultdict(lambda: ['none', 'pchip'], {'position': ['none']})
+            'transition_bl': defaultdict(lambda: ['none', 'pchip'], {'position': ['pchip']})
         }[dataset_title][variable]
         
     if tint not in valid_tints:

@@ -1,6 +1,9 @@
-giverny - stable release version 2.3.10 (31 July 2024)
+giverny - stable release version 2.3.11 (16 August 2024)
     - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.3.11 updates:
+    - changed "position" variable calls to require "pchip" as the temporal interpolation method.
+    - fixed "position" variable calls to pass the specified spatial interpolation method.
 version 2.3.10 updates:
     - corrected metadata file generation bug.
 version 2.3.9 updates:
