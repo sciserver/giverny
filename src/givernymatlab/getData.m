@@ -44,8 +44,20 @@ function result = reshapeAndPermute(data, var_original, spatial_operator_origina
     switch var_original
         case 'velocity'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'magneticfield'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'vectorpotential'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);   
+         case 'force'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);            
         case 'pressure'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'energy'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'temperature'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);  
+        case 'density'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);            
         case 'position'
             if strcmp(spatial_operator_original, 'field')
                 result = data;
