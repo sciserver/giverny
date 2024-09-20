@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "CoordinateEnum": {
+      "enum": [
+        "t",
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "CoordinateEnum",
+      "type": "string"
+    },
+    "CoordinateValue": {
+      "properties": {
+        "coordinate": {
+          "$ref": "#/$defs/CoordinateEnum"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "coordinate",
+        "value"
+      ],
+      "title": "CoordinateValue",
+      "type": "object"
+    },
+    "DatasetDefaults": {
+      "properties": {
+        "datasetName": {
+          "title": "Datasetname",
+          "type": "string"
+        },
+        "default_coordinates": {
+          "items": {
+            "$ref": "#/$defs/CoordinateValue"
+          },
+          "title": "Default Coordinates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "datasetName",
+        "default_coordinates"
+      ],
+      "title": "DatasetDefaults",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "jhtdbConfigFileURL": {
+      "title": "Jhtdbconfigfileurl",
+      "type": "string"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/DatasetDefaults"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "jhtdbConfigFileURL",
+    "datasets"
+  ],
+  "title": "JHTDBPointQuery",
+  "type": "object"
+}
