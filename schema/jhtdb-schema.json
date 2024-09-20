@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "Dataset": {
+      "properties": {
+        "displayname": {
+          "title": "Displayname",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "simulation": {
+          "$ref": "#/$defs/Simulation"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "physical_variables": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Physical Variables",
+          "type": "array"
+        },
+        "variable_operator_methods": {
+          "items": {
+            "$ref": "#/$defs/VariableOperatorMethod"
+          },
+          "title": "Variable Operator Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "displayname",
+        "name",
+        "simulation",
+        "physical_variables",
+        "variable_operator_methods"
+      ],
+      "title": "Dataset",
+      "type": "object"
+    },
+    "Dimension": {
+      "properties": {
+        "lower": {
+          "title": "Lower",
+          "type": "string"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "string"
+        },
+        "n": {
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "isPeriodic": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Isperiodic"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "n"
+      ],
+      "title": "Dimension",
+      "type": "object"
+    },
+    "Feature": {
+      "description": "general triple basically, used for listing the various featues (methods, operators etc) that are\navailable on a Dataset.\nThe code is to be used as identifier and references to a Feature in a certain collection.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "code",
+        "name"
+      ],
+      "title": "Feature",
+      "type": "object"
+    },
+    "PhysicalVariable": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "cardinality": {
+          "default": 1,
+          "title": "Cardinality",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "name"
+      ],
+      "title": "PhysicalVariable",
+      "type": "object"
+    },
+    "Simulation": {
+      "description": "does not yet support description of irregular grids. should add subclasses for that.",
+      "properties": {
+        "tlims": {
+          "$ref": "#/$defs/Dimension"
+        },
+        "xlims": {
+          "$ref": "#/$defs/Dimension"
+        },
+        "ylims": {
+          "$ref": "#/$defs/Dimension"
+        },
+        "zlims": {
+          "$ref": "#/$defs/Dimension"
+        }
+      },
+      "required": [
+        "tlims",
+        "xlims",
+        "ylims",
+        "zlims"
+      ],
+      "title": "Simulation",
+      "type": "object"
+    },
+    "VariableOperatorMethod": {
+      "description": "Which spatial interpolation methods can be applied to the result of which operator applied to which variable.\nAll represented by their codes pointing to the variables/operators/interpolation_methods in the database definition.",
+      "properties": {
+        "variable": {
+          "title": "Variable",
+          "type": "string"
+        },
+        "operator": {
+          "title": "Operator",
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "variable",
+        "operator",
+        "methods"
+      ],
+      "title": "VariableOperatorMethod",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/PhysicalVariable"
+      },
+      "title": "Variables",
+      "type": "array"
+    },
+    "spatial_operators": {
+      "items": {
+        "$ref": "#/$defs/Feature"
+      },
+      "title": "Spatial Operators",
+      "type": "array"
+    },
+    "spatial_methods": {
+      "items": {
+        "$ref": "#/$defs/Feature"
+      },
+      "title": "Spatial Methods",
+      "type": "array"
+    },
+    "temporal_methods": {
+      "items": {
+        "$ref": "#/$defs/Feature"
+      },
+      "title": "Temporal Methods",
+      "type": "array"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/Dataset"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "variables",
+    "spatial_operators",
+    "spatial_methods",
+    "temporal_methods",
+    "datasets"
+  ],
+  "title": "TurbulenceDB",
+  "type": "object"
+}

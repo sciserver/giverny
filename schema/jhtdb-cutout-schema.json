@@ -1,0 +1,94 @@
+{
+  "$defs": {
+    "CoordinateEnum": {
+      "enum": [
+        "t",
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "CoordinateEnum",
+      "type": "string"
+    },
+    "CutoutLimit": {
+      "properties": {
+        "coordinate": {
+          "$ref": "#/$defs/CoordinateEnum"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "number"
+        },
+        "default_lower": {
+          "title": "Default Lower",
+          "type": "number"
+        },
+        "default_upper": {
+          "title": "Default Upper",
+          "type": "number"
+        }
+      },
+      "required": [
+        "coordinate",
+        "lower",
+        "upper",
+        "default_lower",
+        "default_upper"
+      ],
+      "title": "CutoutLimit",
+      "type": "object"
+    },
+    "DatasetCutout": {
+      "properties": {
+        "datasetName": {
+          "title": "Datasetname",
+          "type": "string"
+        },
+        "cutout_variables": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cutout Variables",
+          "type": "array"
+        },
+        "coordinate_lims": {
+          "items": {
+            "$ref": "#/$defs/CutoutLimit"
+          },
+          "title": "Coordinate Lims",
+          "type": "array"
+        }
+      },
+      "required": [
+        "datasetName",
+        "cutout_variables",
+        "coordinate_lims"
+      ],
+      "title": "DatasetCutout",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "jhtdbConfigFileURL": {
+      "title": "Jhtdbconfigfileurl",
+      "type": "string"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/DatasetCutout"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "jhtdbConfigFileURL",
+    "datasets"
+  ],
+  "title": "JHTDBCutout",
+  "type": "object"
+}

@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "CephZARRStorage": {
+      "properties": {
+        "storageType": {
+          "const": "ZARR",
+          "default": "ZARR",
+          "enum": [
+            "ZARR"
+          ],
+          "title": "Storagetype",
+          "type": "string"
+        },
+        "cephParentDirectoryPath": {
+          "title": "Cephparentdirectorypath",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cephParentDirectoryPath"
+      ],
+      "title": "CephZARRStorage",
+      "type": "object"
+    },
+    "DatasetStorageDescriptor": {
+      "properties": {
+        "datasetName": {
+          "title": "Datasetname",
+          "type": "string"
+        },
+        "storageDescriptor": {
+          "discriminator": {
+            "mapping": {
+              "FileDB": "#/$defs/FileDBStorage",
+              "LegacyDB": "#/$defs/LegacDBStorage",
+              "TBD": "#/$defs/StorageDescriptor",
+              "ZARR": "#/$defs/CephZARRStorage"
+            },
+            "propertyName": "storageType"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LegacDBStorage"
+            },
+            {
+              "$ref": "#/$defs/CephZARRStorage"
+            },
+            {
+              "$ref": "#/$defs/FileDBStorage"
+            },
+            {
+              "$ref": "#/$defs/StorageDescriptor"
+            }
+          ],
+          "title": "Storagedescriptor"
+        }
+      },
+      "required": [
+        "datasetName",
+        "storageDescriptor"
+      ],
+      "title": "DatasetStorageDescriptor",
+      "type": "object"
+    },
+    "FileDBStorage": {
+      "properties": {
+        "storageType": {
+          "const": "FileDB",
+          "default": "FileDB",
+          "enum": [
+            "FileDB"
+          ],
+          "title": "Storagetype",
+          "type": "string"
+        },
+        "filedbPickledMDFilePath": {
+          "title": "Filedbpickledmdfilepath",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filedbPickledMDFilePath"
+      ],
+      "title": "FileDBStorage",
+      "type": "object"
+    },
+    "LegacDBStorage": {
+      "properties": {
+        "storageType": {
+          "const": "LegacyDB",
+          "default": "LegacyDB",
+          "enum": [
+            "LegacyDB"
+          ],
+          "title": "Storagetype",
+          "type": "string"
+        },
+        "turbinfoDatabaseURL": {
+          "title": "Turbinfodatabaseurl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "turbinfoDatabaseURL"
+      ],
+      "title": "LegacDBStorage",
+      "type": "object"
+    },
+    "StorageDescriptor": {
+      "properties": {
+        "storageType": {
+          "const": "TBD",
+          "default": "TBD",
+          "enum": [
+            "TBD"
+          ],
+          "title": "Storagetype",
+          "type": "string"
+        }
+      },
+      "title": "StorageDescriptor",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "jhtdbConfigFileURL": {
+      "title": "Jhtdbconfigfileurl",
+      "type": "string"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/DatasetStorageDescriptor"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "jhtdbConfigFileURL",
+    "datasets"
+  ],
+  "title": "JHTDBServerSide",
+  "type": "object"
+}
