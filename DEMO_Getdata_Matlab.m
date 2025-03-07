@@ -7,15 +7,17 @@
 %         - isotropic1024fine       :  isotropic 1024-cube (fine).
 %         - isotropic4096            :  isotropic 4096-cube.
 %         - isotropic8192            :  isotropic 8192-cube.
+%         - isotropic32768          :  isotropic 32768-cube.
 %         - sabl2048low              :  stable atmospheric boundary layer 2048-cube, low-rate timestep.
 %         - sabl2048high             :  stable atmospheric boundary layer 2048-cube, high-rate timestep.
+%         - stsabl2048low           :  strong stable atmospheric boundary layer 2048-cube, low-rate timestep.
+%         - stsabl2048high          :  strong stable atmospheric boundary layer 2048-cube, high-rate timestep.
 %         - rotstrat4096               :  rotating stratified 4096-cube.
 %         - mhd1024                   :  magneto-hydrodynamic isotropic 1024-cube.
 %         - mixing                       :   homogeneous buoyancy driven 1024-cube.
 %         - channel                     :  channel flow.
 %         - channel5200              :  channel flow (reynolds number 5200).
 %         - transition_bl               :  transitional boundary layer.
-% 
 % functions :
 % 
 %         - getData  :  retrieve (interpolate and/or differentiate) field data on a set of specified spatial points for the specified variable.        
@@ -93,7 +95,7 @@ dataset =  'channel';
 % ----- Initialize getData parameters (except time and points) -----
 variable = 'velocity';
 temporal_method = 'none'; 
-spatial_method = 'lag8';
+spatial_method = 'none';
 spatial_operator  = 'field';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -110,7 +112,7 @@ spatial_operator  = 'field';
 %     - points array is instantiated as an empty array that will be filled inside the for loops.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-time = 1;
+time = 0;
 
 nx = 64;
 nz = 64;

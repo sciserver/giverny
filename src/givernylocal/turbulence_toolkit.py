@@ -31,7 +31,7 @@ from givernylocal.turbulence_dataset import *
 from givernylocal.turbulence_gizmos.basic_gizmos import *
 from givernylocal.turbulence_gizmos.constants import get_constants
 
-def getData(cube, var_original, timepoint_original, temporal_method_original, spatial_method_original, spatial_operator_original, points,
+def getData(cube, var, timepoint_original, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
             trace_memory = False, verbose = True):
     """
@@ -45,6 +45,7 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     start_time = time.perf_counter()
     
     # set cube attributes.
+    metadata = cube.metadata
     dataset_title = cube.dataset_title
     auth_token = cube.auth_token
     
@@ -56,16 +57,23 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     
     # -----
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
-    points, var, var_offsets, timepoint, temporal_method, spatial_method, spatial_method_specified, spatial_operator, datatype = \
-        getData_housekeeping_procedures(query_type, dataset_title, points, var_original, timepoint_original,
-                                        temporal_method_original, spatial_method_original, spatial_operator_original,
+    var_offsets, timepoint, spatial_method, spatial_method_specified, datatype = \
+        getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
+                                        temporal_method, spatial_method_original, spatial_operator,
                                         option, c)
+    
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and len(points) > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many points requested for the testing authorization token: {len(points)} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
     
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
-    num_values_per_datapoint = get_num_values_per_datapoint(var)
+    num_values_per_datapoint = get_cardinality(metadata, var)
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
-    cube.init_constants(query_type, var, var_original, var_offsets, timepoint, timepoint_original,
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
     
     # option parameter values.
@@ -74,7 +82,7 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     # default timepoint range which only queries the first timepoint for non-'position' variables and non-time series queries. in the givernylocal code
     # this is only used to verify the integrity of the results retrieved through the rest service.
     timepoint_range = np.arange(timepoint_original, timepoint_original + 1, 2)
-    if var_original != 'position' and option != [-999.9, -999.9]:
+    if var != 'position' and option != [-999.9, -999.9]:
         # timepoint range for the time series queries.
         timepoint_range = np.arange(timepoint_original, timepoint_end, delta_t)
         
@@ -99,18 +107,29 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-test/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var_original}' \
-          f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator_original}&tint={temporal_method_original}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+          f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
 
-    # send http post request.
-    response = requests.post(url, data = request_points, timeout = 1000)
+    try:
+        # send http post request.
+        response = requests.post(url, data = request_points, timeout = 1000)
+        # catch server side errors, e.g. server side timeout.
+        response.raise_for_status()
+    except Exception as e:
+        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
+        # on SciServer using giverny.
+        raise Exception(f'{e}' + \
+                        f'\n\nplease try the following typical solutions:' + \
+                        f'\n\t1) break up the points across multiple queries.' + \
+                        f'\n\t2) specify a smaller spatial domain.' + \
+                        f'\n\t3) use the giverny library on SciServer.')
     
     # convert the response string to a numpy array.
     result = np.array(json.loads(response.text), dtype = np.float32)
     
-    # get the output header.
-    output_header = get_interpolation_tsv_header(cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+    # get the result header, which only contains the names for each column of the data values.
+    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
     result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     
     # array lengths.
@@ -156,7 +175,7 @@ def getData(cube, var_original, timepoint_original, temporal_method_original, sp
     
     return results
 
-def getData_housekeeping_procedures(query_type, dataset_title, points, var_original, timepoint_original,
+def getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,
                                     option, c):
     """
@@ -167,41 +186,42 @@ def getData_housekeeping_procedures(query_type, dataset_title, points, var_origi
     # validate user-input.
     # -----
     # check that the user-input variable is a valid variable name.
-    check_variable(var_original, dataset_title, query_type)
+    check_variable(metadata, var, dataset_title, query_type)
     # check that not too many points were queried and the points are all within axes domain for the dataset.
-    check_points(dataset_title, points, c['max_data_points'])
+    check_points(metadata, points, dataset_title, var, c['max_data_points'])
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(timepoint_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
     # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.
-    check_operator(spatial_operator, var_original)
+    check_spatial_operator(metadata, spatial_operator, dataset_title, var)
     # check that the user-input spatial interpolation (spatial_method) is a valid spatial interpolation method.
-    spatial_method = check_spatial_interpolation(dataset_title, var_original, spatial_method, spatial_operator)
+    spatial_method = check_spatial_method(metadata, spatial_method, dataset_title, var, spatial_operator)
     # check that the user-input temporal interpolation (temporal_method) is a valid temporal interpolation method.
-    check_temporal_interpolation(dataset_title, var_original, temporal_method)
+    check_temporal_method(metadata, temporal_method, dataset_title, var)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
-    if var_original == 'position' or option != [-999.9, -999.9]:
-        check_option_parameter(option, dataset_title, timepoint_original)
+    if var == 'position' or option != [-999.9, -999.9]:
+        check_option_parameter(metadata, option, dataset_title, timepoint_original)
         
         # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
         timepoint_end = option[0]
-        check_timepoint(timepoint_end, dataset_title, query_type)
+        check_timepoint(metadata, timepoint_end, dataset_title, query_type)
     
     # pre-processing steps.
     # -----
-    # convert the variable name from var_original into a variable identifier.
-    var = get_variable_identifier(var_original)
-    
     # convert the original input timepoint to the correct time index.
-    timepoint = get_time_index_from_timepoint(dataset_title, timepoint_original, temporal_method, query_type)
-        
-    # set var_offsets to var_original.
-    var_offsets = var_original
+    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
     
-    # copy of the spatial interpolation that was specified by the user. needed for the 'sabl_linear*' step-down interpolation methods for the 'sabl2048*' datasets.
+    # set var_offsets to var. 'velocity' is handled differently for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
+    if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
+        # temporary placeholder value to initialize the dataset constants.
+        var_offsets = var + '_uv'
+    else:
+        var_offsets = var
+    
+    # copy of the spatial interpolation that was specified by the user. needed for the 'z_linear*' step-down interpolation methods for the 'sabl' datasets.
     spatial_method_specified = spatial_method
     
     # get the full variable name for determining the datatype.
-    datatype_var = get_output_variable_name(var_original)
+    datatype_var = get_output_variable_name(metadata, var)
     
     # remove 'field' from operator for determining the datatype.
     datatype_operator = spatial_operator if spatial_operator != 'field' else ''
@@ -209,4 +229,4 @@ def getData_housekeeping_procedures(query_type, dataset_title, points, var_origi
     # define datatype from the datatype_var and datatype_operator variables.
     datatype = f'{datatype_var}{datatype_operator.title()}'
     
-    return (points, var, var_offsets, timepoint, temporal_method, spatial_method, spatial_method_specified, spatial_operator, datatype)
+    return (var_offsets, timepoint, spatial_method, spatial_method_specified, datatype)

@@ -23,39 +23,37 @@ import sys
 import math
 import time
 import numpy as np
-from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
+from giverny.turbulence_gizmos.basic_gizmos import get_cardinality
 
-def getData_process_data(cube, points,
+def getData_process_data(cube, metadata, points,
                          var, timepoint, tint, sint,
-                         var_original, var_dimension_offsets, timepoint_original, sint_specified, option, c,
+                         var_offsets, timepoint_original, sint_specified, option, c,
                          verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
-    num_values_per_datapoint = get_num_values_per_datapoint(var)
+    num_values_per_datapoint = get_cardinality(metadata, var)
     
     # define the query type.
     query_type = 'getdata'
     
     # initialize cube constants.
-    cube.init_constants(query_type, var, var_original, var_dimension_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
 
     # begin processing of data.
     # -----
-    # mapping the points to database files and sorting them into native and visitor bucket maps.
+    # mapping the points to chunk groups.
     if verbose:
-        print('\nstep 1: sorting the points to native and visitor bucket maps...\n' + '-' * 25)
+        print('\nstep 1: mapping the points to chunk groups...\n' + '-' * 25)
         sys.stdout.flush()
     
     # calculate how much time it takes to run step 1.
     start_time_step1 = time.perf_counter()
     
-    # get the maps of points that require native and visitor buckets for interpolation.
-    db_native_map, db_visitor_map = cube.map_chunks_getdata(points)
+    # get the maps of points to chunk groups.
+    chunk_data_map = cube.map_chunks_getdata(points)
     
     if verbose:
-        print(f'len db_native_map = \n{len(db_native_map)}')
-        print('-')
-        print(f'len db_visitor_map = \n{len(db_visitor_map)}')
+        print(f'len chunk_data_map = \n{len(chunk_data_map)}')
     
     # calculate how much time it takes to run step 1.
     end_time_step1 = time.perf_counter()
@@ -72,8 +70,8 @@ def getData_process_data(cube, points,
     # calculate how much time it takes to run step 2.
     start_time_step2 = time.perf_counter()
     
-    # sequential and parallel processing.
-    result_output_data = cube.read_database_files_getdata(db_native_map, db_visitor_map)
+    # sequential processing.
+    result_output_data = cube.read_database_files_getdata(chunk_data_map)
     
     # iterate over the results to fill output_data.
     output_data = []
