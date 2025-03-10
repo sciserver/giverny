@@ -1,6 +1,8 @@
-giverny - stable release version 2.4.7 (7 March 2025)
+giverny - stable release version 2.4.8 (7 March 2025)
     - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 2.4.8 updates:
+    - fixed output tsv header bug in givernylocal.
 version 2.4.7 updates:
     - make sure points is a contiguous array in getData.
 version 2.4.6 updates:

@@ -120,7 +120,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
         # on SciServer using giverny.
         raise Exception(f'{e}' + \
-                        f'\n\nplease try the following typical solutions:' + \
+                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
                         f'\n\t1) break up the points across multiple queries.' + \
                         f'\n\t2) specify a smaller spatial domain.' + \
                         f'\n\t3) use the giverny library on SciServer.')
@@ -129,7 +129,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     result = np.array(json.loads(response.text), dtype = np.float32)
     
     # get the result header, which only contains the names for each column of the data values.
-    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var_name, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
     result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     
     # array lengths.
