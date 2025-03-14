@@ -23,14 +23,14 @@ import sys
 import math
 import time
 import numpy as np
-from giverny.turbulence_gizmos.basic_gizmos import get_num_values_per_datapoint
+from giverny.turbulence_gizmos.basic_gizmos import get_cardinality
 
-def getCutout_process_data(cube, axes_ranges, var, timepoint,
-                           axes_ranges_original, strides, var_original, var_dimension_offsets, timepoint_original, c,
+def getCutout_process_data(cube, metadata, axes_ranges, var, timepoint,
+                           axes_ranges_original, strides, var_offsets, timepoint_original, c,
                            verbose = False):
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
-    num_values_per_datapoint = get_num_values_per_datapoint(var)
+    num_values_per_datapoint = get_cardinality(metadata, var)
     
     # define the query type.
     query_type = 'getcutout'
@@ -41,7 +41,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     tint = 'none'
     option = [-999.9, -999.9]
     # initialize cube constants.
-    cube.init_constants(query_type, var, var_original, var_dimension_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
 
     # used for determining the indices in the output array for each x, y, z datapoint.
     axes_min = axes_ranges[:, 0]
@@ -59,14 +59,7 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     # calculate how much time it takes to run step 1.
     start_time_step1 = time.perf_counter()
     
-    user_single_db_boxes = cube.map_chunks_getcutout(axes_ranges)
-
-    num_db_files = sum(len(value) for value in user_single_db_boxes)
-    num_db_disks = len(user_single_db_boxes)
-    if verbose:
-        print(f'number of database files that the user-specified box is found in:\n{num_db_files}\n')
-        print(f'number of hard disks that the database files are distributed on:\n{num_db_disks}\n')
-        sys.stdout.flush()
+    chunk_boxes = cube.map_chunks_getcutout(axes_ranges)
     
     # calculate how much time it takes to run step 1.
     end_time_step1 = time.perf_counter()
@@ -89,8 +82,8 @@ def getCutout_process_data(cube, axes_ranges, var, timepoint,
     output_data = np.full((axes_lengths[2], axes_lengths[1], axes_lengths[0], num_values_per_datapoint),
                            fill_value = c['missing_value_placeholder'], dtype = 'f')
     
-    # sequential and parallel processing.
-    result_output_data = cube.read_database_files_getcutout(user_single_db_boxes)
+    # sequential processing.
+    result_output_data = cube.read_database_files_getcutout(chunk_boxes)
     
     # iterate over the results to fill output_data.
     for result in result_output_data:

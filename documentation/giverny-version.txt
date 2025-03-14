@@ -1,6 +1,37 @@
-giverny - stable release version 2.3.11 (16 August 2024)
-    - package for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
+giverny - stable release version 3.1.1 (14 March 2025)
+    - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 3.1.1 updates:
+    - added missing variables in matlab getData.m file.
+    - updated README.
+version 2.4.8 updates:
+    - fixed output tsv header bug in givernylocal.
+version 2.4.7 updates:
+    - make sure points is a contiguous array in getData.
+version 2.4.6 updates:
+    - added pydantic as a required dependency.
+version 2.4.5 updates:
+    - updated json metadata file formatting.
+    - added pydantic json schema to validate the json metadata file.
+version 2.4.4 updates:
+    - fixed the getCutout automated colorbar orientation. 
+version 2.4.3 updates:
+    - fixed givernylocal import statement in basic_gizmos.py
+    - added diurnal_windfarm dataset.
+    - updated DEMO notebook documentation.
+version 2.4.2 updates:
+    - temporarily removed windfarm datasets and associated variables from DEMO notebooks documentation.
+    - fixed xmf and hdf5 files not working with strides > 1 along any axis.
+version 2.4.1 updates:
+    - switched reading datasets from fileDB to ceph.
+    - updated metadata to json file format.
+    - moved datasets from fileDB to ceph:
+      - isotropic8192, sabl2048low, sabl2048high
+    - added new datasets:
+      - isotropic32768, stsabl2048low, stsabl2048high
+    - added automatic plot downscaling to prevent plotting too many points.
+    - removed m2q14 spatial interpolation method.
+    - updated variable name "energy" to "sgsenergy".
 version 2.3.11 updates:
     - changed "position" variable calls to require "pchip" as the temporal interpolation method.
     - fixed "position" variable calls to pass the specified spatial interpolation method.
