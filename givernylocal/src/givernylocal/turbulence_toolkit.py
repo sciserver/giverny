@@ -107,7 +107,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
 

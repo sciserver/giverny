@@ -530,18 +530,18 @@ class turb_dataset():
                 # get the bucket x-plane above the point. for this particular case, the "top" boundary is math.floor(p[0]) because this handles 
                 # x-points between the ground (x = 0) and the 1st x-grid point (x = dx). 
                 x_top = math.floor(p[0])
-                ux_top = u[x_top, :, :, :]
+                ux_top = u[:, :, x_top, :]
                 
                 # get the bucket x-plane below the point.
                 ux_bottom = bucket_zero_plane
             else:
                 # get the bucket x-plane above the point.
                 x_top = math.ceil(p[0])
-                ux_top = u[x_top, :, :, :]
+                ux_top = u[:, :, x_top, :]
             
                 # get the bucket x-plane below the point.
                 x_bottom = math.floor(p[0])
-                ux_bottom = u[x_bottom, :, :, :]
+                ux_bottom = u[:, :, x_bottom, :]
             
             # 2d interpolation at the x-axis point above p.
             fn_top = np.einsum('jk,jkl->l', gk, ux_top)
@@ -569,18 +569,18 @@ class turb_dataset():
                 # get the bucket y-plane above the point. for this particular case, the "top" boundary is math.floor(p[1]) because this handles 
                 # y-points between the ground (y = 0) and the 1st z-grid point (y = dy). 
                 y_top = math.floor(p[1])
-                uy_top = u[y_top, :, :, :]
+                uy_top = u[:, y_top, :, :]
                 
                 # get the bucket y-plane below the point.
                 uy_bottom = bucket_zero_plane
             else:
                 # get the bucket y-plane above the point.
                 y_top = math.ceil(p[1])
-                uy_top = u[y_top, :, :, :]
+                uy_top = u[:, y_top, :, :]
             
                 # get the bucket y-plane below the point.
                 y_bottom = math.floor(p[1])
-                uy_bottom = u[y_bottom, :, :, :]
+                uy_bottom = u[:, y_bottom, :, :]
             
             # 2d interpolation at the y-axis point above p.
             fn_top = np.einsum('ik,ikl->l', gk, uy_top)
@@ -632,6 +632,54 @@ class turb_dataset():
         """
         gradient linear region finite differences.
         """
+        def x_linear_gradient():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_top: top bucket index, and x_divisor: number of grid points to divide by.
+            x_bottom, x_top, x_divisor = u_info[:3]
+            
+            # diagonal components.
+            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+            # get the x-gridpoint above the specified point. 
+            component_x_top = u[ix[2], ix[1], ix[0] + x_top, :]
+            # get the x-gridpoint below the specified point. if x_bottom is 'zero_ground' then the x-gridpoint below the specified point is set to 0.
+            component_x_bottom = 0.0 if x_bottom == 'zero_ground' else u[ix[2], ix[1], ix[0] + x_bottom, :]
+            # the linear dvdx divisor equals the spacing between the top and bottom x-gridpoints.
+            dvdx_divisor = x_divisor * dx
+
+            dvdx = (component_x_top - component_x_bottom) / dvdx_divisor
+            dvdy = np.inner(fd_coeff, component_y.T) / dy
+            dvdz = np.inner(fd_coeff, component_z.T) / dz
+            
+            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+        
+        def y_linear_gradient():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_top: top bucket index, and y_divisor: number of grid points to divide by.
+            y_bottom, y_top, y_divisor = u_info[:3]
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+            # get the y-gridpoint above the specified point. 
+            component_y_top = u[ix[2], ix[1] + y_top, ix[0], :]
+            # get the y-gridpoint below the specified point. if y_bottom is 'zero_ground' then the y-gridpoint below the specified point is set to 0.
+            component_y_bottom = 0.0 if y_bottom == 'zero_ground' else u[ix[2], ix[1] + y_bottom, ix[0], :]
+            # the linear dvdy divisor equals the spacing between the top and bottom y-gridpoints.
+            dvdy_divisor = y_divisor * dy
+
+            dvdx = np.inner(fd_coeff, component_x.T) / dx
+            dvdy = (component_y_top - component_y_bottom) / dvdy_divisor
+            dvdz = np.inner(fd_coeff, component_z.T) / dz
+            
+            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+        
         def z_linear_gradient():
             ix = p.astype(np.int32)
             # diagonal coefficients.
@@ -659,6 +707,54 @@ class turb_dataset():
         """
         laplacian linear region finite differences.
         """
+        def x_linear_laplacian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_top: top bucket index, and x_divisor: number of grid points to divide by.
+            x_bottom, x_top, x_divisor = u_info[:3]
+            
+            # diagonal components.
+            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+            # get the x-gridpoint above the specified point. 
+            component_x_top = u[ix[2], ix[1], ix[0] + x_top, :]
+            # get the x-gridpoint below the specified point. if x_bottom is 'zero_ground' then the x-gridpoint below the specified point is set to 0.
+            component_x_bottom = 0.0 if x_bottom == 'zero_ground' else u[ix[2], ix[1], ix[0] + x_bottom, :]
+            # the linear dvdx divisor equals the spacing between the top and bottom x-gridpoints.
+            dvdx_divisor = x_divisor * dx
+
+            dvdx = (component_x_top - component_x_bottom) / dvdx_divisor
+            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
+            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
+            
+            return dvdx + dvdy + dvdz
+        
+        def y_linear_laplacian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff = self.lookup_table
+            
+            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_top: top bucket index, and y_divisor: number of grid points to divide by.
+            y_bottom, y_top, y_divisor = u_info[:3]
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+            # get the y-gridpoint above the specified point. 
+            component_y_top = u[ix[2], ix[1] + y_top, ix[0], :]
+            # get the y-gridpoint below the specified point. if y_bottom is 'zero_ground' then the y-gridpoint below the specified point is set to 0.
+            component_y_bottom = 0.0 if y_bottom == 'zero_ground' else u[ix[2], ix[1] + y_bottom, ix[0], :]
+            # the linear dvdy divisor equals the spacing between the top and bottom y-gridpoints.
+            dvdy_divisor = y_divisor * dy
+
+            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
+            dvdy = (component_y_top - component_y_bottom) / dvdy_divisor
+            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
+            
+            return dvdx + dvdy + dvdz
+        
         def z_linear_laplacian():
             ix = p.astype(np.int32)
             # diagonal coefficients.
@@ -686,6 +782,100 @@ class turb_dataset():
         """
         hessian linear region finite differences.
         """
+        def x_linear_hessian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff_laplacian = self.laplacian_lookup_table
+            # off-diagonal coefficients.
+            fd_coeff_hessian = self.lookup_table
+            
+            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_middle: middle bucket index, and x_top: top bucket index.
+            x_bottom, x_middle, x_top = u_info[:3]
+            
+            # diagonal components.
+            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+
+            ujj = np.inner(fd_coeff_laplacian, component_y.T) / dy / dy
+            ukk = np.inner(fd_coeff_laplacian, component_z.T) / dz / dz
+
+            # off-diagonal components.
+            if sint_specified == 'fd4noint_hessian':
+                component_yz = np.array([u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
+                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
+            elif sint_specified == 'fd6noint_hessian':
+                component_yz = np.array([u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],
+                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
+                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
+            elif sint_specified == 'fd8noint_hessian':
+                component_yz = np.array([u[ix[2]+4,ix[1]+4,ix[0],:],u[ix[2]+4,ix[1]-4,ix[0],:],u[ix[2]-4,ix[1]-4,ix[0],:],u[ix[2]-4,ix[1]+4,ix[0],:],
+                                         u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],
+                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
+                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
+            
+            ujk = np.inner(fd_coeff_hessian, component_yz.T) / dy / dz
+            
+            if x_bottom == 'zero_ground':
+                # sets all values at x_bottom (x = 0) equal to 0 because this handles the boundary condition gridpoint at x = 0.
+                uii = (u[ix[2], ix[1], x_top, :] - (2 * u[ix[2], ix[1], x_middle, :])) / (dx * dx)
+
+                uij = (u[ix[2], ix[1] + 1, x_top, :] - u[ix[2], ix[1] - 1, x_top, :]) / (4 * dx * dy)
+                uik = (u[ix[2] + 1, ix[1], x_top, :] - u[ix[2] - 1, ix[1], x_top, :]) / (4 * dx * dz)
+            else:
+                uii = (u[ix[2], ix[1], x_top, :] - (2 * u[ix[2], ix[1], x_middle, :]) + u[ix[2], ix[1], x_bottom, :]) / (dx * dx)
+
+                uij = (u[ix[2], ix[1] + 1, x_top, :] - u[ix[2], ix[1] - 1, x_top, :] - u[ix[2], ix[1] + 1, x_bottom, :] + u[ix[2], ix[1] - 1, x_bottom, :]) / (4 * dx * dy)
+                uik = (u[ix[2] + 1, ix[1], x_top, :] - u[ix[2] - 1, ix[1], x_top, :] - u[ix[2] + 1, ix[1], x_bottom, :] + u[ix[2] - 1, ix[1], x_bottom, :]) / (4 * dx * dz)
+            
+            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
+        
+        def y_linear_hessian():
+            ix = p.astype(np.int32)
+            # diagonal coefficients.
+            fd_coeff_laplacian = self.laplacian_lookup_table
+            # off-diagonal coefficients.
+            fd_coeff_hessian = self.lookup_table
+            
+            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_middle: middle bucket index, and y_top: top bucket index.
+            y_bottom, y_middle, y_top = u_info[:3]
+            
+            # diagonal components.
+            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
+            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
+
+            uii = np.inner(fd_coeff_laplacian, component_x.T) / dx / dx
+            ukk = np.inner(fd_coeff_laplacian, component_z.T) / dz / dz
+
+            # off-diagonal components.
+            if sint_specified == 'fd4noint_hessian':
+                component_xz = np.array([u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            elif sint_specified == 'fd6noint_hessian':
+                component_xz = np.array([u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
+                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            elif sint_specified == 'fd8noint_hessian':
+                component_xz = np.array([u[ix[2]+4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]-4,:],u[ix[2]+4,ix[1],ix[0]-4,:],
+                                         u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
+                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            
+            uik = np.inner(fd_coeff_hessian, component_xz.T) / dx / dz
+            
+            if z_bottom == 'zero_ground':
+                # sets all values at y_bottom (y = 0) equal to 0 because this handles the boundary condition gridpoint at y = 0.
+                ujj = (u[ix[2], y_top, ix[0], :] - (2 * u[ix[2], y_middle, ix[0], :])) / (dy * dy)
+
+                uij = (u[ix[2], y_top, ix[0] + 1, :] - u[ix[2], y_top, ix[0] - 1, :]) / (4 * dx * dy)
+                ujk = (u[ix[2] + 1, y_top, ix[0], :] - u[ix[2] - 1, y_top, ix[0], :]) / (4 * dy * dz)
+            else:
+                ujj = (u[ix[2], y_top, ix[0], :] - (2 * u[ix[2], y_middle, ix[0], :]) + u[ix[2], y_bottom, ix[0], :]) / (dy * dy)
+
+                uij = (u[ix[2], y_top, ix[0] + 1, :] - u[ix[2], y_top, ix[0] - 1, :] - u[ix[2], y_bottom, ix[0] + 1, :] + u[ix[2], y_bottom, ix[0] - 1, :]) / (4 * dx * dy)
+                ujk = (u[ix[2] + 1, y_top, ix[0], :] - u[ix[2] - 1, y_top, ix[0], :] - u[ix[2] + 1, y_bottom, ix[0], :] + u[ix[2] - 1, y_bottom, ix[0], :]) / (4 * dy * dz)
+            
+            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
+        
         def z_linear_hessian():
             ix = p.astype(np.int32)
             # diagonal coefficients.
@@ -720,7 +910,7 @@ class turb_dataset():
             uij = np.inner(fd_coeff_hessian, component_xy.T) / dx / dy
             
             if z_bottom == 'zero_ground':
-                # sets all values at z_bottom (z = 0) equal to 0 because this handles the boundary condition gridpoint at z = 0. applies to
+                # sets all values at z_bottom (z = 0) equal to 0 because this handles the boundary condition gridpoint at z = 0. e.g. applies to
                 # the 'velocity_w' variable of the 'sabl2048*' datasets.
                 ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :])) / (dz * dz)
 
