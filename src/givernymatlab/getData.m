@@ -1,4 +1,4 @@
-function result = getData(authToken, dataset, var_original, timepoint_original, temporal_method_original, spatial_method_original, ...
+d function result = getData(authToken, dataset, var_original, timepoint_original, temporal_method_original, spatial_method_original, ...
     spatial_operator_original, points, option)
 
     import matlab.net.http.*
@@ -48,16 +48,31 @@ function result = reshapeAndPermute(data, var_original, spatial_operator_origina
     switch var_original
         case 'velocity'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'vectorpotential'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);            
+        case 'magneticfield'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);      
+        case 'force'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);                
         case 'pressure'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'sgsenergy'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'temperature'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'density'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);           
+        
         case 'position'
             if strcmp(spatial_operator_original, 'field')
                 result = data;
             else
-                error('%s: %s', data.title, data.description);
+%                 error('%s: %s', data.title, data.description);
+                celldisp(result.description);
             end
         otherwise
-            error('%s: %s', data.title, data.description);
+%             error('%s: %s', data.title, data.description);
+                celldisp(result.description);
     end
 end
 
@@ -72,7 +87,8 @@ function result = reshapeByOperator(data, operator, numPoints, numTimes, dims)
         case 'laplacian'
             result = reshape(data, [numPoints, numTimes, dims(4)]);
         otherwise
-            error('%s: %s', data.title, data.description);
+%             error('%s: %s', data.title, data.description);
+            celldisp(result.description);
     end
     result = permute(result, [2, 1, 3]);
 end
