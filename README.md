@@ -9,14 +9,12 @@ DEMO notebooks for the various compute environments are provided at the [JHU Tur
 The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to JHTDB through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
 
 To use `giverny` through Sciserver:
-```
-1) Login to [SciServer](https://sciserver.org/) (may need to create a new account first).
-2) Click on *Compute* and then *Create container*.
-    * Can also run jobs in batch mode, by selecting *Compute Jobs*.
-3) Type in a *Container name*, select *SciServer Essentials (Test)* in *Compute Image*,
-   mark *Turbulence (ceph)* in *Data volumes*, and then click on *Create*.
-4) Click on the container you just created to start using *giverny* with Python and JupyterLab.
-```
+    1) Login to [SciServer](https://sciserver.org/) (may need to create a new account first).
+    2) Click on *Compute* and then *Create container*.
+        * Can also run jobs in batch mode, by selecting *Compute Jobs*.
+    3) Type in a *Container name*, select *SciServer Essentials (Test)* in *Compute Image*,
+       mark *Turbulence (ceph)* in *Data volumes*, and then click on *Create*.
+    4) Click on the container you just created to start using *giverny* with Python and JupyterLab.
 
 Please go to [SciServer](https://sciserver.org/) for more information on SciServer as well as the help on SciServer.
 
@@ -40,7 +38,7 @@ Please see the README inside the archive.
 ## Use giverny via Fortran on local computers
 `DEMO_F.tar`
 
-Please see the *README* inside the archive.
+Please see the README inside the archive.
 
 ## Configuration
 
