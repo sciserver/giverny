@@ -1,6 +1,8 @@
-giverny - stable release version 3.1.1 (14 March 2025)
+giverny - stable release version 3.1.2 (18 March 2025)
     - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 3.1.2 updates:
+    - simplified and updated hyperlinks in the README.
 version 3.1.1 updates:
     - added missing variables in matlab getData.m file.
     - updated README.
