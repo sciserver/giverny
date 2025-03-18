@@ -20,10 +20,8 @@ To use `giverny` through Sciserver:
 ## Use giverny via Python on local computers
 `DEMO_local_python_notebooks.zip`
 
-The first cell in the notebook includes the `pip` install command for the `givernylocal` library and all dependencies:
-```
-pip install --upgrade givernylocal
-```
+The first cell in the notebook runs the `pip` install command for the `givernylocal` library and all dependencies:
+`pip install --upgrade givernylocal`
 If you don't have `pip` on your system, it is quite easy to get it following the instructions at: [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
 ## Use giverny via Matlab on local computers
