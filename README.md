@@ -11,7 +11,7 @@ The SciServer is a cloud-based data-driven cluster of The Institute for Data Int
 To use `giverny` through Sciserver:
 ```
 1) Login to [SciServer](https://sciserver.org/) (may need to create a new account first).
-2) Click on *Compute* and then *Create container*.
+2) Click on <em>Compute</em> and then *Create container*.
     * Can also run jobs in batch mode, by selecting *Compute Jobs*.
 3) Type in a *Container name*, select *SciServer Essentials (Test)* in *Compute Image*,
    mark *Turbulence (ceph)* in *Data volumes*, and then click on *Create*.
