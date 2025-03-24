@@ -769,7 +769,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     # write the xmf file.
     # -----
     # get the dataset name used for the hdf5 file.
-    h5_var = get_output_variable_name(cube.metadata, cube.var)
+    h5_var = cube.var
     h5_attribute_type = get_cardinality_name(cube.metadata, cube.var)
     h5_dataset_name = cube.dataset_name
     

@@ -100,5 +100,5 @@ class turb_dataset():
         self.coor_offsets = get_dataset_coordinate_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
         
         # set the dataset name to be used in the cutout hdf5 file.
-        self.dataset_name = get_output_variable_name(self.metadata, self.var) + '_' + str(self.timepoint_original).zfill(4)
+        self.dataset_name = self.var + '_' + str(self.timepoint_original).zfill(4)
     

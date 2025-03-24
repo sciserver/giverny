@@ -1,6 +1,11 @@
-giverny - stable release version 3.1.2 (18 March 2025)
+giverny - stable release version 3.1.3 (23 March 2025)
     - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 3.1.3 updates:
+    - fixed bug blocking queries of 'magneticfield' and 'vectorpotential' variables.
+    - updated the cutout xarray dataset, hdf5, and xmf files to use the specified variable name rather than
+      the display formatted variable name.
+    - removed unnecessary intermediate functions from the getCutout and getData ThreadPoolExecutor parallelizations.
 version 3.1.2 updates:
     - simplified and updated hyperlinks in the README.
 version 3.1.1 updates:
