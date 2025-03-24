@@ -57,7 +57,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     
     # -----
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
-    var_offsets, timepoint, spatial_method, spatial_method_specified, datatype = \
+    var_offsets, timepoint, spatial_method, spatial_method_specified = \
         getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
                                         temporal_method, spatial_method_original, spatial_operator,
                                         option, c)
@@ -220,13 +220,4 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # copy of the spatial interpolation that was specified by the user. needed for the 'z_linear*' step-down interpolation methods for the 'sabl' datasets.
     spatial_method_specified = spatial_method
     
-    # get the full variable name for determining the datatype.
-    datatype_var = get_output_variable_name(metadata, var)
-    
-    # remove 'field' from operator for determining the datatype.
-    datatype_operator = spatial_operator if spatial_operator != 'field' else ''
-    
-    # define datatype from the datatype_var and datatype_operator variables.
-    datatype = f'{datatype_var}{datatype_operator.title()}'
-    
-    return (var_offsets, timepoint, spatial_method, spatial_method_specified, datatype)
+    return (var_offsets, timepoint, spatial_method, spatial_method_specified)

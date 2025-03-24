@@ -680,6 +680,6 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     datatype_operator = spatial_operator if spatial_operator != 'field' else ''
     
     # define datatype from the datatype_var and datatype_operator variables.
-    datatype = f'{datatype_var}{datatype_operator.title()}'
+    datatype = f"{datatype_var.replace(' ', '')}{datatype_operator.title()}"
     
     return (var_offsets, timepoint, spatial_method, spatial_method_specified, datatype)

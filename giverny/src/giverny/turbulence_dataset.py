@@ -229,7 +229,7 @@ class turb_dataset():
         self.coor_offsets = get_dataset_coordinate_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
         
         # set the dataset name to be used in the cutout hdf5 file.
-        self.dataset_name = get_output_variable_name(self.metadata, self.var) + '_' + str(self.timepoint_original).zfill(4)
+        self.dataset_name = self.var + '_' + str(self.timepoint_original).zfill(4)
         
         # retrieve the list of datasets processed by the giverny code.
         giverny_datasets = get_giverny_datasets()
@@ -1262,23 +1262,19 @@ class turb_dataset():
         """
         submit the chunks for reading.
         """
-        num_processes = min(self.dask_maximum_processes, len(chunk_boxes))
-        # make copies of the arguments for each process.
-        args_list = [(chunk, self.timepoint, self.dataset_title, self.zarr_store) for chunk in chunk_boxes]
+        num_chunks = len(chunk_boxes)
+        num_processes = min(self.dask_maximum_processes, num_chunks)
         
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
-            result_output_data = list(executor.map(self.process_chunk_getcutout, args_list, chunksize = 1))
+            result_output_data = list(executor.map(self.get_points_getcutout,
+                chunk_boxes,
+                [self.timepoint] * num_chunks,
+                [self.dataset_title] * num_chunks,
+                [self.zarr_store] * num_chunks,
+                chunksize = 1))
         
         # flattens result_output_data.
         return list(itertools.chain.from_iterable(result_output_data))
-    
-    def process_chunk_getcutout(self, args):
-        """
-        read each chunk to retrieve the requested cutout.
-        """
-        chunk, timepoint, dataset_title, zarr_store = args
-        
-        return self.get_points_getcutout(chunk, timepoint, dataset_title, zarr_store)
     
     def get_points_getcutout(self, chunk_data, timepoint, dataset_title, zarr_store):
         """
@@ -1768,23 +1764,20 @@ class turb_dataset():
         """
         submit the points for reading and interpolation.
         """
-        num_processes = min(self.dask_maximum_processes, len(chunk_data_map))
-        # make copies of the arguments for each process.
-        args_list = [(chunk, self.timepoint, self.zarr_store, self.getdata_vars, self.interpolate_vars) for chunk in chunk_data_map]
-            
+        num_chunks = len(chunk_data_map)
+        num_processes = min(self.dask_maximum_processes, num_chunks)
+        
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
-            result_output_data = list(executor.map(self.process_chunk_getdata, args_list, chunksize = 1))
+            result_output_data = list(executor.map(self.get_points_getdata,
+                chunk_data_map,
+                [self.timepoint] * num_chunks,
+                [self.zarr_store] * num_chunks,
+                [self.getdata_vars] * num_chunks,
+                [self.interpolate_vars] * num_chunks,
+                chunksize = 1))
         
         # flattens result_output_data.
         return list(itertools.chain.from_iterable(result_output_data))
-    
-    def process_chunk_getdata(self, args):
-        """
-        read each chunk to retrieve the requested interpolated values.
-        """
-        chunk, timepoint, zarr_store, getdata_vars, interpolate_vars = args
-        
-        return self.get_points_getdata(chunk, timepoint, zarr_store, getdata_vars, interpolate_vars)
     
     def get_points_getdata(self, map_data, timepoint, zarr_store,
                            getdata_vars, interpolate_vars):
