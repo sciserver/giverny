@@ -356,6 +356,12 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
                         spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
     
+    # subtract the coordinate offsets from the points for the specified datasets to make sure giverny maps the points to the
+    # correct gridpoints. the *sabl2048* datasets are handled separately in turbulence_dataset.py because very specific boundary conditions
+    # are applied to each variable.
+    if dataset_title in ['diurnal_windfarm']:
+        points -= cube.coor_offsets
+    
     # get the result header, which only contains the names for each column of the data values.
     output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
     result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
