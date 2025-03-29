@@ -1339,7 +1339,7 @@ class turb_dataset():
         # adjust center_points and datapoints for the 'z_linear*' methods to make sure that the buckets do not wrap around the z-axis since it is not periodic. the values
         # in buckets_info are used in the 'z_linear*' methods in the spatial_interpolate function.
         buckets_info = np.full((len(points), 3), None)
-        if self.dataset_title in ['sabl2048low', 'sabl2048high']:
+        if self.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
             if self.sint == 'z_linear':
                 # adjustments for the 'z_linear' step-down method for the interpolation functions (i.e. lag4/6/8, m1q4, m2q8). 
                 if self.var_offsets == 'sgsenergy':
@@ -1856,7 +1856,7 @@ class turb_dataset():
         for point, datapoint, center_point, bucket_info, original_point_index in map_data[1:]:
             bucket_min_xyz = (datapoint - chunk_min_xyz - cube_min_index) % N
             bucket_max_xyz = (datapoint - chunk_min_xyz + cube_max_index + 1) % N
-            # update bucket_max_xyz any dimension is less than the corresponding dimension in bucket_min_xyz. this is
+            # update bucket_max_xyz for any dimension that is less than the corresponding dimension in bucket_min_xyz. this is
             # necessary to handle points on the boundary of single-chunk dimensions in the zarr store.
             mask = bucket_max_xyz < bucket_min_xyz
             bucket_max_xyz = bucket_max_xyz + (chunk_size * mask)
