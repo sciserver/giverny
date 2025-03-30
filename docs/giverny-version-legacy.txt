@@ -1,0 +1,189 @@
+giverny - stable release version 3.1.5 (30 March 2025)
+    - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
+
+version 3.1.5 updates:
+    - made CHANGELOG.md file.
+    - added x-axis and y-axis linear interpolation functions.
+version 3.1.4 updates:
+    - updated "Compute Image" name in the README from "SciServer Essentials (Test)" to "SciServer Essentials 4.0".
+    - fixed interpolation boundary conditions for 'stsabl2048low' and 'stsabl2048high' datasets.
+    - added coordinate offset logic for the windfarm datasets.
+version 3.1.3 updates:
+    - fixed bug blocking queries of 'magneticfield' and 'vectorpotential' variables.
+    - updated the cutout xarray dataset, hdf5, and xmf files to use the specified variable name rather than
+      the display formatted variable name.
+    - removed unnecessary intermediate functions from the getCutout and getData ThreadPoolExecutor parallelizations.
+version 3.1.2 updates:
+    - simplified and updated hyperlinks in the README.
+version 3.1.1 updates:
+    - added missing variables in matlab getData.m file.
+    - updated README.
+version 2.4.8 updates:
+    - fixed output tsv header bug in givernylocal.
+version 2.4.7 updates:
+    - make sure points is a contiguous array in getData.
+version 2.4.6 updates:
+    - added pydantic as a required dependency.
+version 2.4.5 updates:
+    - updated json metadata file formatting.
+    - added pydantic json schema to validate the json metadata file.
+version 2.4.4 updates:
+    - fixed the getCutout automated colorbar orientation. 
+version 2.4.3 updates:
+    - fixed givernylocal import statement in basic_gizmos.py
+    - added diurnal_windfarm dataset.
+    - updated DEMO notebook documentation.
+version 2.4.2 updates:
+    - temporarily removed windfarm datasets and associated variables from DEMO notebooks documentation.
+    - fixed xmf and hdf5 files not working with strides > 1 along any axis.
+version 2.4.1 updates:
+    - switched reading datasets from fileDB to ceph.
+    - updated metadata to json file format.
+    - moved datasets from fileDB to ceph:
+      - isotropic8192, sabl2048low, sabl2048high
+    - added new datasets:
+      - isotropic32768, stsabl2048low, stsabl2048high
+    - added automatic plot downscaling to prevent plotting too many points.
+    - removed m2q14 spatial interpolation method.
+    - updated variable name "energy" to "sgsenergy".
+version 2.3.11 updates:
+    - changed "position" variable calls to require "pchip" as the temporal interpolation method.
+    - fixed "position" variable calls to pass the specified spatial interpolation method.
+version 2.3.10 updates:
+    - corrected metadata file generation bug.
+version 2.3.9 updates:
+    - tweaked plotting code in getData notebooks.
+    - fixed input verification for 'option' parameter.
+version 2.3.8 updates:
+    - updated aspect ratio of 3d plots to be proportional.
+version 2.3.7 updates:
+    - added jupyter-core package version.
+version 2.3.6 updates:
+    - fixed package dependencies for new 3d visualizations.
+version 2.3.5 updates:
+    - DEMO notebook tweaks.
+version 2.3.4 updates:
+    - corrected the time array for time series plotting.
+version 2.3.3 updates:
+    - changed 'timepoint' to 'time' in the notebooks.
+    - moved where 'time' is specified by the user in the notebook.
+    - updated notebook filenames.
+    - fixed givernylocal getData output formatting.
+version 2.3.2 updates:
+    - formatted (x, y, z) values in the time series demo plot to round to 2 decimal places.
+    - changed to getting the SciServer username from the SciServer.Authentication package.
+    - removed givernylocal getCutout function.
+    - updated result from getData to start with an array dimension for each queried timepoint.
+      - added timepoint column to the interpolation tsv file to account for time series queries.
+version 2.3.1 updates:
+    - switched from dask futures to dask delayed for parallel queries in getCutout and getData.
+version 2.2.7 updates:
+    - updated getCutout contour plot variable names to match getData.
+version 2.2.6 updates:
+    - fixed package dependency installations.
+    - updated time series to include timepoint_end if delta_t lands on it.
+    - changed default 'option' parameter placeholder values.
+version 2.2.5 updates:
+    - removed tqdm from the givernylocal package dependency list in the README.
+version 2.2.4 updates:
+    - fixed README SciServer hyperlinks.
+version 2.2.3 updates:
+    - added time series queries as one call to the backend code, rather than separate calls for each
+      timepoint in the series.
+version 2.2.2 updates:
+    - fixed import dependency in turbulence_toolkit.py
+    - moved dask cluster creation to turbulence_toolkit.py to fix bottleneck with pchip interpolation and
+      visitor points.
+    - creation of givernylocal PyPI package.
+version 2.2.1 updates:
+    - creation of giverny PyPI package.
+version 2.1.12 updates:
+    - add package __init__.py files.
+version 2.1.11 updates:
+    - updated giverny package metadata.
+version 2.1.10 updates:
+    - fixed timepoints for the discrete time index datasets processed by pyJHTDB.
+      - isotropic4096, rotstrat4096, and channel5200
+    - simplified dask cluster and client code.
+version 2.1.9 updates:
+    - reverted dask cluster and client creation, and shutdown, to when a query is made.
+      - preserves compute resources.
+      - fixes issue when running the notebook in a REST container.
+version 2.1.8 updates:
+    - removed SciServer.Authentication package.
+    - changed local pickled metadata folder path.
+version 2.1.7 updates:
+    - code cleanup.
+    - updated linear interpolation function names for the sabl datasets.
+version 2.1.6 updates:
+    - simplified error checking for getCutout.
+    - added documentation differentiating time points and snapshot number for different datasets.
+    - changed first "timepoint" to 1 for snapshot number datasets in getData to keep consistent with getCutout.
+    - updated memory limit for the dask localcluster to handle the increased maximum cutout size.
+version 2.1.5 updates:
+    - removed check to shutdown the cluster and client in the dask monitoring function if 1 or more
+      of the workers closes unexpectedly.
+version 2.1.4 updates:
+    - fixed chunk volume calculation in getData pre-processing.
+version 2.1.3 updates:
+    - removed python packages that no longer needed to be imported in some files.
+    - small performance improvement to the getData visitor read function.
+version 2.1.2 updates:
+    - fixed dask localcluster and client to close after 5 minutes of idle time in order to free up
+      allocated compute resources when not in use.
+      - the dask client will stay running up to 2 hours during processing. all queries should finish
+        well under 2 hours, but if an exception occurs during processing then the cluster will automatically
+        close if the python kernel remains alive and no other queries are made within 2 hours.
+version 2.1.1 updates:
+    - built getData and getCutout functions for querying all datasets.
+    - added stable atmospheric boundary layer ("sabl") datasets and z-axis linear step-down interpolation methods
+      to handle them.
+version 1.2.7 updates:
+    - added user interface for choosing how to save output files.
+    - reformatted interpolation/differentiation output to match legacy code.
+    - added automatic metadata file generation.
+    - fixed stale variable states when using a dask cluster for concurrent processing.
+    - simplified example point distributions for interpolation queries.
+    - added documentation to the user-interface.
+version 1.2.6 updates:
+    - added documentation to the user interface.
+    - mapped fully overlapped chunk groups for interpolation buckets together.
+version 1.2.5 updates:
+    - added getGradient, getHessian, and getLaplacian functions.
+    - added .xmf file generation for getCutout.
+version 1.2.4 updates:
+    - simplified the metadata files and switched them to be stored on a fileDB node.
+    - fixed HTML documentation in the notebook.
+version 1.2.3 updates:
+    - removed h5py package.
+    - updated HDF5 output file formatting for getCutout.
+      - updated contour plotting and data retrieval functions compatability with xarray.
+    - updated filepathing to reflect new distribution of iso8192 zarr data on fileDB.
+version 1.2.2 updates:
+    - removed "import mmap".
+version 1.2.1 updates:
+    - converted the notebook to process zarr files instead of binary files.
+    - simplified getCutout, getPressure, and getVelocity functions.
+version 1.1.4 updates:
+    - added 'lag4', 'lag6', 'lag8', 'm1q4', and 'm2q8' interpolation methods.
+version 1.1.3 updates:
+    - code simplifications.
+    - removed worker sorting for dask parallel processing.
+    - updated the pickled file directory to a folder in "scratch".
+version 1.1.2 updates:
+    - implemented memory map for reading the voxels.
+    - removed pre-processing step of grouping morton-adjacent voxels that overlap the user-specified box.
+    - simplified identifying database files the user-specified box is in.
+    - added creating pickle files for the database filepaths and SQL metadata.
+    - adjusted the contour plot axes ticks to be centered for each datapoint.
+    - added load balancing for dask worker assignment.
+    - fully vectorized the reading of the database files.
+version 1.1.1 updates:
+    - converted output_array to xarray.
+    - simplied retrieving values for a datapoint (or range of datapoints) by using xarray's built-in functionality.
+    - added contour plot function.
+    - moved isotropic cube class instantiation out of the backend code.
+    - updated dask backend to be fully automated.
+    - implemented improved vectorization.
+    - added stride method.
+    
