@@ -31,6 +31,7 @@ jupyter-core = "^5.7.2"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[project.urls]
+[tool.poetry.urls]
 "Homepage" = "https://github.com/sciserver/giverny"
 "Bug Tracker" = "https://github.com/sciserver/giverny/issues"
+"Changelog" = "https://github.com/sciserver/giverny/blob/main/CHANGELOG.md"
