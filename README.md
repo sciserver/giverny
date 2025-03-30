@@ -1,5 +1,5 @@
 <div align = "center">
-  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/ceph/docs/JHTDB_snapshots.png"><br>
+  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/ceph/docs/JHTDB_snapshots.png" width="50%" alt="JHTDB snapshots"><br>
 </div>
 
 # giverny
