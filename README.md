@@ -1,3 +1,7 @@
+<div align = "center">
+  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/ceph/docs/JHTDB_snapshots.png"><br>
+</div>
+
 # giverny
 Python (version 3.9+) codebase for querying the [JHU Turbulence Database Cluster](https://turbulence.idies.jhu.edu/home) library.
 
