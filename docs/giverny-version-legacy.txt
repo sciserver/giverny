@@ -1,6 +1,9 @@
-giverny - stable release version 3.1.4 (28 March 2025)
+giverny - stable release version 3.1.5 (30 March 2025)
     - library for querying Johns Hopkins Turbulence Database (JHTDB) datasets.
 
+version 3.1.5 updates:
+    - made CHANGELOG.md file.
+    - added x-axis and y-axis linear interpolation functions.
 version 3.1.4 updates:
     - updated "Compute Image" name in the README from "SciServer Essentials (Test)" to "SciServer Essentials 4.0".
     - fixed interpolation boundary conditions for 'stsabl2048low' and 'stsabl2048high' datasets.
