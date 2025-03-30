@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
-- updated CHANGELOG.md to reflect that the Fortran code, DEMO_F.tar was fixed in version 3.1.4.
+- updated CHANGELOG.md to reflect that the Fortran code, DEMO_F.tar, was fixed in version 3.1.4.
  
 ## [3.1.5] - 2025-03-30
 
