@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "giverny"
-version = "3.1.5"
+version = "3.1.6"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB) datasets"
 authors = ["Johns Hopkins Turbulence Database Group"]
 license = "LICENSE.txt"

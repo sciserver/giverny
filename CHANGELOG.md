@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- add diurnal and neutral boundary layer windfarm datasets.
+- diurnal and neutral boundary layer windfarm datasets.
 - function to handle variable grid axis spacing.
 - step-down linear interpolation methods for the windfarm datasets.
 - getTurbineData and getBladeData DEMO notebooks to read windfarm parquet files.
@@ -20,23 +20,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - process (uv) and (w) components of the sabl velocity data together to reduce processing time.
 - migrate datasets from SQL to CephFS storage.
 
-### Fixed
+## [3.1.6] - 2025-03-30
+
+### Changed
+
+- updated CHANGELOG.md to reflect that the Fortran code, DEMO_F.tar, was fixed in version 3.1.4.
  
 ## [3.1.5] - 2025-03-30
 
 ### Added
 
-- made CHANGELOG.md file.
+- CHANGELOG.md file.
  
 ### Fixed
 
-- fixed function calls for x-axis and y-axis linear interpolations.
+- function calls for x-axis and y-axis linear interpolations.
  
 ## [3.1.4] - 2025-03-28
  
 ### Added
 
-- added coordinate offset logic for the windfarm datasets.
+- coordinate offset logic for the windfarm datasets.
 
 ### Changed
 
@@ -44,7 +48,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
-- fixed interpolation boundary conditions for 'stsabl2048low' and 'stsabl2048high' datasets.
+- interpolation boundary conditions for 'stsabl2048low' and 'stsabl2048high' datasets.
+- implemented the missing gradient, hessian, and laplacian interpolation functions in the Fortran code, DEMO_F.tar.
 
 ## [3.1.3] - 2025-03-24
 
@@ -56,7 +61,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
-- fixed bug blocking queries of 'magneticfield' and 'vectorpotential' variables.
+- bug blocking queries of 'magneticfield' and 'vectorpotential' variables of the 'mhd1024' dataset.
 
 ## [3.1.2] - 2025-03-18
 
@@ -68,7 +73,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
  
 ### Added
 
-- added missing variables in matlab getData.m file.
+- missing variables in matlab getData.m file.
 
 ### Changed
 
