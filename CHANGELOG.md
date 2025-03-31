@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - process (uv) and (w) components of the sabl velocity data together to reduce processing time.
 - migrate datasets from SQL to CephFS storage.
 
+## [3.1.7] - 2025-03-31
+
+### Changed
+
+- updated giverny image and the corresponding reference in the README.
+
 ## [3.1.6] - 2025-03-30
 
 ### Changed
