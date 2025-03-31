@@ -1,5 +1,5 @@
 <div align = "center">
-  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/ceph/docs/imgs/JHTDB_contours-water_lilies.png" width="70%"><br>
+  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/docs/imgs/JHTDB_contours-water_lilies.png" width="70%"><br>
 </div>
 
 # giverny
