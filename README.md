@@ -1,5 +1,5 @@
 <div align = "center">
-  <img src="https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/docs/imgs/monet-water_lilies.png" width="60%"><br>
+  <img src = "https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/docs/imgs/monet-water_lilies.png" width = "45%"><br>
 </div>
 
 # giverny
