@@ -1,10 +1,14 @@
 [tool.poetry]
 name = "giverny"
-version = "3.1.7"
+version = "3.1.8"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB) datasets"
 authors = ["Johns Hopkins Turbulence Database Group"]
-license = "LICENSE.txt"
+license = "Apache-2.0"
 readme = "README.md"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research"
+]
 
 [[tool.poetry.packages]]
 include = "giverny"

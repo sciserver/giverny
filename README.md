@@ -1,16 +1,16 @@
 <div align = "center">
-  <img src = "https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/docs/imgs/monet-water_lilies.png" width = "100%"><br>
+  <img src = "https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/docs/imgs/monet-water_lilies.png" width = "50%"><br>
 </div>
 
 # giverny
-Python (version 3.9+) codebase for querying the [JHU Turbulence Database Cluster](https://turbulence.idies.jhu.edu/home) library.
+Python (3.9+) library for querying the [Johns Hopkins Turbulence Database](https://turbulence.idies.jhu.edu/home).
 
-DEMO notebooks for the various compute environments are provided at the [JHU Turbulence github](https://github.com/sciserver/giverny).
+DEMO notebooks for the various compute environments are provided at the [Johns Hopkins Turbulence github](https://github.com/sciserver/giverny).
 
 ## Use giverny via Python through SciServer (RECOMMENDED)
 `DEMO_SciServer_python_notebooks.zip`
 
-The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to JHTDB through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
+The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to the Johns Hopkins Turbulence Database (JHTDB) through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
 
 Please go to [SciServer](https://sciserver.org/) to create an account, and access more information as well as help on SciServer.
 
