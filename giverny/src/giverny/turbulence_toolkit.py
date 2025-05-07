@@ -29,9 +29,10 @@ import xarray as xr
 from tqdm.auto import tqdm
 from giverny.turbulence_dataset import *
 from giverny.turbulence_gizmos.basic_gizmos import *
-from giverny.turbulence_gizmos.constants import get_constants
 from giverny.turbulence_gizmos.getData import getData_process_data
 from giverny.turbulence_gizmos.getCutout import getCutout_process_data
+from giverny.turbulence_gizmos.getBladeData import getBladeData_process_data
+from giverny.turbulence_gizmos.getTurbineData import getTurbineData_process_data
 
 # installs sympy if necessary.
 try:
@@ -68,7 +69,7 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     query_type = 'getcutout'
     
     # data constants.
-    c = get_constants()
+    c = metadata['constants']
     
     # only time_step and filter_width values of 1 are currently allowed.
     time_step = 1
@@ -119,12 +120,11 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     
     # placeholder values for getData settings.
     spatial_method = 'none'
-    spatial_method_specified = 'none'
     temporal_method = 'none'
     option = [-999.9, -999.9]
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
     cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
-                        spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
+                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
     
     # -----
     # starting the tracemalloc library.
@@ -184,10 +184,15 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
         
     # datasets that have an irregular y-grid.
     irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets(metadata, var)
+    irregular_zgrid_datasets = get_irregular_mesh_zgrid_datasets(metadata, var)
         
     # create axis coordinate ranges, shifted to 0-based indices, to store in the xarray metadata.
-    z_coords = np.around(np.arange(axes_ranges_original[2][0] - 1, axes_ranges_original[2][1], strides[2], dtype = np.float32) * cube.dz, decimals = c['decimals'])
-    z_coords += cube.coor_offsets[2]
+    if dataset_title in irregular_zgrid_datasets:
+        # note: this assumes that the z-axis of the irregular grid datasets is non-periodic.
+        z_coords = cube.dz[np.arange(axes_ranges_original[2][0] - 1, axes_ranges_original[2][1], strides[1])]
+    else:
+        z_coords = np.around(np.arange(axes_ranges_original[2][0] - 1, axes_ranges_original[2][1], strides[2], dtype = np.float32) * cube.dz, decimals = c['decimals'])
+        z_coords += cube.coor_offsets[2]
     if dataset_title in irregular_ygrid_datasets:
         # note: this assumes that the y-axis of the irregular grid datasets is non-periodic.
         y_coords = cube.dy[np.arange(axes_ranges_original[1][0] - 1, axes_ranges_original[1][1], strides[1])]
@@ -253,9 +258,6 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
 def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original):
     """
     complete all of the getCutout housekeeping procedures before data processing.
-        - convert 1-based axes ranges to 0-based.
-        - format the variable name and get the variable identifier.
-        - convert 1-based timepoint to 0-based.
     """
     # validate user-input.
     # -----
@@ -289,7 +291,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
 
 def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
-            trace_memory = False, verbose = True):
+            return_times = False, trace_memory = False, verbose = True):
     """
     interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
     """
@@ -309,7 +311,7 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     query_type = 'getdata'
     
     # data constants.
-    c = get_constants()
+    c = metadata['constants']
     
     # spatial interpolation map for legacy datasets.
     spatial_map = { 
@@ -335,37 +337,23 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     if not points.flags.c_contiguous:
         points = np.ascontiguousarray(points)
     
+    # number of queried points.
+    num_points = len(points)
+    
     # -----
-    # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
-    var_offsets, timepoint, spatial_method, spatial_method_specified, datatype = \
+    # housekeeping procedures.
+    var_offsets, timepoint, spatial_method, datatype = \
         getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original_notebook,
                                         temporal_method, spatial_method_original, spatial_operator,
                                         option, c)
     
     # check the authorization token for larger queries.
-    if auth_token == c['pyJHTDB_testing_token'] and len(points) > 4096:
+    if auth_token == c['pyJHTDB_testing_token'] and num_points > 4096:
         turb_email = c['turbulence_email_address']
-        raise Exception(f'too many points requested for the testing authorization token: {len(points)} > 4096\n\n' + \
+        raise Exception(f'too many points requested for the testing authorization token: {num_points} > 4096\n\n' + \
                         f'an authorization token can be requested by email from {turb_email}\n' + \
                         f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
-    
-    # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
-    # data this value is 3, because there is a velocity measurement along each axis.
-    num_values_per_datapoint = get_cardinality(metadata, var)
-    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
-    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
-                        spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
-    
-    # subtract the coordinate offsets from the points for the specified datasets to make sure giverny maps the points to the
-    # correct gridpoints. the *sabl2048* datasets are handled separately in turbulence_dataset.py because very specific boundary conditions
-    # are applied to each variable.
-    if dataset_title in ['diurnal_windfarm']:
-        points -= cube.coor_offsets
-    
-    # get the result header, which only contains the names for each column of the data values.
-    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
-    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
-    
+        
     # option parameter values.
     timepoint_end, delta_t = option
     
@@ -381,10 +369,28 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             timepoint_range = np.append(timepoint_range, timepoint_end)
         
     num_timepoints = len(timepoint_range)
+    # if more than one timepoint was queried, then checks if ({number of points} * {number of timepoints}) <= c['max_data_points'].
+    if (num_points * num_timepoints) > c['max_data_points']:
+        raise Exception(f"too many 'points' and 'times' queried together, please limit the number of (points * times) to <= {c['max_data_points']:,}")
+        
+    if return_times:
+        # make a copy of timepoint_range to return to users when requested.
+        timepoint_range_original = timepoint_range.copy()
     
     # only print the progress bar if verbose output.
     if verbose:
         timepoint_range = tqdm(timepoint_range, desc = f'times completed (n = {len(timepoint_range)}) ')
+    
+    # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
+    # data this value is 3, because there is a velocity measurement along each axis.
+    num_values_per_datapoint = get_cardinality(metadata, var)
+    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
+    
+    # get the result header, which only contains the names for each column of the data values.
+    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     
     # -----
     # starting the tracemalloc library.
@@ -414,75 +420,68 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                 
             # results and their corresponding specified order.
             result = []
-            original_points_indices = []
+            # fill original_points_indices.
+            original_points_indices = [q for q in range(num_points)]
             
             for timepoint_i, timepoint_tmp in enumerate(timepoints):
                 if dataset_title not in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
-                    # fill original_points_indices.
-                    original_points_indices = [q for q in range(len(points))]
+                    # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                    points_offset = points - cube.coor_offsets
                     
                     # get the results.
-                    result.append(getData_process_data(cube, metadata, points, var, timepoint_tmp, temporal_method, spatial_method,
-                                                       var_offsets, timepoint_original, spatial_method_specified, option, c))
+                    result.append(getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                       var_offsets, timepoint_original, option, c))
                 else:
-                    # separate points into different interpolation methods for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets if they are
-                    # near the boundary.
-                    points_map, original_indices_map = get_sabl_points_map(cube, points)
-                    # first key in points_map.
-                    first_key = next(iter(points_map))
-                    # last key in points_map.
-                    last_key = next(reversed(points_map))
-
-                    # results for each spatial interpolation method at timepoint_tmp.
-                    result_spatial_methods = []
-                    for spatial_method_tmp in points_map:
-                        # changes spatial_method_specified to 'fd4noint_*' from 'fd4lag4_*/m2q8_*/m1q4_*' if the step-down interpolation method is 'z_linear_*' since
-                        # only finite differencing is applied in the linear step-down region of the gradient/hessian/laplacian. replace does *not* affect the
-                        # 'm2q8/m1q4' 'field' interpolations.
-                        spatial_method_specified_tmp = spatial_method_specified.replace('fd4lag4_', 'fd4noint_').replace('m2q8_', 'fd4noint_').replace('m1q4_', 'fd4noint_') \
-                                                                                        if 'z_linear' in spatial_method_tmp else spatial_method_specified
-
-                        # points to be interpolated with this spatial_method_tmp interpolation method.
-                        points_tmp = points_map[spatial_method_tmp]
-
-                        # only keep track of the ordering of points for the first timepoint as duplicates of the ordering are not needed.
-                        if timepoint_i == 0:
-                            # keep track of the ordering of the points specified by the user.
-                            for original_point_index in original_indices_map[spatial_method_tmp]:
-                                original_points_indices.append(original_point_index)
-
-                        if var == 'velocity':
-                            # handles the velocity variable for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets. queries getData twice
-                            # for the (u, v) and (w) components of velocity separately.
-                            var_offsets_tmp = 'velocity_uv'
-                            result_tmp = getData_process_data(cube, metadata, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                              var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c)
-
-                            var_offsets_tmp = 'velocity_w'
-                            result_tmp_w = getData_process_data(cube, metadata, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                                var_offsets_tmp, timepoint_original, spatial_method_specified_tmp, option, c)
-
-                            # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
-                            if '_gradient' in spatial_method_specified:
-                                # handles the velocity gradient differentiations.
-                                result_tmp[:, 6:] = result_tmp_w[:, 6:]
-                            elif '_hessian' in spatial_method_specified:
-                                # handles the velocity hessian differentiations.
-                                result_tmp[:, 12:] = result_tmp_w[:, 12:]
-                            else:
-                                # handles the velocity field interpolations and laplacian differentiations.
-                                result_tmp[:, 2] = result_tmp_w[:, 2]
+                    # handles the *sabl* datasets.
+                    if var == 'velocity':
+                        # handles the velocity variable for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets. makes a duplicate
+                        # of the points array so that the velocity-uv and velocity-w components can be queried together despite being offset by 0.5 * dz.
+                        coor_offsets_uv = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_uv', var)
+                        points_offset_uv = points.copy()
+                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                        points_offset_uv -= coor_offsets_uv
+                        
+                        coor_offsets_w = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_w', var)
+                        points_offset_w = points.copy()
+                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                        points_offset_w -= coor_offsets_w
+                        
+                        points_offset = np.vstack((points_offset_uv, points_offset_w))
+                        # get the results.
+                        result_uvw = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                          var_offsets, timepoint_original, option, c)
+                        
+                        # split up the velocity-uv and velocity-w components from the query results.
+                        result_tmp = result_uvw[:num_points]
+                        result_tmp_w = result_uvw[num_points:]
+                        
+                        # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
+                        if '_gradient' in spatial_method:
+                            # handles the velocity gradient differentiations.
+                            result_tmp[:, 6:] = result_tmp_w[:, 6:]
+                        elif '_hessian' in spatial_method:
+                            # handles the velocity hessian differentiations.
+                            result_tmp[:, 12:] = result_tmp_w[:, 12:]
                         else:
-                            # handles all non-velocity variables for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high' datasets.    
-                            # get the results.
-                            result_tmp = getData_process_data(cube, metadata, points_tmp, var, timepoint_tmp, temporal_method, spatial_method_tmp,
-                                                              var_offsets, timepoint_original, spatial_method_specified_tmp, option, c)
-
-                        # append the result for this interpolation method.
-                        result_spatial_methods.append(result_tmp)
+                            # handles the velocity field interpolations and laplacian differentiations.
+                            result_tmp[:, 2] = result_tmp_w[:, 2]
+                    # handles all non-velocity variables for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high' datasets.
+                    else:
+                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                        points_offset = points - cube.coor_offsets
+                        
+                        # get the results.
+                        result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                          var_offsets, timepoint_original, option, c)
 
                     # append the result for timepoint_tmp.
-                    result.append(np.vstack(result_spatial_methods))    
+                    result.append(result_tmp)
+            
+                # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
+                # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
+                # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
+                cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                                    spatial_method, temporal_method, option, num_values_per_datapoint, c)
             
             if temporal_method == 'pchip':
                 # dt between timepoints.
@@ -503,19 +502,14 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
 
             # convert the result list to a numpy array.
             result = np.array(result)
-            
-            # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
-            # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
-            # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
-            cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
-                                spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
 
             # checks to make sure that data was read in for all points.
-            if c['missing_value_placeholder'] in result or result.shape != (len(points), len(result_header)):
+            if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
                 raise Exception(f'result was not filled correctly')
 
             # insert the output header at the beginning of result.
             result = pd.DataFrame(data = result, columns = result_header)
+            result.index.name = 'index'
 
             # append the result into results.
             results.append(result)
@@ -569,11 +563,12 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                 result = lJHTDB.getData(timepoint, points_tmp, data_set = dataset_title, sinterp = sint, tinterp = tint, getFunction = f'get{datatype}')
                 
             # checks to make sure that data was read in for all points.
-            if c['missing_value_placeholder'] in result or result.shape != (len(points), len(result_header)):
+            if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
                 raise Exception(f'result was not filled correctly')
 
             # insert the output header at the beginning of result.
             result = pd.DataFrame(data = result, columns = result_header)
+            result.index.name = 'index'
 
             # append the result into results.
             results.append(result)
@@ -609,7 +604,10 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    return results
+    if not return_times:
+        return results
+    else:
+        return results, timepoint_range_original
 
 def pchip(time, times, results, dt):
     """
@@ -638,9 +636,7 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
                                     temporal_method, spatial_method, spatial_operator,
                                     option, c):
     """
-    complete all of the housekeeping procedures before data processing.
-        - format the variable name and get the variable identifier.
-        - convert 1-based timepoint to 0-based.
+    complete all of the getData housekeeping procedures before data processing.
     """
     # validate user-input.
     # -----
@@ -676,9 +672,6 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     else:
         var_offsets = var
     
-    # copy of the spatial interpolation that was specified by the user. needed for the 'z_linear*' step-down interpolation methods for the 'sabl' datasets.
-    spatial_method_specified = spatial_method
-    
     # get the full variable name for determining the datatype.
     datatype_var = get_output_variable_name(metadata, var)
     
@@ -688,4 +681,259 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # define datatype from the datatype_var and datatype_operator variables.
     datatype = f"{datatype_var.replace(' ', '')}{datatype_operator.title()}"
     
-    return (var_offsets, timepoint, spatial_method, spatial_method_specified, datatype)
+    return (var_offsets, timepoint, spatial_method, datatype)
+
+def getTurbineData(cube, turbine_numbers, var, original_times,
+                   trace_memory = False, verbose = True):
+    """
+    retrieve turbine data at a set of specified times for the specified turbine and variable.
+    """
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetTurbineData is processing...')
+        sys.stdout.flush()
+    
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # set cube attributes.
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    auth_token = cube.auth_token
+    
+    # define the query type.
+    query_type = 'getturbinedata'
+    
+    # data constants.
+    c = metadata['constants']
+    
+    # -----
+    # housekeeping procedures.
+    turbine_numbers, folderpath, time_offset, time_align, dt = \
+        getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, var, original_times, turbine_numbers, c)
+    
+    # number of queried times.
+    num_original_times = len(original_times)
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and num_original_times > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many times requested for the testing authorization token: {num_original_times} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+    
+    # number of queried turbines.
+    num_turbines = len(turbine_numbers)
+    # if more than one turbine was queried, then checks if ({number of times} * {number of turbines}) <= c['max_data_points'].
+    if (num_original_times * num_turbines) > c['max_data_points']:
+        raise Exception(f"too many 'times' and 'turbines' queried together, please limit the number of (times * turbines) to <= {c['max_data_points']:,}")
+    
+    # -----
+    # starting the tracemalloc library.
+    if trace_memory:
+        tracemalloc.start()
+        # checking the memory usage of the program.
+        tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # time_offset + time_align to align with the field data which starts at 15:00:01.0 (hh:mm:ss).
+    times = np.array(original_times, dtype = np.float64)
+    times = times + time_offset + time_align
+    
+    # only print the progress bar if verbose output.
+    if verbose:
+        turbine_numbers = tqdm(turbine_numbers, desc = f'turbines completed (n = {num_turbines}) ') 
+    
+    results = []
+    # getTurbineData_process_data is specific to the diurnal_windfarm and nbl_windfarm datasets. if we add other datasets, will need a more generalized
+    # function to handle processing, e.g. generalizing the beginning hour of the parquet files.
+    for turbine_number in turbine_numbers:
+        # parse the parquet files, generate the result dataframe.
+        results.append(getTurbineData_process_data(dataset_title, times, turbine_number, var, folderpath,
+                                                   time_offset, time_align, dt))
+        
+    # concatenate the turbine results. keep the time indices for each turbine the same.
+    result = pd.concat(results, ignore_index = True)
+    # sort by 'turbine', and then 'time' columns.
+    result = result.sort_values(by = ['turbine', 'time']).reset_index(drop = True)
+    # reset the indices for each turbine.
+    reset_indices = np.arange(len(result)) % num_original_times
+    result.index = reset_indices
+    result.index.name = 'index'
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    return result
+
+def getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, var, times, turbine_numbers, c):
+    """
+    complete all of the getTurbineData housekeeping procedures before data processing.
+    """
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that the user-input times are valid times for the dataset.
+    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    # check that the user-input turbine numbers are valid turbines.
+    turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
+    
+    # get the parquet data folderpath, time_offset, time_align, and time_step (dt).
+    folderpath = get_parquet_folderpath(metadata, dataset_title)
+    time_offset, time_align, dt = get_parquet_time_info(metadata, dataset_title)
+    
+    return turbine_numbers, folderpath, time_offset, time_align, dt
+
+def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blade_points,
+                 trace_memory = False, verbose = True):
+    """
+    retrieve blade data at a set of specified times and blade actuator points for the specified turbine, blade, and variable.
+    """
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetBladeData is processing...')
+        sys.stdout.flush()
+    
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # set cube attributes.
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    auth_token = cube.auth_token
+    
+    # define the query type.
+    query_type = 'getbladedata'
+    
+    # data constants.
+    c = metadata['constants']
+    
+    # -----
+    # housekeeping procedures.
+    turbine_numbers, blade_numbers, blade_points, folderpath, time_offset, time_align, dt = \
+        getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, var, original_times, turbine_numbers, blade_numbers, blade_points, c)
+    
+    # number of queried times.
+    num_original_times = len(original_times)
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and num_original_times > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many times requested for the testing authorization token: {num_original_times} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+    
+    # number of queried turbines.
+    num_turbines = len(turbine_numbers)
+    num_blades = len(blade_numbers)
+    # if more than one turbine and/or blade was queried, then checks if ({number of times} * {number of turbines} * {number of blades}) <= c['max_data_points'].
+    if (num_original_times * num_turbines * num_blades) > c['max_data_points']:
+        raise Exception(f"too many 'times', 'turbines', and 'blades' queried together, please limit the number of (times * turbines * blades) to <= {c['max_data_points']:,}")
+    
+    # -----
+    # starting the tracemalloc library.
+    if trace_memory:
+        tracemalloc.start()
+        # checking the memory usage of the program.
+        tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # time_offset + time_align to align with the field data which starts at 15:00:01.0 (hh:mm:ss).
+    times = np.array(original_times, dtype = np.float64)
+    times = times + time_offset + time_align
+    
+    # only print the progress bar if verbose output.
+    if verbose:
+        turbine_numbers = tqdm(turbine_numbers, desc = f'turbines completed (n = {num_turbines}) ') 
+    
+    results = []
+    # getBladeData_process_data is specific to the diurnal_windfarm and nbl_windfarm datasets. if we add other datasets, will need a more generalized
+    # function to handle processing, e.g. generalizing the beginning hour of the parquet files.
+    for turbine_number in turbine_numbers:
+        # parse the parquet files, generate the result dataframe.
+        results.append(getBladeData_process_data(dataset_title, times, turbine_number, blade_numbers, blade_points, var, folderpath,
+                                                 time_offset, time_align, dt))
+    
+    # concatenate the blade results.
+    result = pd.concat(results, ignore_index = True)
+    # sort by 'turbine', 'blade', and then 'time' columns.
+    result = result.sort_values(by = ['turbine', 'blade', 'time']).reset_index(drop = True)
+    # reset the indices for each turbine and blade.
+    reset_indices = np.arange(len(result)) % num_original_times
+    result.index = reset_indices
+    result.index.name = 'index'
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    return result
+
+def getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, var, times, turbine_numbers, blade_numbers, blade_points, c):
+    """
+    complete all of the getBladeData housekeeping procedures before data processing.
+    """
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that the user-input times are valid times for the dataset.
+    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    # check that the user-input turbine numbers are valid turbines.
+    turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
+    # check that the user-input blade numbers are valid blades.
+    blade_numbers = check_blade_numbers(metadata, dataset_title, blade_numbers)
+    # check that the user-input blade actuator points are valid blade points.
+    blade_points = check_blade_points(metadata, dataset_title, blade_points)
+    
+    # get the parquet data folderpath, time_offset, time_align, and time_step (dt).
+    folderpath = get_parquet_folderpath(metadata, dataset_title)
+    time_offset, time_align, dt = get_parquet_time_info(metadata, dataset_title)
+    
+    return turbine_numbers, blade_numbers, blade_points, folderpath, time_offset, time_align, dt

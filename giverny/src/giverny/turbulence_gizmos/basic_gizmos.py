@@ -26,17 +26,20 @@ import json
 import math
 import requests
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from collections import defaultdict
 from plotly.subplots import make_subplots
-from giverny.turbulence_gizmos.variable_dy_grid_ys import *
+from giverny.turbulence_gizmos.variable_grids import *
 from giverny.turbulence_gizmos.jhtdb_schema import TurbulenceDB
 
 """
 user-input checking gizmos.
 """
-def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbulence-config/refs/heads/main/config-files/jhtdb-config.json'):
+# TESTING. replace giverny branch config path with main branch.
+# def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbulence-config/refs/heads/main/config-files/jhtdb-config.json'):
+def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbulence-config/refs/heads/giverny/config-files/jhtdb-config.json'):
     """
     load the json simulation metadata for user input verification.
     """
@@ -56,6 +59,7 @@ def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbul
                 'spatial_operators': metadata_json['spatial_operators'],
                 'spatial_methods': metadata_json['spatial_methods'],
                 'temporal_methods': metadata_json['temporal_methods'],
+                'constants': metadata_json['giverny_constants'],
                 'datasets': {}}
     for dataset in metadata_json['datasets']:
         code = dataset['code']
@@ -88,13 +92,21 @@ def check_variable(metadata, variable, dataset_title, query_type):
     elif query_type == 'getdata':
         # getdata can query all variables, including 'gridded' variables and variables calculated in silico (e.g. 'position' and 'force' for some datasets).
         valid_variables = [variable_info['code'] for variable_info in valid_variables_map]
+    elif query_type == 'getturbinedata':
+        # getturbinedata can query the parquet turbine_variables.
+        valid_variables = metadata['datasets'][dataset_title]['parquet']['turbine_variables']
+    elif query_type == 'getbladedata':
+        # getbladedata can query the parquet blade_variables.
+        valid_variables = metadata['datasets'][dataset_title]['parquet']['blade_variables']
     
     if variable not in valid_variables:
-        raise Exception(f"'{variable}' (case-sensitive) is not a valid variable for ('{dataset_title}', '{query_type}'):\n{valid_variables}")
+        chunks = [', '.join(valid_variables[q : q + 7]) for q in range(0, len(valid_variables), 7)]
+        raise Exception(f"'{variable}' (case-sensitive) is not a valid variable for ('{dataset_title}', '{query_type}'):\n[" + 
+                        ',\n '.join(chunks) + "]")
         
     return
 
-def check_timepoint(metadata, timepoint, dataset_title, query_type):
+def check_timepoint(metadata, timepoint, dataset_title, query_type, max_num_timepoints = 1):
     """
     check that timepoint is a valid timepoint for the dataset.
     """
@@ -120,6 +132,42 @@ def check_timepoint(metadata, timepoint, dataset_title, query_type):
         if timepoint < valid_timepoints[0] or timepoint > valid_timepoints[1]:
             raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be in the inclusive range of " +
                             f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
+    elif query_type == 'getturbinedata':
+        try:
+            timepoint = list(timepoint)
+        except:
+            raise Exception(f"turbine_times must be specified as a python list or numpy array, e.g. [{timepoint}]")
+        
+        # checks if too many timepoints were queried.
+        if len(timepoint) > max_num_timepoints:
+            raise Exception(f'too many timepoints queried, please limit the number of timepoints to <= {max_num_timepoints:,}')
+        
+        valid_timepoints = (time_lower, time_upper)
+        
+        min_time = np.nanmin(timepoint)
+        max_time = np.nanmax(timepoint)
+        
+        if min_time < valid_timepoints[0] or max_time > valid_timepoints[1]:
+            raise Exception(f"'times' (minimum = {min_time}, maximum = {max_time}) are not valid for '{dataset_title}': all times must be in the inclusive range of " +
+                            f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
+    elif query_type == 'getbladedata':
+        try:
+            timepoint = list(timepoint)
+        except:
+            raise Exception(f"blade_times must be specified as a python list or numpy array, e.g. [{timepoint}]")
+        
+        # checks if too many timepoints were queried.
+        if len(timepoint) > max_num_timepoints:
+            raise Exception(f'too many timepoints queried, please limit the number of timepoints to <= {max_num_timepoints:,}')
+        
+        valid_timepoints = (time_lower, time_upper)
+        
+        min_time = np.nanmin(timepoint)
+        max_time = np.nanmax(timepoint)
+        
+        if min_time < valid_timepoints[0] or max_time > valid_timepoints[1]:
+            raise Exception(f"'times' (minimum = {min_time}, maximum = {max_time}) are not valid for '{dataset_title}': all times must be in the inclusive range of " +
+                            f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
     
     return
 
@@ -129,10 +177,13 @@ def check_points(metadata, points, dataset_title, variable, max_num_points):
     are used for cases where points outside the domain are allowed as modulo(domain range).
     """
     # retrieves the physical dimension limits metadata for the queried variable.
-    variable_lims = {lims: variable_info[lims] if variable_info['code'] == variable and lims in variable_info
-                     else metadata['datasets'][dataset_title]['simulation'][lims]
-                     for lims in ['xlims', 'ylims', 'zlims'] 
-                     for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     # get the axes domain limits from the metadata file.
     axes_domain = []
@@ -160,7 +211,7 @@ def check_points(metadata, points, dataset_title, variable, max_num_points):
                                   if type(axes_domain[axis]) == list else True for axis in range(len(axes_domain))])
 
     if not points_domain_check:
-        raise Exception(f"all points are not within the allowed domain [minimum, maximum] for '{dataset_title}':\n" +
+        raise Exception(f"all points are not within the allowed domain [minimum, maximum] for ('{dataset_title}', '{variable}'):\n" +
                         f"x: {axes_domain[0]}\ny: {axes_domain[1]}\nz: {axes_domain[2]}")
     
     return
@@ -226,6 +277,59 @@ def check_option_parameter(metadata, option, dataset_title, timepoint_start):
         
     return
 
+def check_turbine_numbers(metadata, dataset_title, turbine_numbers):
+    """
+    check that the specified turbine number(s) are valid.
+    """
+    valid_turbine_numbers = metadata['datasets'][dataset_title]['parquet']['turbine_numbers']
+    
+    try:
+        turbine_numbers = list(turbine_numbers)
+    except:
+        raise Exception(f"turbine_numbers must be specified as a python list or numpy array, e.g. [{turbine_numbers}]")
+    
+    for turbine_number in turbine_numbers:
+        if turbine_number != int(turbine_number) or turbine_number not in valid_turbine_numbers:
+            raise Exception(f"'{turbine_number}' is not a valid turbine number (must be integer) for '{dataset_title}':\n{valid_turbine_numbers}")
+    
+    return np.array(turbine_numbers, dtype = np.int64)
+
+def check_blade_numbers(metadata, dataset_title, blade_numbers):
+    """
+    check that the specified blade number(s) are valid.
+    """
+    valid_blade_numbers = metadata['datasets'][dataset_title]['parquet']['blade_numbers']
+    
+    try:
+        blade_numbers = list(blade_numbers)
+    except:
+        raise Exception(f"blade_numbers must be specified as a python list or numpy array, e.g. [{blade_numbers}]")
+    
+    for blade_number in blade_numbers:
+        if blade_number != int(blade_number) or blade_number not in valid_blade_numbers:
+            raise Exception(f"'{blade_number}' is not a valid blade number (must be integer) for '{dataset_title}':\n{valid_blade_numbers}")
+    
+    return np.array(blade_numbers, dtype = np.int64)
+
+def check_blade_points(metadata, dataset_title, blade_points):
+    """
+    check that the specified blade point(s) are valid.
+    """
+    valid_blade_points = metadata['datasets'][dataset_title]['parquet']['blade_actuator_points']
+    
+    try:
+        blade_points = list(blade_points)
+    except:
+        raise Exception(f"blade_actuator_points must be specified as a python list or numpy array, e.g. [{blade_points}]")
+    
+    for blade_point in blade_points:
+        if blade_point != int(blade_point) or blade_point not in valid_blade_points:
+            chunks = [', '.join(str(point) for point in valid_blade_points[q : q + 10]) for q in range(0, len(valid_blade_points), 10)]
+            raise Exception(f"'{blade_point}' is not a valid blade actuator point (must be integer) for '{dataset_title}':\n[" + 
+                            ',\n '.join(chunks) + "]")
+    
+    return np.array(blade_points, dtype = np.int64)
+
 def check_axes_ranges(metadata, axes_ranges, dataset_title, variable):
     """
     check that the specified cutout axes are ranges are within the allowed domain.
@@ -233,10 +337,13 @@ def check_axes_ranges(metadata, axes_ranges, dataset_title, variable):
     axes_resolution = get_dataset_resolution(metadata, dataset_title, variable)
     
     # retrieves the physical dimension limits metadata for the queried variable.
-    variable_lims = {lims: variable_info[lims] if variable_info['code'] == variable and lims in variable_info
-                     else metadata['datasets'][dataset_title]['simulation'][lims] 
-                     for lims in ['xlims', 'ylims', 'zlims'] 
-                     for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     # get the axes domain limits from the metadata file.
     axes_periodic = []
@@ -279,10 +386,13 @@ def get_dataset_resolution(metadata, dataset_title, variable):
     get the number of datapoints (resolution) along each axis of the dataset.
     """
     # retrieves the physical dimension limits metadata for the queried variable.
-    variable_lims = {lims: variable_info[lims] if variable_info['code'] == variable and lims in variable_info
-                     else metadata['datasets'][dataset_title]['simulation'][lims] 
-                     for lims in ['xlims', 'ylims', 'zlims'] 
-                     for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     axes_domain = []
     for lims in ['xlims', 'ylims', 'zlims']:
@@ -299,13 +409,17 @@ def get_dataset_spacing(metadata, dataset_title, variable):
         'irregular channel dy': get_channel_ys,
         'irregular channel5200 dy': get_channel5200_ys,
         'irregular transition bl dy': get_transition_bl_ys,
+        'irregular diurnal windfarm dz': get_diurnal_windfarm_zs
     }
     
     # retrieves the physical dimension limits metadata for the queried variable.
-    variable_lims = {lims: variable_info[lims] if variable_info['code'] == variable and lims in variable_info
-                     else metadata['datasets'][dataset_title]['simulation'][lims] 
-                     for lims in ['xlims', 'ylims', 'zlims'] 
-                     for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     dataset_spacing = []
     for lims in ['xlims', 'ylims', 'zlims']:
@@ -323,24 +437,12 @@ def get_dataset_chunk_size(metadata, dataset_title, variable):
     chunk size along each dimension (x, y, z).
     """
     # retrieves the physical dimension limits metadata for the queried variable.
-    axes_chunks = {'chunks': variable_info['storage']['chunks'] if variable_info['code'] == variable and 'storage' in variable_info and 'chunks' in variable_info['storage']
-                   else metadata['datasets'][dataset_title]['storage']['chunks']
-                   for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}['chunks']
+    axes_chunks = {
+        variable_info['code']: variable_info.get('storage', {}).get('chunks', metadata['datasets'][dataset_title]['storage']['chunks'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     return np.array(axes_chunks)
-
-def get_dataset_grid_offsets(metadata, dataset_title, variable_offsets, variable):
-    """
-    get the dimension offset between each axis of the dataset, i.e. the relative spacing (dx, dy, dz) if any of the axes
-    are staggered. e.g. np.array([0, 0, -1.0]) for the z-axis 'sgsenergy' variable of the 'sabl2048high' dataset is offset from the 
-    x- and y-axes by +dz (so we have go down by 1 dz when converting between the points domain and grid indices). fraction and integer
-    multiples of the spacing are specified for accuracy in the calculation before multiplying by the spacing.
-    """
-    # retrieves the grid offsets.
-    offsets_map = {variables_info['code']: {offsets['code']: offsets['grid'] for offsets in variables_info['offsets']}
-                   for variables_info in metadata['datasets'][dataset_title]['physicalVariables']}
-    
-    return np.array(offsets_map[variable][variable_offsets], dtype = np.float64)
 
 def get_dataset_coordinate_offsets(metadata, dataset_title, variable_offsets, variable):
     """
@@ -352,162 +454,27 @@ def get_dataset_coordinate_offsets(metadata, dataset_title, variable_offsets, va
     
     return np.array(offsets_map[variable][variable_offsets], dtype = np.float64)
 
-def get_sabl_points_map(cube, points):
+def get_nonperiodic_and_regular_spacing_spatial_axes(metadata, dataset_title, variable):
     """
-    separate points into different interpolation methods for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets if they are near the boundary.
+    get list of non-periodic and regularly spaced (not irregular grid spacing) spatial axes.
     """
-    # create dictionaries for storing the points and their corresponding ordering.
-    points_map = {}
-    original_indices_map = {}
-
-    # dataset paramters.
-    specified_sint = cube.sint
-    dataset_dz = cube.dz
-    dataset_var = cube.var
-
-    # constants.
-    points_len = len(points)
-    # save the original indices for points, which corresponds to the orderering of the user-specified
-    # points. these indices will be used for sorting output_data back to the user-specified points ordering.
-    original_points_indices = np.arange(points_len)
-
-    # map the step down interpolation methods for each interpolation method that can be specified by the user. the methods are listed in order of decreasing bucket size.
-    interpolation_step_down_method_map = {'lag8': ['lag6', 'lag4', 'z_linear'], 'lag6': ['lag4', 'z_linear'], 'lag4': ['z_linear'],
-                                          'm2q8': ['m1q4', 'z_linear'], 'm1q4': ['z_linear'],
-                                          'm2q8_gradient': ['m1q4_gradient', 'z_linear_gradient'], 'm1q4_gradient': ['z_linear_gradient'],
-                                          'm2q8_hessian': ['fd6noint_hessian', 'fd4noint_hessian', 'z_linear_hessian'],
-                                          'fd8noint_gradient': ['fd6noint_gradient', 'fd4noint_gradient', 'z_linear_gradient'],
-                                          'fd6noint_gradient': ['fd4noint_gradient', 'z_linear_gradient'],
-                                          'fd4noint_gradient': ['z_linear_gradient'],
-                                          'fd8noint_hessian': ['fd6noint_hessian', 'fd4noint_hessian', 'z_linear_hessian'],
-                                          'fd6noint_hessian': ['fd4noint_hessian', 'z_linear_hessian'],
-                                          'fd4noint_hessian': ['z_linear_hessian'],
-                                          'fd8noint_laplacian': ['fd6noint_laplacian', 'fd4noint_laplacian', 'z_linear_laplacian'],
-                                          'fd6noint_laplacian': ['fd4noint_laplacian', 'z_linear_laplacian'],
-                                          'fd4noint_laplacian': ['z_linear_laplacian'],
-                                          'fd4lag4_gradient': ['m1q4_gradient', 'z_linear_gradient'],
-                                          'fd4lag4_laplacian': ['fd6noint_laplacian', 'fd4noint_laplacian', 'z_linear_laplacian']}
-
-    # map the minium z-axis index (dz multiplier) for each variable and interpolation method. default values correspond to 'sgsenergy' and 'velocity' variables.
-    # the (w) component of 'velocity' is more restrictive on the interpolation method at the lower z-axis boundary. 'z_linear' index is the 0 index because
-    # the comparison is >=, not >. the points are constrained by the check_points function such that user cannot specify points outside the domain.
-    interpolation_min_index_map = defaultdict(lambda: {'lag8': 4, 'lag6': 3, 'lag4': 2,
-                                                       'm2q8': 4, 'm1q4': 2,
-                                                       'm2q8_gradient': 4, 'm1q4_gradient': 2,
-                                                       'm2q8_hessian': 4,
-                                                       'fd8noint_gradient': 4.5, 'fd6noint_gradient': 3.5, 'fd4noint_gradient': 2.5,
-                                                       'fd8noint_hessian': 4.5, 'fd6noint_hessian': 3.5, 'fd4noint_hessian': 2.5,
-                                                       'fd8noint_laplacian': 4.5, 'fd6noint_laplacian': 3.5, 'fd4noint_laplacian': 2.5,
-                                                       'fd4lag4_gradient': 4,
-                                                       'fd4lag4_laplacian': 4,
-                                                       'z_linear': 0, 'z_linear_gradient': 0, 'z_linear_hessian': 0, 'z_linear_laplacian': 0
-                                                      },
-                                                      {'temperature': {'lag8': 3.5, 'lag6': 2.5, 'lag4': 1.5,
-                                                                       'm2q8': 3.5, 'm1q4': 1.5,
-                                                                       'm2q8_gradient': 3.5, 'm1q4_gradient': 1.5,
-                                                                       'm2q8_hessian': 3.5,
-                                                                       'fd8noint_gradient': 4, 'fd6noint_gradient': 3, 'fd4noint_gradient': 2,
-                                                                       'fd8noint_hessian': 4, 'fd6noint_hessian': 3, 'fd4noint_hessian': 2,
-                                                                       'fd8noint_laplacian': 4, 'fd6noint_laplacian': 3, 'fd4noint_laplacian': 2,
-                                                                       'fd4lag4_gradient': 3.5,
-                                                                       'fd4lag4_laplacian': 3.5,
-                                                                       'z_linear': 0, 'z_linear_gradient': 0, 'z_linear_hessian': 0, 'z_linear_laplacian': 0
-                                                                      },
-                                                       'pressure': {'lag8': 3.5, 'lag6': 2.5, 'lag4': 1.5,
-                                                                    'm2q8': 3.5, 'm1q4': 1.5,
-                                                                    'm2q8_gradient': 3.5, 'm1q4_gradient': 1.5,
-                                                                    'm2q8_hessian': 3.5,
-                                                                    'fd8noint_gradient': 4, 'fd6noint_gradient': 3, 'fd4noint_gradient': 2,
-                                                                    'fd8noint_hessian': 4, 'fd6noint_hessian': 3, 'fd4noint_hessian': 2,
-                                                                    'fd8noint_laplacian': 4, 'fd6noint_laplacian': 3, 'fd4noint_laplacian': 2,
-                                                                    'fd4lag4_gradient': 3.5,
-                                                                    'fd4lag4_laplacian': 3.5,
-                                                                    'z_linear': 0, 'z_linear_gradient': 0, 'z_linear_hessian': 0, 'z_linear_laplacian': 0
-                                                                   }
-                                                      }
-                                             )
-
-    # map the minium z-axis index (dz multiplier) for each variable and interpolation method. default values correspond to 'temperature', 'pressure', and 'velocity' variables.
-    # the (u, v) components of 'velocity' are more restrictive on the interpolation method at the upper z-axis boundary. 'z_linear' index is the domain (2048) + 1 because
-    # the comparison is <, not <=. the points are constrained by the check_points function such that user cannot specify points outside the domain.
-    interpolation_max_index_map = defaultdict(lambda: {'lag8': 2044.5, 'lag6': 2045.5, 'lag4': 2046.5,
-                                                       'm2q8': 2044.5, 'm1q4': 2046.5,
-                                                       'm2q8_gradient': 2044.5, 'm1q4_gradient': 2046.5,
-                                                       'm2q8_hessian': 2044.5,
-                                                       'fd8noint_gradient': 2043, 'fd6noint_gradient': 2044, 'fd4noint_gradient': 2045,
-                                                       'fd8noint_hessian': 2043, 'fd6noint_hessian': 2044, 'fd4noint_hessian': 2045,
-                                                       'fd8noint_laplacian': 2043, 'fd6noint_laplacian': 2044, 'fd4noint_laplacian': 2045,
-                                                       'fd4lag4_gradient': 2044.5,
-                                                       'fd4lag4_laplacian': 2044.5,
-                                                       'z_linear': 2049, 'z_linear_gradient': 2049, 'z_linear_hessian': 2049, 'z_linear_laplacian': 2049
-                                                      },
-                                                      {'sgsenergy': {'lag8': 2045, 'lag6': 2046, 'lag4': 2047,
-                                                                  'm2q8': 2045, 'm1q4': 2047,
-                                                                  'm2q8_gradient': 2045, 'm1q4_gradient': 2047,
-                                                                  'm2q8_hessian': 2045,
-                                                                  'fd8noint_gradient': 2043.5, 'fd6noint_gradient': 2044.5, 'fd4noint_gradient': 2045.5,
-                                                                  'fd8noint_hessian': 2043.5, 'fd6noint_hessian': 2044.5, 'fd4noint_hessian': 2045.5,
-                                                                  'fd8noint_laplacian': 2043.5, 'fd6noint_laplacian': 2044.5, 'fd4noint_laplacian': 2045.5,
-                                                                  'fd4lag4_gradient': 2045,
-                                                                  'fd4lag4_laplacian': 2045,
-                                                                  'z_linear': 2049, 'z_linear_gradient': 2049, 'z_linear_hessian': 2049, 'z_linear_laplacian': 2049
-                                                                 },
-                                                      }
-                                             )
-
-    # minimum and maximum positions along the z-axis for the user-specified sint method.
-    min_z = interpolation_min_index_map[dataset_var][specified_sint] * dataset_dz
-    max_z = interpolation_max_index_map[dataset_var][specified_sint] * dataset_dz
-
-    # determine the points that are between min_z and max_z.
-    sint_points = np.logical_and(points[:, 2] >= min_z, points[:, 2] < max_z)
-    # save the points and their corresponding ordering indices for the specified_sint method. these will be added to points_map last to make sure
-    # that sint in the cube class variable is what the user specified.
-    specified_sint_points = points[sint_points]
-    specified_sint_original_indices = original_points_indices[sint_points]
+    # retrieves the physical dimension limits metadata for the queried variable.
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
-    # get the step-down interpolation methods to check near the z-axis boundary.
-    step_down_method_sints = interpolation_step_down_method_map[specified_sint]
-    # count how many points have been assigned an interpolation method.
-    mapped_points_count = len(specified_sint_points)
-    # keep track of the previous interpolation method minimum and maximum z-axis positions so that points are not assigned
-    # to multiple interpolation methods.
-    previous_min_z = min_z
-    previous_max_z = max_z
-    # counter for iterating over the step-down interpolation methods.
-    sint_counter = 0
-
-    # iterate through step-down interpolation methods until all points are assigned an interpolation method.
-    while mapped_points_count < points_len:
-        step_down_method_sint = step_down_method_sints[sint_counter]
-
-        step_down_min_z = interpolation_min_index_map[dataset_var][step_down_method_sint] * dataset_dz
-        step_down_max_z = interpolation_max_index_map[dataset_var][step_down_method_sint] * dataset_dz
-
-        # determine the points that are between step_down_min_z and step_down_max_z, but also were not assigned to a larger bucket interpolation method.
-        sint_points = np.logical_and(np.logical_and(points[:, 2] >= step_down_min_z, points[:, 2] < step_down_max_z),
-                                     np.logical_or(points[:, 2] < previous_min_z, points[:, 2] >= previous_max_z))
-
-        # points array mapped to step_down_method_sint.
-        step_down_points = points[sint_points]
-        step_down_points_len = len(step_down_points)
-        
-        # add the points and their corresponding ordering indices to their respective dictionaries.
-        if step_down_points_len > 0:
-            points_map[step_down_method_sint] = step_down_points
-            original_indices_map[step_down_method_sint] = original_points_indices[sint_points]
-            mapped_points_count += step_down_points_len
-
-        previous_min_z = step_down_min_z
-        previous_max_z = step_down_max_z
-        sint_counter += 1
-
-    # add the specified_sint points and their corresponding ordering indices to their respective dictionaries.
-    if len(specified_sint_points) != 0:
-        points_map[specified_sint] = specified_sint_points
-        original_indices_map[specified_sint] = specified_sint_original_indices
+    # get the axes periodicity and grid spacing from the metadata file.
+    nonperiodic_axes = []
+    for axis_index, lims in enumerate(['xlims', 'ylims', 'zlims']):
+        # verifies that the spacing is regular (specified as a single floating point or integer value).
+        if (not variable_lims[lims]['isPeriodic']) and (type(variable_lims[lims]['spacing']) != str):
+            nonperiodic_axes.append(axis_index)
     
-    return points_map, original_indices_map
+    return nonperiodic_axes
 
 def get_time_dt(metadata, dataset_title, query_type):
     """
@@ -568,9 +535,10 @@ def get_giverny_datasets():
     """
     # TESTING. adding new datasets as they are moved to ceph.
     # return ['isotropic1024fine', 'isotropic1024coarse', 'mhd1024', 'isotropic8192', 'isotropic32768',
-    #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm']
+    #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
-    return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'diurnal_windfarm']
+    return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
+            'diurnal_windfarm', 'nbl_windfarm']
 
 def get_irregular_mesh_ygrid_datasets(metadata, variable):
     """
@@ -579,14 +547,32 @@ def get_irregular_mesh_ygrid_datasets(metadata, variable):
     irregular_dy_datasets = []
     for dataset_title in metadata['datasets']:
         # retrieves the dy spacing for the queried variable.
-        dy_spacing = {'ylims': variable_info['ylims'] if variable_info['code'] == variable and 'ylims' in variable_info
-                      else metadata['datasets'][dataset_title]['simulation']['ylims'] 
-                      for variable_info in metadata['datasets'][dataset_title]['physicalVariables']}
+        dy_spacing = {
+            variable_info['code']: variable_info.get('ylims', metadata['datasets'][dataset_title]['simulation']['ylims'])
+            for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+        }
         
-        if "irregular" in str(dy_spacing['ylims']['spacing']):
+        if variable in dy_spacing and "irregular" in str(dy_spacing[variable]['spacing']):
             irregular_dy_datasets.append(dataset_title)
     
     return irregular_dy_datasets
+
+def get_irregular_mesh_zgrid_datasets(metadata, variable):
+    """
+    get the dataset titles that are irregular mesh z-grids (nonconstant dz).
+    """
+    irregular_dz_datasets = []
+    for dataset_title in metadata['datasets']:
+        # retrieves the dz spacing for the queried variable.
+        dz_spacing = {
+            variable_info['code']: variable_info.get('zlims', metadata['datasets'][dataset_title]['simulation']['zlims'])
+            for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+        }
+        
+        if variable in dz_spacing and "irregular" in str(dz_spacing[variable]['spacing']):
+            irregular_dz_datasets.append(dataset_title)
+    
+    return irregular_dz_datasets
 
 def get_variable_component_names_map(metadata):
     """
@@ -625,6 +611,22 @@ def get_cardinality_name(metadata, variable):
     
     return cardinality
 
+def get_parquet_folderpath(metadata, dataset_title):
+    """
+    get the folderpath for the parquet files.
+    """
+    return metadata['datasets'][dataset_title]['parquet']['folderpath']
+    
+def get_parquet_time_info(metadata, dataset_title):
+    """
+    get the time info (time_offset, time_align, time_step) for the parquet files.
+    """
+    time_offset = np.float64(metadata['datasets'][dataset_title]['parquet']['time_offset'])
+    time_align = np.float64(metadata['datasets'][dataset_title]['parquet']['time_align'])
+    time_step = np.float64(metadata['datasets'][dataset_title]['parquet']['time_step'])
+    
+    return (time_offset, time_align, time_step)
+
 def get_interpolation_tsv_header(metadata, dataset_title, variable_name, timepoint, timepoint_end, delta_t, sint, tint):
     """
     get the interpolation tsv header.
@@ -639,17 +641,29 @@ def get_interpolation_tsv_header(metadata, dataset_title, variable_name, timepoi
     operator = 'field'
     if '_' in sint:
         operator = sint.split('_')[-1]
-    
-    if variable_name == 'position' or (timepoint_end != -999.9 and delta_t != -999.9):
-        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
-                       f'spatial method: {method}, spatial operator: {operator}\n'
-    else:
-        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, temporal method: {tint}, spatial method: {method}, spatial operator: {operator}\n'
-    point_header += 'x_point\ty_point\tz_point'
-    
+        
     # retrieves the variables metadata information.
     variable_map = {variables_info['code']: variables_info
                     for variables_info in metadata['variables']}[variable_name]
+    
+    # number of components for the specified variable.
+    num_component_codes = len(variable_map['component_codes'])
+    # number of data columns. used to determine number of '\t' characters in the header row so the tsv displays nicely.
+    # 3 columns corresponding to 'x_point', 'y_point', and 'z_point' apply to all output.
+    num_data_columns = {
+        'field': 3 + num_component_codes,
+        'gradient': 3 + num_component_codes * 3,
+        'hessian': 3 + num_component_codes * 6,
+        'laplacian': 3 + num_component_codes
+    }[operator]
+    
+    if variable_name == 'position' or (timepoint_end != -999.9 and delta_t != -999.9):
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
+                       f'spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
+    else:
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, temporal method: {tint}, ' + \
+                       f'spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
+    point_header += 'x_point\ty_point\tz_point'
     
     return {
         'field': point_header + '\t' + '\t'.join(variable_map['component_codes']),
@@ -753,6 +767,42 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
     print('\nfile written successfully.')
     print('-----')
     sys.stdout.flush()
+    
+def write_turbine_tsv_file(cube, turbine_results, output_filename):
+    """
+    write the turbine results to a tsv file.
+    """
+    print('writing the turbine .tsv file...')
+    sys.stdout.flush()
+
+    # create the output folder if it does not already exist.
+    create_output_folder(cube.output_path)
+    output_file = cube.output_path.joinpath(output_filename + '.tsv')
+    
+    # write to tsv file.
+    turbine_results.to_csv(output_file, sep = '\t', index = True, encoding = 'utf-8')
+
+    print('\nfile written successfully.')
+    print('-----')
+    sys.stdout.flush()
+    
+def write_blade_tsv_file(cube, blade_results, output_filename):
+    """
+    write the blade results to a tsv file.
+    """
+    print('writing the blade .tsv file...')
+    sys.stdout.flush()
+
+    # create the output folder if it does not already exist.
+    create_output_folder(cube.output_path)
+    output_file = cube.output_path.joinpath(output_filename + '.tsv')
+    
+    # write to tsv file.
+    blade_results.to_csv(output_file, sep = '\t', index = True, encoding = 'utf-8')
+
+    print('\nfile written successfully.')
+    print('-----')
+    sys.stdout.flush()
             
 def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     """
@@ -848,7 +898,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     sys.stdout.flush()
 
 def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
-                 colormap = 'inferno'):
+                 colormap = 'inferno', equal_aspect_ratio = True):
     """
     create a contour plot from the getCutout output.
     """
@@ -899,8 +949,9 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     if np.count_nonzero(num_axes_equal_min_max == True) != 1:
         raise Exception(f'only one axis (x, y, or z) should be specified as a single point, e.g. z_plot_range = [3, 3], to create a contour plot')
         
-    # datasets that have an irregular y-grid.
+    # datasets that have an irregular grid.
     irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets(metadata, variable)
+    irregular_zgrid_datasets = get_irregular_mesh_zgrid_datasets(metadata, variable)
     
     # convert the requested plot ranges to the data domain.
     xcoor_values = np.around(np.arange(plot_ranges_min[0] - 1, plot_ranges_max[0], adjusted_strides[0], dtype = np.float32) * cube.dx, cube.decimals)
@@ -911,8 +962,12 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     else:
         ycoor_values = np.around(np.arange(plot_ranges_min[1] - 1, plot_ranges_max[1], adjusted_strides[1], dtype = np.float32) * cube.dy, cube.decimals)
         ycoor_values += cube.coor_offsets[1]
-    zcoor_values = np.around(np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], adjusted_strides[2], dtype = np.float32) * cube.dz, cube.decimals)
-    zcoor_values += cube.coor_offsets[2]
+    if dataset_title in irregular_zgrid_datasets:
+        # note: this assumes that the z-axis of the irregular grid datasets is non-periodic.
+        zcoor_values = cube.dz[np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], adjusted_strides[2])]
+    else:
+        zcoor_values = np.around(np.arange(plot_ranges_min[2] - 1, plot_ranges_max[2], adjusted_strides[2], dtype = np.float32) * cube.dz, cube.decimals)
+        zcoor_values += cube.coor_offsets[2]
 
     # generate the plot.
     print('generating contour plot...')
@@ -971,9 +1026,8 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     # replot the colorbar with the correct orientation depending on which axis is larger.
     colorbar_orientation = 'vertical' if plot_y_size >= plot_x_size else 'horizontal'
     plt.colorbar(cf, shrink = 0.67, orientation = colorbar_orientation)
-    
-    plt.gca().set_aspect('equal')
-
+    if equal_aspect_ratio:
+        plt.gca().set_aspect('equal')
     # colorbar labels.
     cbar = cf.colorbar
     cbar.set_label(f'{cube.var} field', fontsize = 14, labelpad = 15.0)
@@ -1031,6 +1085,7 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     # -----
     metadata = cube.metadata
     variable = cube.var
+    dataset_title = cube.dataset_title
     
     # minimum and maximum endpoints along each axis for the points the user requested.
     endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.int32)
@@ -1044,21 +1099,26 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     
     # datasets that have an irregular y-grid.
     irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets(metadata, variable)
+    irregular_zgrid_datasets = get_irregular_mesh_zgrid_datasets(metadata, variable)
     
     # convert the requested plot ranges to 0-based indices and then to their corresponding values in the data domain.
     xcoor_values = np.around(np.arange(endpoints_min[0] - 1, endpoints_max[0], strides[0], dtype = np.float32) * cube.dx, cube.decimals)
     xcoor_values += cube.coor_offsets[0]
-    if cube.dataset_title in irregular_ygrid_datasets:
+    if dataset_title in irregular_ygrid_datasets:
         # note: this assumes that the y-axis of the irregular grid datasets is non-periodic.
         ycoor_values = cube.dy[np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1])]
     else:
         ycoor_values = np.around(np.arange(endpoints_min[1] - 1, endpoints_max[1], strides[1], dtype = np.float32) * cube.dy, cube.decimals)
         ycoor_values += cube.coor_offsets[1]
-    zcoor_values = np.around(np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2], dtype = np.float32) * cube.dz, cube.decimals)
-    zcoor_values += cube.coor_offsets[2]
+    if dataset_title in irregular_zgrid_datasets:
+        # note: this assumes that the z-axis of the irregular grid datasets is non-periodic.
+        zcoor_values = cube.dz[np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2])]
+    else:
+        zcoor_values = np.around(np.arange(endpoints_min[2] - 1, endpoints_max[2], strides[2], dtype = np.float32) * cube.dz, cube.decimals)
+        zcoor_values += cube.coor_offsets[2]
 
     # value(s) corresponding to the specified (x, y, z) datapoint(s).
-    if cube.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and variable == 'velocity':
+    if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and variable == 'velocity':
         # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
         output_values = output_data[cube.dataset_name].sel(xcoor = xcoor_values,
                                                            ycoor = ycoor_values,

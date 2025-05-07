@@ -29,11 +29,10 @@ import numpy as np
 import pandas as pd
 from givernylocal.turbulence_dataset import *
 from givernylocal.turbulence_gizmos.basic_gizmos import *
-from givernylocal.turbulence_gizmos.constants import get_constants
 
 def getData(cube, var, timepoint_original, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
-            trace_memory = False, verbose = True):
+            return_times = False, trace_memory = False, verbose = True):
     """
     interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
     """
@@ -53,11 +52,11 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     query_type = 'getdata'
     
     # data constants.
-    c = get_constants()
+    c = metadata['constants']
     
     # -----
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
-    var_offsets, timepoint, spatial_method, spatial_method_specified = \
+    var_offsets, timepoint, spatial_method = \
         getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
                                         temporal_method, spatial_method_original, spatial_operator,
                                         option, c)
@@ -68,13 +67,6 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         raise Exception(f'too many points requested for the testing authorization token: {len(points)} > 4096\n\n' + \
                         f'an authorization token can be requested by email from {turb_email}\n' + \
                         f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
-    
-    # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
-    # data this value is 3, because there is a velocity measurement along each axis.
-    num_values_per_datapoint = get_cardinality(metadata, var)
-    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
-    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
-                        spatial_method, spatial_method_specified, temporal_method, option, num_values_per_datapoint, c)
     
     # option parameter values.
     timepoint_end, delta_t = option
@@ -90,6 +82,18 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         # floating point step sizes.
         if math.isclose(timepoint_range[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
             timepoint_range = np.append(timepoint_range, timepoint_end)
+            
+    num_timepoints = len(timepoint_range)
+    # if more than one timepoint was queried, then checks if ({number of points} * {number of timepoints}) <= c['max_data_points'].
+    if (len(points) * num_timepoints) > c['max_data_points']:
+        raise Exception(f"too many 'points' and 'times' queried together, please limit the number of (points * times) to <= {c['max_data_points']:,}")
+    
+    # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
+    # data this value is 3, because there is a velocity measurement along each axis.
+    num_values_per_datapoint = get_cardinality(metadata, var)
+    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
+                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
     
     # -----
     # starting the tracemalloc library.
@@ -107,7 +111,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
 
@@ -143,7 +147,12 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     
     # insert the output header at the beginning of the result for each timepoint.
     result = result.reshape((timepoint_range_len, points_len, result_header_len))
-    results = [pd.DataFrame(data = result_array, columns = result_header) for result_array in result]
+    results = []
+    for result_array in result:
+        df = pd.DataFrame(data = result_array, columns = result_header)
+        # give the index column a name for each dataframe in results.
+        df.index.name = 'index'
+        results.append(df)
     
     # -----
     end_time = time.perf_counter()
@@ -173,15 +182,16 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         # memory used by tracemalloc.
         print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
     
-    return results
+    if not return_times:
+        return results
+    else:
+        return results, timepoint_range
 
 def getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,
                                     option, c):
     """
-    complete all of the housekeeping procedures before data processing.
-        - format the variable name and get the variable identifier.
-        - convert 1-based timepoint to 0-based.
+    complete all of the getData housekeeping procedures before data processing.
     """
     # validate user-input.
     # -----
@@ -217,7 +227,287 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     else:
         var_offsets = var
     
-    # copy of the spatial interpolation that was specified by the user. needed for the 'z_linear*' step-down interpolation methods for the 'sabl' datasets.
-    spatial_method_specified = spatial_method
+    return (var_offsets, timepoint, spatial_method)
+
+def getTurbineData(cube, turbine_numbers, var, original_times,
+                   trace_memory = False, verbose = True):
+    """
+    retrieve turbine data at a set of specified times for the specified turbine and variable.
+    """
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetTurbineData is processing...')
+        sys.stdout.flush()
     
-    return (var_offsets, timepoint, spatial_method, spatial_method_specified)
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # set cube attributes.
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    auth_token = cube.auth_token
+    
+    # define the query type.
+    query_type = 'getturbinedata'
+    
+    # data constants.
+    c = metadata['constants']
+    
+    # -----
+    # housekeeping procedures.
+    turbine_numbers = getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, var, original_times, turbine_numbers, c)
+    
+    # number of queried times.
+    num_original_times = len(original_times)
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and num_original_times > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many times requested for the testing authorization token: {num_original_times} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+    
+    # number of queried turbines.
+    num_turbines = len(turbine_numbers)
+    # if more than one turbine was queried, then checks if ({number of times} * {number of turbines}) <= c['max_data_points'].
+    if (num_original_times * num_turbines) > c['max_data_points']:
+        raise Exception(f"too many 'times' and 'turbines' queried together, please limit the number of (times * turbines) to <= {c['max_data_points']:,}")
+    
+    # -----
+    # starting the tracemalloc library.
+    if trace_memory:
+        tracemalloc.start()
+        # checking the memory usage of the program.
+        tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # dictionary of the request data.
+    request_data = {
+        "auth_token": auth_token,
+        "dataset_title": dataset_title,
+        "turbine_variable": var,
+        "turbines": turbine_numbers.tolist(),
+        "turbine_times": np.array(original_times, dtype = np.float64).tolist()
+    }
+
+    # convert to json string.
+    json_data = json.dumps(request_data)
+
+    try:
+        # send http post request.
+        response = requests.post(
+            "https://web.idies.jhu.edu/turbulence-svc-testing/turbine?include_metadata=0", 
+            headers = {"Content-Type": "application/json"},
+            data = json_data,
+            timeout = 1000
+        )
+        
+        # catch server side errors, e.g. server side timeout.
+        response.raise_for_status()
+    except Exception as e:
+        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
+        # on SciServer using giverny.
+        raise Exception(f'{e}' + \
+                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
+                        f'\n\t1) break up the times, or turbines across multiple queries.' + \
+                        f'\n\t2) use the giverny library on SciServer.')
+    
+    # convert the response string to a pandas dataframe.
+    column_names = ['time', 'turbine', var]
+    result = pd.DataFrame(json.loads(response.text), columns = column_names)
+    result['turbine'] = result['turbine'].astype(int)
+    # sort by 'turbine', and then 'time' columns.
+    result = result.sort_values(by = ['turbine', 'time']).reset_index(drop = True)
+    # reset the indices for each turbine.
+    reset_indices = np.arange(len(result)) % num_original_times
+    result.index = reset_indices
+    result.index.name = 'index'
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    return result
+
+def getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, var, times, turbine_numbers, c):
+    """
+    complete all of the getTurbineData housekeeping procedures before data processing.
+    """
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that the user-input times are valid times for the dataset.
+    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    # check that the user-input turbine numbers are valid turbines.
+    turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
+    
+    return turbine_numbers
+
+def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blade_points,
+                 trace_memory = False, verbose = True):
+    """
+    retrieve blade data at a set of specified times and blade actuator points for the specified turbine, blade, and variable.
+    """
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetBladeData is processing...')
+        sys.stdout.flush()
+    
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # set cube attributes.
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    auth_token = cube.auth_token
+    
+    # define the query type.
+    query_type = 'getbladedata'
+    
+    # data constants.
+    c = metadata['constants']
+    
+    # -----
+    # housekeeping procedures.
+    turbine_numbers, blade_numbers, blade_points = \
+        getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, var, original_times, turbine_numbers, blade_numbers, blade_points, c)
+    
+    # number of queried times.
+    num_original_times = len(original_times)
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and num_original_times > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many times requested for the testing authorization token: {num_original_times} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+    
+    # number of queried turbines.
+    num_turbines = len(turbine_numbers)
+    num_blades = len(blade_numbers)
+    # if more than one turbine and/or blade was queried, then checks if ({number of times} * {number of turbines} * {number of blades}) <= c['max_data_points'].
+    if (num_original_times * num_turbines * num_blades) > c['max_data_points']:
+        raise Exception(f"too many 'times', 'turbines', and 'blades' queried together, please limit the number of (times * turbines * blades) to <= {c['max_data_points']:,}")
+    
+    # -----
+    # starting the tracemalloc library.
+    if trace_memory:
+        tracemalloc.start()
+        # checking the memory usage of the program.
+        tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # dictionary of the request data.
+    request_data = {
+        "auth_token": auth_token,
+        "dataset_title": dataset_title,
+        "blade_variable": var,
+        "turbines": turbine_numbers.tolist(),
+        "blades": blade_numbers.tolist(),
+        "blade_times": np.array(original_times, dtype = np.float64).tolist(),
+        "blade_actuator_points": blade_points.tolist()
+    }
+
+    # convert to json string.
+    json_data = json.dumps(request_data)
+
+    try:
+        # send http post request.
+        response = requests.post(
+            "https://web.idies.jhu.edu/turbulence-svc-testing/blade?include_metadata=0", 
+            headers = {"Content-Type": "application/json"},
+            data = json_data,
+            timeout = 1000
+        )
+        
+        # catch server side errors, e.g. server side timeout.
+        response.raise_for_status()
+    except Exception as e:
+        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
+        # on SciServer using giverny.
+        raise Exception(f'{e}' + \
+                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
+                        f'\n\t1) break up the times, turbines, or blades across multiple queries.' + \
+                        f'\n\t2) use the giverny library on SciServer.')
+    
+    # convert the response string to a pandas dataframe.
+    column_names = ['time', 'turbine', 'blade'] + [f'{var}_{actuator_point}' for actuator_point in blade_points]
+    result = pd.DataFrame(json.loads(response.text), columns = column_names)
+    result['turbine'] = result['turbine'].astype(int)
+    result['blade'] = result['blade'].astype(int)
+    # sort by 'turbine', 'blade', and then 'time' columns.
+    result = result.sort_values(by = ['turbine', 'blade', 'time']).reset_index(drop = True)
+    # reset the indices for each turbine.
+    reset_indices = np.arange(len(result)) % num_original_times
+    result.index = reset_indices
+    result.index.name = 'index'
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    return result
+
+def getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, var, times, turbine_numbers, blade_numbers, blade_points, c):
+    """
+    complete all of the getBladeData housekeeping procedures before data processing.
+    """
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that the user-input times are valid times for the dataset.
+    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    # check that the user-input turbine numbers are valid turbines.
+    turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
+    # check that the user-input blade numbers are valid blades.
+    blade_numbers = check_blade_numbers(metadata, dataset_title, blade_numbers)
+    # check that the user-input blade actuator points are valid blade points.
+    blade_points = check_blade_points(metadata, dataset_title, blade_points)
+    
+    return turbine_numbers, blade_numbers, blade_points

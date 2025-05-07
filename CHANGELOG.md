@@ -9,16 +9,35 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- diurnal and neutral boundary layer windfarm datasets.
 - function to handle variable grid axis spacing.
-- step-down linear interpolation methods for the windfarm datasets.
-- getTurbineData and getBladeData DEMO notebooks to read windfarm parquet files.
 - getPosition function.
 
 ### Changed
 
 - process (uv) and (w) components of the sabl velocity data together to reduce processing time.
 - migrate datasets from SQL to CephFS storage.
+
+## [3.1.9] - 2025-04-10
+
+### Added
+
+- diurnal ('diurnal_windfarm'), and neutral boundary layer ('nbl_windfarm') windfarm datasets.
+- Getwindfarmdata DEMO notebooks, including two new functions: getTurbineData, and getBladeData.
+- Querywindfarmdata DEMO notebook for submitting SQL queries of the turbine and blade data.
+- 'soiltemperature' variable for the diurnal windfarm dataset.
+- pyarrow, and duckdb library dependencies.
+
+### Changed
+- moved the giverny constants declarations to the jhtdb-config.json file, and removed the constants.py file.
+- jhtdb_schema.py to forbid parameters in the JSON file that are not explicitly defined in the model.
+- removed the grid offsets parameter, and replaced the logic with coordinate offsets parameter.
+  
+### Fixed
+
+- query size check to make sure too much data is not queried for time series.
+- irregular mesh grid functions to handle the queried variable missing from the dataset map.
+- removed step-down interpolation point mapping and implemented non-periodic axis boundary extrapolations to 
+  apply the full specified spatial interpolation method to all queried points.
 
 ## [3.1.8] - 2025-04-01
 
