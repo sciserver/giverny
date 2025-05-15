@@ -989,10 +989,6 @@ class turb_dataset():
 
             chunk_data_map[updated_chunk_key].append((point, datapoint, center_point, original_point_index))
         
-        # check if the query requires reading from too many chunks.
-        if len(chunk_data_map) > self.max_num_chunks:
-            raise Exception('query intersects too many storage chunks. please break up the points into separate queries, or query a smaller spatial domain.')
-        
         return np.array(list(chunk_data_map.values()), dtype = object)
     
     def subdivide_chunk_group(self, chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, z_min_boundary_flag, chunk_size_array, empty_array):

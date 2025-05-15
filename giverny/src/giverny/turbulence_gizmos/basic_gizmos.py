@@ -216,6 +216,49 @@ def check_points(metadata, points, dataset_title, variable, max_num_points):
     
     return
 
+def check_points_chunks_intersection(metadata, points, dataset_title, variable):
+    """
+    check that the queried points do not intersect more than the maximum number of chunks.
+    """
+    chunk_size = get_dataset_chunk_size(metadata, dataset_title, variable)
+    
+    # number of dimensions per point.
+    n_dims = points.shape[1]
+    chunk_indices = np.zeros_like(points, dtype = int)
+    
+    # determine which axes have irregular grid spacing.
+    spacing = get_dataset_spacing(metadata, dataset_title, variable)
+    irregular_axes = []
+    for axis_index, axis_spacing in enumerate(spacing):
+        if isinstance(axis_spacing, np.ndarray):
+            irregular_axes.append(axis_index)
+    
+    if irregular_axes:
+        # process each dimension separately.
+        for dim in range(n_dims):
+            if dim in irregular_axes:
+                if dataset_title == 'diurnal_windfarm' and variable == 'soiltemperature':
+                    grid = spacing[dim]
+                    # find the index in the z-gridpoint list where each of the z-points would be inserted.
+                    indices = np.searchsorted(grid, -points[:, dim], side = 'right') - 1
+                    # handles the bottom and top boundary gridpoints. shifts the index for z_point == z_grid[-1] down by 1 to account for needing a
+                    # index before the specified z-point (equivalent to np.floor() for the x- and y-points).
+                    # no modulo needed since the z-axis is non-periodic and all queried points are restricted to the z-domain.
+                    indices = np.clip(indices, 0, len(grid) - 1)
+                    chunk_indices[:, dim] = indices // chunk_size[dim]
+            else:
+                chunk_indices[:, dim] = np.floor_divide(points[:, dim], spacing[dim]) // chunk_size[dim]
+    else:
+        # process all dimensions together if regular grid spacing.
+        chunk_indices = np.floor_divide(points, spacing) // chunk_size
+    
+    # number of unique chunks that are intersected by points.
+    unique_chunks = len(np.unique(chunk_indices.astype(int), axis = 0))
+    
+    # check if the query requires reading from too many chunks.
+    if unique_chunks > metadata['constants']['max_num_chunks']:
+        raise Exception('query intersects too many storage chunks. please break up the points into separate queries, or query a smaller spatial domain.')
+
 def check_spatial_operator(metadata, operator, dataset_title, variable):
     """
     check that the spatial interpolation operator is a valid operator.

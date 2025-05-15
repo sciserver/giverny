@@ -221,6 +221,15 @@ def getBladeData_process_data(dataset_title, times, turbine_number, blade_number
     
     # concatenate the results and reset the indices of the concatenated pandas dataframe.
     result = pd.concat(results, ignore_index = True)
+    
+    # handles the 'xPos' variable offset.
+    if var == 'xPos':
+        if dataset_title == 'diurnal_windfarm':
+            xPos_offset = 5953.5
+        elif dataset_title == 'nbl_windfarm':
+            xPos_offset = 10584
+            
+        result.loc[:, result.columns.str.contains('xPos')] += xPos_offset
         
     # calculate how much time it takes to run step 2.
     end_time_step2 = time.perf_counter()
