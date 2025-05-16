@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "CoordinateEnum": {
+      "enum": [
+        "t",
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "CoordinateEnum",
+      "type": "string"
+    },
+    "CoordinateValue": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinate": {
+          "$ref": "#/$defs/CoordinateEnum"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "coordinate",
+        "value"
+      ],
+      "title": "CoordinateValue",
+      "type": "object"
+    },
+    "DatasetDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "datasetName": {
+          "title": "Datasetname",
+          "type": "string"
+        },
+        "default_coordinates": {
+          "items": {
+            "$ref": "#/$defs/CoordinateValue"
+          },
+          "title": "Default Coordinates",
+          "type": "array"
+        },
+        "position_time_interval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PositionTimeInterval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "datasetName",
+        "default_coordinates"
+      ],
+      "title": "DatasetDefaults",
+      "type": "object"
+    },
+    "PositionTimeInterval": {
+      "additionalProperties": false,
+      "properties": {
+        "endTime": {
+          "title": "Endtime",
+          "type": "number"
+        },
+        "deltaT": {
+          "title": "Deltat",
+          "type": "number"
+        }
+      },
+      "required": [
+        "endTime",
+        "deltaT"
+      ],
+      "title": "PositionTimeInterval",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "jhtdbConfigFileURL": {
+      "title": "Jhtdbconfigfileurl",
+      "type": "string"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/DatasetDefaults"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "jhtdbConfigFileURL",
+    "datasets"
+  ],
+  "title": "JHTDBPointQuery",
+  "type": "object"
+}
