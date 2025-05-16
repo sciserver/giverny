@@ -1,0 +1,715 @@
+{
+  "$defs": {
+    "Dataset": {
+      "additionalProperties": false,
+      "description": "dataset general settings.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "parquet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Parquet"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "storage": {
+          "$ref": "#/$defs/Storage"
+        },
+        "simulation": {
+          "$ref": "#/$defs/Simulation"
+        },
+        "physicalVariables": {
+          "items": {
+            "$ref": "#/$defs/PhysicalVariable"
+          },
+          "title": "Physicalvariables",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "storage",
+        "simulation",
+        "physicalVariables"
+      ],
+      "title": "Dataset",
+      "type": "object"
+    },
+    "Feature": {
+      "additionalProperties": false,
+      "description": "general triple basically, used for listing the various featues (methods, operators etc) that are\navailable on a Dataset. the code is to be used as identifier and references to a Feature in a certain collection.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "code",
+        "name"
+      ],
+      "title": "Feature",
+      "type": "object"
+    },
+    "GivernyConstants": {
+      "additionalProperties": false,
+      "description": "constants needed for giverny query processing.",
+      "properties": {
+        "maximum_processes": {
+          "title": "Maximum Processes",
+          "type": "integer"
+        },
+        "missing_value_placeholder": {
+          "title": "Missing Value Placeholder",
+          "type": "number"
+        },
+        "bytes_per_datapoint": {
+          "title": "Bytes Per Datapoint",
+          "type": "integer"
+        },
+        "max_cutout_size": {
+          "title": "Max Cutout Size",
+          "type": "number"
+        },
+        "max_data_points": {
+          "title": "Max Data Points",
+          "type": "integer"
+        },
+        "max_num_chunks": {
+          "title": "Max Num Chunks",
+          "type": "integer"
+        },
+        "decimals": {
+          "title": "Decimals",
+          "type": "integer"
+        },
+        "pyJHTDB_testing_token": {
+          "title": "Pyjhtdb Testing Token",
+          "type": "string"
+        },
+        "turbulence_email_address": {
+          "title": "Turbulence Email Address",
+          "type": "string"
+        }
+      },
+      "required": [
+        "maximum_processes",
+        "missing_value_placeholder",
+        "bytes_per_datapoint",
+        "max_cutout_size",
+        "max_data_points",
+        "max_num_chunks",
+        "decimals",
+        "pyJHTDB_testing_token",
+        "turbulence_email_address"
+      ],
+      "title": "GivernyConstants",
+      "type": "object"
+    },
+    "Offset": {
+      "additionalProperties": false,
+      "description": "offset general settings.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "coordinate": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Coordinate",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "coordinate"
+      ],
+      "title": "Offset",
+      "type": "object"
+    },
+    "Parquet": {
+      "additionalProperties": false,
+      "description": "parquet file settings.",
+      "properties": {
+        "folderpath": {
+          "title": "Folderpath",
+          "type": "string"
+        },
+        "time_offset": {
+          "title": "Time Offset",
+          "type": "number"
+        },
+        "time_align": {
+          "title": "Time Align",
+          "type": "number"
+        },
+        "time_step": {
+          "title": "Time Step",
+          "type": "number"
+        },
+        "turbine_variables": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turbine Variables"
+        },
+        "turbine_numbers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turbine Numbers"
+        },
+        "blade_variables": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blade Variables"
+        },
+        "blade_numbers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blade Numbers"
+        },
+        "blade_actuator_points": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blade Actuator Points"
+        }
+      },
+      "required": [
+        "folderpath",
+        "time_offset",
+        "time_align",
+        "time_step"
+      ],
+      "title": "Parquet",
+      "type": "object"
+    },
+    "PhysicalVariable": {
+      "additionalProperties": false,
+      "description": "physical variable specific settings.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "isPersistent": {
+          "title": "Ispersistent",
+          "type": "boolean"
+        },
+        "storage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Storage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "xlims": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpaceDimension"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "ylims": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpaceDimension"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "zlims": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpaceDimension"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "offsets": {
+          "items": {
+            "$ref": "#/$defs/Offset"
+          },
+          "title": "Offsets",
+          "type": "array"
+        },
+        "spatialOperatorMethods": {
+          "items": {
+            "$ref": "#/$defs/VariableOperatorMethod"
+          },
+          "title": "Spatialoperatormethods",
+          "type": "array"
+        },
+        "temporalMethods": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Temporalmethods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "isPersistent",
+        "offsets",
+        "spatialOperatorMethods",
+        "temporalMethods"
+      ],
+      "title": "PhysicalVariable",
+      "type": "object"
+    },
+    "Simulation": {
+      "additionalProperties": false,
+      "description": "simulation general settings.",
+      "properties": {
+        "tlims": {
+          "$ref": "#/$defs/TimeDimension"
+        },
+        "xlims": {
+          "$ref": "#/$defs/SpaceDimension"
+        },
+        "ylims": {
+          "$ref": "#/$defs/SpaceDimension"
+        },
+        "zlims": {
+          "$ref": "#/$defs/SpaceDimension"
+        }
+      },
+      "required": [
+        "tlims",
+        "xlims",
+        "ylims",
+        "zlims"
+      ],
+      "title": "Simulation",
+      "type": "object"
+    },
+    "SpaceDimension": {
+      "additionalProperties": false,
+      "description": "space dimension specific settings.",
+      "properties": {
+        "lower": {
+          "title": "Lower",
+          "type": "string"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "string"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "isPeriodic": {
+          "title": "Isperiodic",
+          "type": "boolean"
+        },
+        "spacing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Spacing"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "n",
+        "isPeriodic",
+        "spacing"
+      ],
+      "title": "SpaceDimension",
+      "type": "object"
+    },
+    "SpatialMethod": {
+      "additionalProperties": false,
+      "description": "spatial interpolation method specific settings.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "bucketIndices": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Bucketindices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "bucketIndices"
+      ],
+      "title": "SpatialMethod",
+      "type": "object"
+    },
+    "Storage": {
+      "additionalProperties": false,
+      "description": "storage general settings.",
+      "properties": {
+        "filepath": {
+          "title": "Filepath",
+          "type": "string"
+        },
+        "chunks": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Chunks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "filepath",
+        "chunks"
+      ],
+      "title": "Storage",
+      "type": "object"
+    },
+    "TimeDimension": {
+      "additionalProperties": false,
+      "description": "time dimension specific settings.",
+      "properties": {
+        "lower": {
+          "title": "Lower",
+          "type": "string"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "string"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "isPeriodic": {
+          "title": "Isperiodic",
+          "type": "boolean"
+        },
+        "isDiscrete": {
+          "title": "Isdiscrete",
+          "type": "boolean"
+        },
+        "timeIndexShift": {
+          "$ref": "#/$defs/TimeIndexShift"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "n",
+        "isPeriodic",
+        "isDiscrete",
+        "timeIndexShift"
+      ],
+      "title": "TimeDimension",
+      "type": "object"
+    },
+    "TimeIndexShift": {
+      "additionalProperties": false,
+      "description": "specifies how the user-specified time is shifted based on the query type to read from correct zarr\ntime index. pchip interpolation requires a precursor time that is not queryable.",
+      "properties": {
+        "getcutout": {
+          "title": "Getcutout",
+          "type": "integer"
+        },
+        "getdata": {
+          "title": "Getdata",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "getcutout",
+        "getdata"
+      ],
+      "title": "TimeIndexShift",
+      "type": "object"
+    },
+    "Variable": {
+      "additionalProperties": false,
+      "description": "variable specific settings.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "component_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Component Codes",
+          "type": "array"
+        },
+        "cardinality": {
+          "title": "Cardinality",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "component_codes",
+        "cardinality"
+      ],
+      "title": "Variable",
+      "type": "object"
+    },
+    "VariableOperatorMethod": {
+      "additionalProperties": false,
+      "description": "which spatial interpolation methods can be applied to the result of which operator applied to which variable.\nall represented by their codes pointing to the variables/operators/spatial methods in the database definition.",
+      "properties": {
+        "operator": {
+          "title": "Operator",
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Methods",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operator",
+        "methods"
+      ],
+      "title": "VariableOperatorMethod",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "database general settings.",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "pickled_metadata_filepath": {
+      "title": "Pickled Metadata Filepath",
+      "type": "string"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/Variable"
+      },
+      "title": "Variables",
+      "type": "array"
+    },
+    "spatial_operators": {
+      "items": {
+        "$ref": "#/$defs/Feature"
+      },
+      "title": "Spatial Operators",
+      "type": "array"
+    },
+    "spatial_methods": {
+      "items": {
+        "$ref": "#/$defs/SpatialMethod"
+      },
+      "title": "Spatial Methods",
+      "type": "array"
+    },
+    "temporal_methods": {
+      "items": {
+        "$ref": "#/$defs/Feature"
+      },
+      "title": "Temporal Methods",
+      "type": "array"
+    },
+    "giverny_constants": {
+      "$ref": "#/$defs/GivernyConstants"
+    },
+    "datasets": {
+      "items": {
+        "$ref": "#/$defs/Dataset"
+      },
+      "title": "Datasets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "pickled_metadata_filepath",
+    "variables",
+    "spatial_operators",
+    "spatial_methods",
+    "temporal_methods",
+    "giverny_constants",
+    "datasets"
+  ],
+  "title": "TurbulenceDB",
+  "type": "object"
+}

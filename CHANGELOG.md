@@ -14,10 +14,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
-- process (uv) and (w) components of the sabl velocity data together to reduce processing time.
 - migrate datasets from SQL to CephFS storage.
 
-## [3.1.8.12] - 2025-05-14
+## [3.2.1] - 2025-05-14
 
 ### Added
 
@@ -31,6 +30,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - moved the giverny constants declarations to the jhtdb-config.json file, and removed the constants.py file.
 - jhtdb_schema.py to forbid parameters in the JSON file that are not explicitly defined in the model.
 - removed the grid offsets parameter, and replaced the logic with coordinate offsets parameter.
+- process (uv) and (w) components of the sabl velocity data together to reduce processing time.
   
 ### Fixed
 
