@@ -3434,7 +3434,7 @@
       "name": "Neutral Boundary Layer Windfarm",
       "description": null,
       "parquet": {
-        "folderpath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/NBL_new/turbine-parquet/",
+        "folderpath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/turbine-parquet/",
         "time_offset": 0.025,
         "time_align": 0.975,
         "time_step": 0.025,
@@ -3492,7 +3492,7 @@
         ]
       },
       "storage": {
-        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/NBL_new/NBL_multitime_new.zarr",
+        "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/nbl_windfarm.zarr",
         "chunks": [
           52,
           64,
@@ -3756,7 +3756,7 @@
           "name": "Force",
           "isPersistent": true,
           "storage": {
-            "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/NBL_new/NBL_multitime_new.zarr",
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/nbl_windfarm.zarr",
             "chunks": [
               67,
               96,
@@ -3847,7 +3847,7 @@
       "name": "Diurnal Windfarm",
       "description": null,
       "parquet": {
-        "folderpath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/diurnal_cycle_new/turbine-parquet/",
+        "folderpath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/turbine-parquet/",
         "time_offset": 54000.05,
         "time_align": 0.95,
         "time_step": 0.05,
@@ -3907,7 +3907,7 @@
         ]
       },
       "storage": {
-        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/diurnal_cycle_new/diurnal_cycle_multitime_new.zarr",
+        "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
         "chunks": [
           39,
           72,
@@ -4171,7 +4171,7 @@
           "name": "Force",
           "isPersistent": true,
           "storage": {
-            "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/diurnal_cycle_new/diurnal_cycle_multitime_new.zarr",
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
             "chunks": [
               151,
               144,
@@ -4260,7 +4260,7 @@
           "name": "Soil Temperature",
           "isPersistent": true,
           "storage": {
-            "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-windfarm/windfarm/diurnal_cycle_new/diurnal_cycle_multitime_new.zarr",
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
             "chunks": [
               117,
               72,
