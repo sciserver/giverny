@@ -24,12 +24,13 @@ import numpy as np
 from givernylocal.turbulence_gizmos.basic_gizmos import *
 
 class turb_dataset():
-    def __init__(self, dataset_title = '', output_path = '', auth_token = ''):
+    def __init__(self, dataset_title = '', output_path = '', auth_token = '',
+                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb-config.json'):
         """
         initialize the class.
         """
         # load the json metadata.
-        self.metadata = load_json_metadata()
+        self.metadata = load_json_metadata(json_url)
         
         # check that dataset_title is a valid dataset title.
         check_dataset_title(self.metadata, dataset_title)
@@ -53,7 +54,7 @@ class turb_dataset():
     """
     initialization functions.
     """
-    def init_constants(self, query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option,
+    def init_constants(self, query_type, var, var_offsets, timepoint, timepoint_original, sint, tint, option,
                        num_values_per_datapoint, c):
         """
         initialize the constants.
@@ -61,7 +62,7 @@ class turb_dataset():
         self.var = var
         self.var_offsets = var_offsets
         # convert the timepoint to [hour, minute, simulation number] for the windfarm datasets.
-        if self.dataset_title == 'diurnal_windfarm':
+        if self.dataset_title in ['diurnal_windfarm', 'nbl_windfarm']:
             simulation_num = timepoint % 120
             minute = math.floor(timepoint / 120) % 60
             hour = math.floor((timepoint / 120) / 60)
@@ -75,16 +76,12 @@ class turb_dataset():
         # cube spacing (dx, dy, dz).
         self.spacing = get_dataset_spacing(self.metadata, self.dataset_title, self.var)
         self.dx, self.dy, self.dz = self.spacing
-        # sint and sint_specified are the same except for points near the upper and lower z-axis boundaries in
-        # the 'sabl2048*' datasets. for these datasets sint is automatically reduced to an interpolation method
-        # that fits within the z-axis boundary since the z-axis is not periodic. sint_specified will be used for
-        # reading the proper interpolation lookup table(s) from the metadata files.
         self.sint = sint
-        self.sint_specified = sint_specified
         self.tint = tint
         self.num_values_per_datapoint = num_values_per_datapoint
         self.bytes_per_datapoint = c['bytes_per_datapoint']
         self.missing_value_placeholder = c['missing_value_placeholder']
+        self.max_num_chunks = c['max_num_chunks']
         self.decimals = c['decimals']
         self.chunk_size = get_dataset_chunk_size(self.metadata, self.dataset_title, self.var)
         self.query_type = query_type
@@ -93,10 +90,7 @@ class turb_dataset():
         self.dt = np.dtype(np.float32)
         self.dt = self.dt.newbyteorder('<')
         
-        # retrieve the dimension offsets.
-        self.grid_offsets = get_dataset_grid_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
-        
-        # retrieve the coor offsets.
+        # retrieve the coordinate offsets.
         self.coor_offsets = get_dataset_coordinate_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
         
         # set the dataset name to be used in the cutout hdf5 file.

@@ -3,11 +3,14 @@
 </div>
 
 # giverny
-Python (3.9+) library for querying the [Johns Hopkins Turbulence Database](https://turbulence.idies.jhu.edu/home).
+[![PyPI](https://img.shields.io/pypi/v/giverny.svg?color=darkgreen)](https://pypi.org/project/giverny/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-brown.svg)](https://opensource.org/license/apache-2-0)
+
+Library for querying the [Johns Hopkins Turbulence Database](https://turbulence.idies.jhu.edu/home).
 
 DEMO notebooks for the various compute environments are provided at the [Johns Hopkins Turbulence github](https://github.com/sciserver/giverny).
 
-## Use giverny via Python through SciServer (RECOMMENDED)
+## Python on SciServer (recommended)
 `DEMO_SciServer_python_notebooks.zip`
 
 The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to the Johns Hopkins Turbulence Database (JHTDB) through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
@@ -18,32 +21,32 @@ To use `giverny` through Sciserver:
 1. Login to *SciServer*.
 2. Click on *Compute* and then *Create container*.
     * Can also run jobs in batch mode, by selecting *Compute Jobs*.
-3. Type in a *Container name*, select *SciServer Essentials 4.0* in *Compute Image*, mark *Turbulence (ceph)* in *Data volumes*, and then click on *Create*.
+3. Type in a *Container name*, select *SciServer Essentials 4.0* in *Compute Image*, mark *Turbulence (ceph)* and *Turbulence Windfarm (ceph)* in *Data volumes*, and then click on *Create*.
 4. Click on the container you just created to start using *giverny* with Python and JupyterLab.
 
-## Use giverny via Python on local computers
+## Python on local computers
 `DEMO_local_python_notebooks.zip`
 
 The first cell in the notebook runs the `pip` install command for the `givernylocal` library and all dependencies:
 ```
 pip install --upgrade givernylocal
 ```
-If you don't have `pip` on your system, it is quite easy to get it following the instructions at: [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
+If you do not have `pip` on your system, it is quite easy to get it following the instructions at: [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
-## Use giverny via Matlab on local computers
+## Matlab on local computers
 `DEMO_local_matlab_notebooks.zip`
 
-## Use giverny via C on local computers
+## C on local computers
 `DEMO_C.tar`
 
 Please see the README inside the archive.
 
-## Use giverny via Fortran on local computers
+## Fortran on local computers
 `DEMO_F.tar`
 
 Please see the README inside the archive.
 
-## Configuration
+## Authorization token
 
 While our service is open to anyone, we would like to keep track of who is using the service, and how. To this end, we would like each user or site to obtain an authorization token from us: [JHTDB authorization token](https://turbulence.idies.jhu.edu/staging/database)
 

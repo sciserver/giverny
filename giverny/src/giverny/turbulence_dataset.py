@@ -26,6 +26,7 @@ import glob
 import math
 import time
 import zarr
+import duckdb
 import pathlib
 import itertools
 import subprocess
@@ -35,21 +36,21 @@ from collections import defaultdict
 from SciServer import Authentication
 from concurrent.futures import ThreadPoolExecutor
 from giverny.turbulence_gizmos.basic_gizmos import *
-from giverny.turbulence_gizmos.constants import get_constants
 
 class turb_dataset():
-    def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False):
+    def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
+                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb-config.json'):
         """
         initialize the class.
         """
         # load the json metadata.
-        self.metadata = load_json_metadata()
+        self.metadata = load_json_metadata(json_url)
         
         # check that dataset_title is a valid dataset title.
         check_dataset_title(self.metadata, dataset_title)
         
         # dask maximum processes constant.
-        self.dask_maximum_processes = get_constants()['dask_maximum_processes']
+        self.maximum_processes = self.metadata['constants']['maximum_processes']
         
         # turbulence dataset name, e.g. "isotropic8192" or "isotropic1024fine".
         self.dataset_title = dataset_title
@@ -155,34 +156,20 @@ class turb_dataset():
                 # pickled laplacian coefficient lookup table.
                 self.laplacian_lookup_table = self.read_pickle_file(f'{sint_name}_lookup_table.pickle')
                 
-    def init_interpolation_cube_size_lookup_table(self, metadata, sint = 'none', sint_specified = 'none'):
+    def init_interpolation_cube_size_lookup_table(self, metadata, sint = 'none'):
         """
         pickled interpolation cube sizes table.
         """
         # the interpolation cube size indices are only read when called from the init_constants function.
         interp_cube_sizes = {spatial_method['code']: spatial_method['bucketIndices'] for spatial_method in metadata['spatial_methods']}
-
-        # use sint_specified when one of the 'z_linear*' step-down methods is being used.
-        sint_cube_size = sint_specified if 'z_linear' in sint else sint
-        # the bucket size is the same for all spatial operators, so we only use the spatial method portion of 'sint' and 'sint_specified'.
-        sint_cube_size = sint_cube_size.split('_')[0]
+        
+        # the bucket size is the same for all spatial operators, so we only use the spatial method portion of 'sint'.
+        sint_cube_size = sint.split('_')[0]
 
         # lookup the interpolation cube size indices.
         self.cube_min_index, self.cube_max_index = interp_cube_sizes[sint_cube_size]
-
-        # get the interpolation bucket dimension length for sint_cube_size. used for defining the zeros plane at z = 0 (ground) for calculating
-        # the w-component of velocity at z-points queried in the range [dz / 2, dz) of the 'sabl2048*' datasets. 
-        self.cube_dim = self.cube_min_index + self.cube_max_index + 1
-
-        # convert self.cube_min_index and self.cube_max_index for defining the buckets of the 'z_linear*' step-down methods.
-        if sint == 'z_linear':
-            self.cube_min_index = np.array([self.cube_min_index, self.cube_min_index, 0])
-            self.cube_max_index = np.array([self.cube_max_index, self.cube_max_index, 1])
-        elif sint in ['z_linear_gradient', 'z_linear_laplacian', 'z_linear_hessian']:
-            self.cube_min_index = np.array([self.cube_min_index, self.cube_min_index, 0])
-            self.cube_max_index = np.array([self.cube_max_index, self.cube_max_index, 2])
     
-    def init_constants(self, query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option,
+    def init_constants(self, query_type, var, var_offsets, timepoint, timepoint_original, sint, tint, option,
                        num_values_per_datapoint, c):
         """
         initialize the constants.
@@ -190,7 +177,7 @@ class turb_dataset():
         self.var = var
         self.var_offsets = var_offsets
         # convert the timepoint to [hour, minute, simulation number] for the windfarm datasets.
-        if self.dataset_title == 'diurnal_windfarm':
+        if self.dataset_title in ['diurnal_windfarm', 'nbl_windfarm']:
             simulation_num = timepoint % 120
             minute = math.floor(timepoint / 120) % 60
             hour = math.floor((timepoint / 120) / 60)
@@ -204,16 +191,12 @@ class turb_dataset():
         # cube spacing (dx, dy, dz).
         self.spacing = get_dataset_spacing(self.metadata, self.dataset_title, self.var)
         self.dx, self.dy, self.dz = self.spacing
-        # sint and sint_specified are the same except for points near the upper and lower z-axis boundaries in
-        # the 'sabl2048*' datasets. for these datasets sint is automatically reduced to an interpolation method
-        # that fits within the z-axis boundary since the z-axis is not periodic. sint_specified will be used for
-        # reading the proper interpolation lookup table(s) from the metadata files.
         self.sint = sint
-        self.sint_specified = sint_specified
         self.tint = tint
         self.num_values_per_datapoint = num_values_per_datapoint
         self.bytes_per_datapoint = c['bytes_per_datapoint']
         self.missing_value_placeholder = c['missing_value_placeholder']
+        self.max_num_chunks = c['max_num_chunks']
         self.decimals = c['decimals']
         self.chunk_size = get_dataset_chunk_size(self.metadata, self.dataset_title, self.var)
         self.query_type = query_type
@@ -222,11 +205,11 @@ class turb_dataset():
         self.dt = np.dtype(np.float32)
         self.dt = self.dt.newbyteorder('<')
         
-        # retrieve the dimension offsets.
-        self.grid_offsets = get_dataset_grid_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
-        
-        # retrieve the coor offsets.
+        # retrieve the coordinate offsets.
         self.coor_offsets = get_dataset_coordinate_offsets(self.metadata, self.dataset_title, self.var_offsets, self.var)
+        
+        # retrieve the non-periodic and regularly spaced spatial axes.
+        self.nonperiodic_regular_axes = get_nonperiodic_and_regular_spacing_spatial_axes(self.metadata, self.dataset_title, self.var)
         
         # set the dataset name to be used in the cutout hdf5 file.
         self.dataset_name = self.var + '_' + str(self.timepoint_original).zfill(4)
@@ -237,16 +220,13 @@ class turb_dataset():
         if self.dataset_title in giverny_datasets:
             if query_type == 'getdata':
                 # initialize the interpolation cube size lookup table.
-                self.init_interpolation_cube_size_lookup_table(self.metadata, self.sint, self.sint_specified)
+                self.init_interpolation_cube_size_lookup_table(self.metadata, self.sint)
                 
-                # defining the zeros plane at z = 0 (ground) for calculating the w-component of velocity at z-points queried in the range [dz / 2, dz) of the
-                # 'sabl2048*' datasets.
-                bucket_zero_plane = np.zeros((self.cube_dim, self.cube_dim, self.num_values_per_datapoint), dtype = np.float32)
                 # interpolate function variables.
-                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.sint_specified, self.spacing, bucket_zero_plane, self.lookup_N]
+                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.spacing, self.lookup_N]
                 
                 # getData variables.
-                self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size]
+                self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.nonperiodic_regular_axes]
             
             # open the zarr store for reading.
             self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title)
@@ -473,7 +453,7 @@ class turb_dataset():
 
         return g
     
-    def spatial_interpolate(self, p, u, u_info, interpolate_vars):
+    def spatial_interpolate(self, p, u, interpolate_vars):
         """
         spatial interpolating functions to compute the kernel, extract subcube and convolve.
         
@@ -481,7 +461,7 @@ class turb_dataset():
          - p is an np.array(3) containing the three coordinates.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, sint_specified, spacing, bucket_zero_plane, lookup_N = interpolate_vars
+        cube_min_index, cube_max_index, sint, spacing, lookup_N = interpolate_vars
         dx, dy, dz = spacing
         
         """
@@ -508,421 +488,6 @@ class turb_dataset():
             gk = np.einsum('i,j,k', gz, gy, gx)
 
             return np.einsum('ijk,ijkl->l', gk, u)
-        
-        """
-        field linear interpolation (step-down for 'lag8', 'lag6', 'lag4', 'm2q8', 'm1q4').
-        """
-        def x_linear():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # the first column of buckets_info is x_bottom_flag: bottom bucket flag.
-            x_bottom_flag = u_info[0]
-            
-            # get the coefficients.
-            gy = self.lookup_table[int(lookup_N * fr[1])]
-            gz = self.lookup_table[int(lookup_N * fr[2])]
-            
-            # create the 2d kernel from the outer product of the 1d kernels.
-            gk = np.einsum('j,k', gz, gy)
-            
-            if x_bottom_flag == 'zero_ground':
-                # get the bucket x-plane above the point. for this particular case, the "top" boundary is math.floor(p[0]) because this handles 
-                # x-points between the ground (x = 0) and the 1st x-grid point (x = dx). 
-                x_top = math.floor(p[0])
-                ux_top = u[:, :, x_top, :]
-                
-                # get the bucket x-plane below the point.
-                ux_bottom = bucket_zero_plane
-            else:
-                # get the bucket x-plane above the point.
-                x_top = math.ceil(p[0])
-                ux_top = u[:, :, x_top, :]
-            
-                # get the bucket x-plane below the point.
-                x_bottom = math.floor(p[0])
-                ux_bottom = u[:, :, x_bottom, :]
-            
-            # 2d interpolation at the x-axis point above p.
-            fn_top = np.einsum('jk,jkl->l', gk, ux_top)
-
-            # 2d interpolation at the x-axis point below p.
-            fn_bottom  = np.einsum('jk,jkl->l', gk, ux_bottom)
-            
-            return fn_bottom + (fn_top - fn_bottom) * fr[0]
-        
-        def y_linear():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # the first column of buckets_info is y_bottom_flag: bottom bucket flag.
-            y_bottom_flag = u_info[0]
-            
-            # get the coefficients.
-            gx = self.lookup_table[int(lookup_N * fr[0])]
-            gz = self.lookup_table[int(lookup_N * fr[2])]
-            
-            # create the 2d kernel from the outer product of the 1d kernels.
-            gk = np.einsum('i,k', gz, gx)
-            
-            if y_bottom_flag == 'zero_ground':
-                # get the bucket y-plane above the point. for this particular case, the "top" boundary is math.floor(p[1]) because this handles 
-                # y-points between the ground (y = 0) and the 1st z-grid point (y = dy). 
-                y_top = math.floor(p[1])
-                uy_top = u[:, y_top, :, :]
-                
-                # get the bucket y-plane below the point.
-                uy_bottom = bucket_zero_plane
-            else:
-                # get the bucket y-plane above the point.
-                y_top = math.ceil(p[1])
-                uy_top = u[:, y_top, :, :]
-            
-                # get the bucket y-plane below the point.
-                y_bottom = math.floor(p[1])
-                uy_bottom = u[:, y_bottom, :, :]
-            
-            # 2d interpolation at the y-axis point above p.
-            fn_top = np.einsum('ik,ikl->l', gk, uy_top)
-
-            # 2d interpolation at the y-axis point below p.
-            fn_bottom  = np.einsum('ik,ikl->l', gk, uy_bottom)
-            
-            return fn_bottom + (fn_top - fn_bottom) * fr[1]
-        
-        def z_linear():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # the first column of buckets_info is z_bottom_flag: bottom bucket flag.
-            z_bottom_flag = u_info[0]
-            
-            # get the coefficients.
-            gx = self.lookup_table[int(lookup_N * fr[0])]
-            gy = self.lookup_table[int(lookup_N * fr[1])]
-            
-            # create the 2d kernel from the outer product of the 1d kernels.
-            gk = np.einsum('i,j', gy, gx)
-            
-            if z_bottom_flag == 'zero_ground':
-                # get the bucket z-plane above the point. for this particular case, the "top" boundary is math.floor(p[2]) because this handles 
-                # z-points between the ground (z = 0) and the 1st z-grid point (z = dz). applies to the 'velocity_w' variable of the 'sabl2048*' datasets. 
-                z_top = math.floor(p[2])
-                uz_top = u[z_top, :, :, :]
-                
-                # get the bucket z-plane below the point.
-                uz_bottom = bucket_zero_plane
-            else:
-                # get the bucket z-plane above the point.
-                z_top = math.ceil(p[2])
-                uz_top = u[z_top, :, :, :]
-            
-                # get the bucket z-plane below the point.
-                z_bottom = math.floor(p[2])
-                uz_bottom = u[z_bottom, :, :, :]
-            
-            # 2d interpolation at the z-axis point above p.
-            fn_top = np.einsum('ij,ijl->l', gk, uz_top)
-
-            # 2d interpolation at the z-axis point below p.
-            fn_bottom  = np.einsum('ij,ijl->l', gk, uz_bottom)
-            
-            return fn_bottom + (fn_top - fn_bottom) * fr[2]
-        
-        """
-        gradient linear region finite differences.
-        """
-        def x_linear_gradient():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_top: top bucket index, and x_divisor: number of grid points to divide by.
-            x_bottom, x_top, x_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-            # get the x-gridpoint above the specified point. 
-            component_x_top = u[ix[2], ix[1], ix[0] + x_top, :]
-            # get the x-gridpoint below the specified point. if x_bottom is 'zero_ground' then the x-gridpoint below the specified point is set to 0.
-            component_x_bottom = 0.0 if x_bottom == 'zero_ground' else u[ix[2], ix[1], ix[0] + x_bottom, :]
-            # the linear dvdx divisor equals the spacing between the top and bottom x-gridpoints.
-            dvdx_divisor = x_divisor * dx
-
-            dvdx = (component_x_top - component_x_bottom) / dvdx_divisor
-            dvdy = np.inner(fd_coeff, component_y.T) / dy
-            dvdz = np.inner(fd_coeff, component_z.T) / dz
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-        
-        def y_linear_gradient():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_top: top bucket index, and y_divisor: number of grid points to divide by.
-            y_bottom, y_top, y_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-            # get the y-gridpoint above the specified point. 
-            component_y_top = u[ix[2], ix[1] + y_top, ix[0], :]
-            # get the y-gridpoint below the specified point. if y_bottom is 'zero_ground' then the y-gridpoint below the specified point is set to 0.
-            component_y_bottom = 0.0 if y_bottom == 'zero_ground' else u[ix[2], ix[1] + y_bottom, ix[0], :]
-            # the linear dvdy divisor equals the spacing between the top and bottom y-gridpoints.
-            dvdy_divisor = y_divisor * dy
-
-            dvdx = np.inner(fd_coeff, component_x.T) / dx
-            dvdy = (component_y_top - component_y_bottom) / dvdy_divisor
-            dvdz = np.inner(fd_coeff, component_z.T) / dz
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-        
-        def z_linear_gradient():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_top: top bucket index, and z_divisor: number of grid points to divide by.
-            z_bottom, z_top, z_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-            # get the z-gridpoint above the specified point. 
-            component_z_top = u[ix[2] + z_top, ix[1], ix[0], :]
-            # get the z-gridpoint below the specified point. if z_bottom is 'zero_ground' then the z-gridpoint below the specified point is set to 0.
-            component_z_bottom = 0.0 if z_bottom == 'zero_ground' else u[ix[2] + z_bottom, ix[1], ix[0], :]
-            # the linear dvdz divisor equals the spacing between the top and bottom z-gridpoints.
-            dvdz_divisor = z_divisor * dz
-
-            dvdx = np.inner(fd_coeff, component_x.T) / dx
-            dvdy = np.inner(fd_coeff, component_y.T) / dy
-            dvdz = (component_z_top - component_z_bottom) / dvdz_divisor
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            
-        """
-        laplacian linear region finite differences.
-        """
-        def x_linear_laplacian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_top: top bucket index, and x_divisor: number of grid points to divide by.
-            x_bottom, x_top, x_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-            # get the x-gridpoint above the specified point. 
-            component_x_top = u[ix[2], ix[1], ix[0] + x_top, :]
-            # get the x-gridpoint below the specified point. if x_bottom is 'zero_ground' then the x-gridpoint below the specified point is set to 0.
-            component_x_bottom = 0.0 if x_bottom == 'zero_ground' else u[ix[2], ix[1], ix[0] + x_bottom, :]
-            # the linear dvdx divisor equals the spacing between the top and bottom x-gridpoints.
-            dvdx_divisor = x_divisor * dx
-
-            dvdx = (component_x_top - component_x_bottom) / dvdx_divisor
-            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
-            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
-            
-            return dvdx + dvdy + dvdz
-        
-        def y_linear_laplacian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_top: top bucket index, and y_divisor: number of grid points to divide by.
-            y_bottom, y_top, y_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-            # get the y-gridpoint above the specified point. 
-            component_y_top = u[ix[2], ix[1] + y_top, ix[0], :]
-            # get the y-gridpoint below the specified point. if y_bottom is 'zero_ground' then the y-gridpoint below the specified point is set to 0.
-            component_y_bottom = 0.0 if y_bottom == 'zero_ground' else u[ix[2], ix[1] + y_bottom, ix[0], :]
-            # the linear dvdy divisor equals the spacing between the top and bottom y-gridpoints.
-            dvdy_divisor = y_divisor * dy
-
-            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
-            dvdy = (component_y_top - component_y_bottom) / dvdy_divisor
-            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
-            
-            return dvdx + dvdy + dvdz
-        
-        def z_linear_laplacian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_top: top bucket index, and z_divisor: number of grid points to divide by.
-            z_bottom, z_top, z_divisor = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-            # get the z-gridpoint above the specified point. 
-            component_z_top = u[ix[2] + z_top, ix[1], ix[0], :]
-            # get the z-gridpoint below the specified point. if z_bottom is 'zero_ground' then the z-gridpoint below the specified point is set to 0.
-            component_z_bottom = 0.0 if z_bottom == 'zero_ground' else u[ix[2] + z_bottom, ix[1], ix[0], :]
-            # the linear dvdz divisor equals the spacing between the top and bottom z-gridpoints.
-            dvdz_divisor = z_divisor * dz
-
-            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
-            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
-            dvdz = (component_z_top - component_z_bottom) / dvdz_divisor
-            
-            return dvdx + dvdy + dvdz
-        
-        """
-        hessian linear region finite differences.
-        """
-        def x_linear_hessian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff_laplacian = self.laplacian_lookup_table
-            # off-diagonal coefficients.
-            fd_coeff_hessian = self.lookup_table
-            
-            # the 3 columns of buckets_info are x_bottom: bottom bucket index, x_middle: middle bucket index, and x_top: top bucket index.
-            x_bottom, x_middle, x_top = u_info[:3]
-            
-            # diagonal components.
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-
-            ujj = np.inner(fd_coeff_laplacian, component_y.T) / dy / dy
-            ukk = np.inner(fd_coeff_laplacian, component_z.T) / dz / dz
-
-            # off-diagonal components.
-            if sint_specified == 'fd4noint_hessian':
-                component_yz = np.array([u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
-            elif sint_specified == 'fd6noint_hessian':
-                component_yz = np.array([u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],
-                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
-            elif sint_specified == 'fd8noint_hessian':
-                component_yz = np.array([u[ix[2]+4,ix[1]+4,ix[0],:],u[ix[2]+4,ix[1]-4,ix[0],:],u[ix[2]-4,ix[1]-4,ix[0],:],u[ix[2]-4,ix[1]+4,ix[0],:],
-                                         u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],
-                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:]])
-            
-            ujk = np.inner(fd_coeff_hessian, component_yz.T) / dy / dz
-            
-            if x_bottom == 'zero_ground':
-                # sets all values at x_bottom (x = 0) equal to 0 because this handles the boundary condition gridpoint at x = 0.
-                uii = (u[ix[2], ix[1], x_top, :] - (2 * u[ix[2], ix[1], x_middle, :])) / (dx * dx)
-
-                uij = (u[ix[2], ix[1] + 1, x_top, :] - u[ix[2], ix[1] - 1, x_top, :]) / (4 * dx * dy)
-                uik = (u[ix[2] + 1, ix[1], x_top, :] - u[ix[2] - 1, ix[1], x_top, :]) / (4 * dx * dz)
-            else:
-                uii = (u[ix[2], ix[1], x_top, :] - (2 * u[ix[2], ix[1], x_middle, :]) + u[ix[2], ix[1], x_bottom, :]) / (dx * dx)
-
-                uij = (u[ix[2], ix[1] + 1, x_top, :] - u[ix[2], ix[1] - 1, x_top, :] - u[ix[2], ix[1] + 1, x_bottom, :] + u[ix[2], ix[1] - 1, x_bottom, :]) / (4 * dx * dy)
-                uik = (u[ix[2] + 1, ix[1], x_top, :] - u[ix[2] - 1, ix[1], x_top, :] - u[ix[2] + 1, ix[1], x_bottom, :] + u[ix[2] - 1, ix[1], x_bottom, :]) / (4 * dx * dz)
-            
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
-        
-        def y_linear_hessian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff_laplacian = self.laplacian_lookup_table
-            # off-diagonal coefficients.
-            fd_coeff_hessian = self.lookup_table
-            
-            # the 3 columns of buckets_info are y_bottom: bottom bucket index, y_middle: middle bucket index, and y_top: top bucket index.
-            y_bottom, y_middle, y_top = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_z = u[ix[2] - cube_min_index[2] : ix[2] + cube_max_index[2], ix[1], ix[0], :]
-
-            uii = np.inner(fd_coeff_laplacian, component_x.T) / dx / dx
-            ukk = np.inner(fd_coeff_laplacian, component_z.T) / dz / dz
-
-            # off-diagonal components.
-            if sint_specified == 'fd4noint_hessian':
-                component_xz = np.array([u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-            elif sint_specified == 'fd6noint_hessian':
-                component_xz = np.array([u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
-                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-            elif sint_specified == 'fd8noint_hessian':
-                component_xz = np.array([u[ix[2]+4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]-4,:],u[ix[2]+4,ix[1],ix[0]-4,:],
-                                         u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
-                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-            
-            uik = np.inner(fd_coeff_hessian, component_xz.T) / dx / dz
-            
-            if z_bottom == 'zero_ground':
-                # sets all values at y_bottom (y = 0) equal to 0 because this handles the boundary condition gridpoint at y = 0.
-                ujj = (u[ix[2], y_top, ix[0], :] - (2 * u[ix[2], y_middle, ix[0], :])) / (dy * dy)
-
-                uij = (u[ix[2], y_top, ix[0] + 1, :] - u[ix[2], y_top, ix[0] - 1, :]) / (4 * dx * dy)
-                ujk = (u[ix[2] + 1, y_top, ix[0], :] - u[ix[2] - 1, y_top, ix[0], :]) / (4 * dy * dz)
-            else:
-                ujj = (u[ix[2], y_top, ix[0], :] - (2 * u[ix[2], y_middle, ix[0], :]) + u[ix[2], y_bottom, ix[0], :]) / (dy * dy)
-
-                uij = (u[ix[2], y_top, ix[0] + 1, :] - u[ix[2], y_top, ix[0] - 1, :] - u[ix[2], y_bottom, ix[0] + 1, :] + u[ix[2], y_bottom, ix[0] - 1, :]) / (4 * dx * dy)
-                ujk = (u[ix[2] + 1, y_top, ix[0], :] - u[ix[2] - 1, y_top, ix[0], :] - u[ix[2] + 1, y_bottom, ix[0], :] + u[ix[2] - 1, y_bottom, ix[0], :]) / (4 * dy * dz)
-            
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
-        
-        def z_linear_hessian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff_laplacian = self.laplacian_lookup_table
-            # off-diagonal coefficients.
-            fd_coeff_hessian = self.lookup_table
-            
-            # the 3 columns of buckets_info are z_bottom: bottom bucket index, z_middle: middle bucket index, and z_top: top bucket index.
-            z_bottom, z_middle, z_top = u_info[:3]
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index[0] : ix[0] + cube_max_index[0], :]
-            component_y = u[ix[2], ix[1] - cube_min_index[1] : ix[1] + cube_max_index[1], ix[0], :]
-
-            uii = np.inner(fd_coeff_laplacian, component_x.T) / dx / dx
-            ujj = np.inner(fd_coeff_laplacian, component_y.T) / dy / dy
-
-            # off-diagonal components.
-            if sint_specified == 'fd4noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            elif sint_specified == 'fd6noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            elif sint_specified == 'fd8noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]-4,:],u[ix[2],ix[1]+4,ix[0]-4,:],
-                                         u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-            
-            uij = np.inner(fd_coeff_hessian, component_xy.T) / dx / dy
-            
-            if z_bottom == 'zero_ground':
-                # sets all values at z_bottom (z = 0) equal to 0 because this handles the boundary condition gridpoint at z = 0. e.g. applies to
-                # the 'velocity_w' variable of the 'sabl2048*' datasets.
-                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :])) / (dz * dz)
-
-                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :]) / (4 * dx * dz)
-                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :]) / (4 * dy * dz)
-            else:
-                ukk = (u[z_top, ix[1], ix[0], :] - (2 * u[z_middle, ix[1], ix[0], :]) + u[z_bottom, ix[1], ix[0], :]) / (dz * dz)
-
-                uik = (u[z_top, ix[1], ix[0] + 1, :] - u[z_top, ix[1], ix[0] - 1, :] - u[z_bottom, ix[1], ix[0] + 1, :] + u[z_bottom, ix[1], ix[0] - 1, :]) / (4 * dx * dz)
-                ujk = (u[z_top, ix[1] + 1, ix[0], :] - u[z_top, ix[1] - 1, ix[0], :] - u[z_bottom, ix[1] + 1, ix[0], :] + u[z_bottom, ix[1] - 1, ix[0], :]) / (4 * dy * dz)
-            
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
         
         """
         gradient finite differences.
@@ -1164,18 +729,6 @@ class turb_dataset():
             'none': none,
             'lag4': lag_spline, 'lag6': lag_spline, 'lag8': lag_spline,
             'm1q4': lag_spline, 'm2q8': lag_spline,
-            'x_linear': x_linear,
-            'x_linear_gradient': x_linear_gradient,
-            'x_linear_laplacian': x_linear_laplacian,
-            'x_linear_hessian': x_linear_hessian,
-            'y_linear': y_linear,
-            'y_linear_gradient': y_linear_gradient,
-            'y_linear_laplacian': y_linear_laplacian,
-            'y_linear_hessian': y_linear_hessian,
-            'z_linear': z_linear,
-            'z_linear_gradient': z_linear_gradient,
-            'z_linear_laplacian': z_linear_laplacian,
-            'z_linear_hessian': z_linear_hessian,
             'fd4noint_gradient': fdnoint_gradient, 'fd6noint_gradient': fdnoint_gradient, 'fd8noint_gradient': fdnoint_gradient,
             'fd4noint_laplacian': fdnoint_laplacian, 'fd6noint_laplacian': fdnoint_laplacian, 'fd8noint_laplacian': fdnoint_laplacian,
             'fd4noint_hessian': fdnoint_hessian, 'fd6noint_hessian': fdnoint_hessian, 'fd8noint_hessian': fdnoint_hessian,
@@ -1269,7 +822,7 @@ class turb_dataset():
         submit the chunks for reading.
         """
         num_chunks = len(chunk_boxes)
-        num_processes = min(self.dask_maximum_processes, num_chunks)
+        num_processes = min(self.maximum_processes, num_chunks)
         
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getcutout,
@@ -1312,7 +865,8 @@ class turb_dataset():
                                 min_xyz, max_xyz)]
         
         # read zarr function map.
-        read_zarr_functions = defaultdict(lambda: single_timepoint, {'diurnal_windfarm': windfarm_timepoint})
+        read_zarr_functions = defaultdict(lambda: single_timepoint,
+                                          {'diurnal_windfarm': windfarm_timepoint, 'nbl_windfarm': windfarm_timepoint})
         
         return read_zarr_functions[dataset_title]()
             
@@ -1330,135 +884,70 @@ class turb_dataset():
         # chunk size array for subdividing chunk groups.
         chunk_size_array = self.chunk_size - 1
         
-        # convert the points to the center point position within their own bucket.
-        center_points = (((points + self.spacing * self.grid_offsets) / self.spacing) % 1) + self.cube_min_index
-        # convert the points to gridded datapoints. there is a +0.5 point shift because the finite differencing methods would otherwise add +0.5 to center_points when
-        # interpolating the values. shifting the datapoints up by +0.5 adjusts the bucket up one grid point so the center_points do not needed to be shifted up by +0.5.
-        sint_datapoint_shift = self.sint_specified if 'z_linear' in self.sint else self.sint
-        if sint_datapoint_shift in ['fd4noint_gradient', 'fd6noint_gradient', 'fd8noint_gradient',
-                                    'fd4noint_laplacian', 'fd6noint_laplacian', 'fd8noint_laplacian',
-                                    'fd4noint_hessian', 'fd6noint_hessian', 'fd8noint_hessian']:
-            datapoints = np.floor((points + self.spacing * (self.grid_offsets + 0.5)) / self.spacing).astype(int) % self.N
+        # handle diurnal windfarm soiltemperature variable because this variable has non-uniform z-axis grid spacing. currently only "none" interpolation
+        # is allowed. the "center_points" are found between the z-gridpoints, and "datapoints" are mapped to the floor z-gridpoints.
+        if self.dataset_title == 'diurnal_windfarm' and self.var == 'soiltemperature':
+            # convert the points to their center points position between grid points.
+            x_center = ((points[:, 0] / self.spacing[0]) % 1) + self.cube_min_index
+            y_center = ((points[:, 1] / self.spacing[1]) % 1) + self.cube_min_index
+            
+            z_points = points[:, 2]
+            z_grid = self.spacing[2]
+            
+            # find the index in the z-gridpoint list where each of the z-points would be inserted.
+            z_lower_indices = np.searchsorted(z_grid, -z_points, side = 'right') - 1
+            # handles the bottom and top boundary gridpoints. shifts the index for z_point == z_grid[-1] down by 2 to account for needing an
+            # index before and after the specified z-point (the after gridpoint in this case is the specified z-point == z_grid[-1]).
+            z_lower_indices = np.clip(z_lower_indices, 0, len(z_grid) - 2)
+            
+            z_low = z_grid[z_lower_indices]
+            z_high = z_grid[z_lower_indices + 1]
+
+            # calculate z-points centered position within each grid cell.
+            z_center = ((-z_points - z_low) / (z_high - z_low)) % 1
+            # center points.
+            center_points = np.column_stack([x_center, y_center, z_center])
+            
+            # convert the points to gridded datapoints.
+            x_datapoints = np.floor(points[:, 0] / self.spacing[0]).astype(int) % self.N[0]
+            y_datapoints = np.floor(points[:, 1] / self.spacing[1]).astype(int) % self.N[1]
+
+            # find the index in the z-gridpoint list where each of the z-points would be inserted.
+            z_datapoints = np.searchsorted(z_grid, -z_points, side = 'right') - 1
+            # handles the bottom and top boundary gridpoints. shifts the index for z_point == z_grid[-1] down by 1 to account for needing a
+            # index before the specified z-point (equivalent to np.floor() for the x- and y-points).
+            # no modulo needed since the z-axis is non-periodic and all queried points are restricted to the z-domain.
+            z_datapoints = np.clip(z_datapoints, 0, len(z_grid) - 1)
+            
+            # datapoints.
+            datapoints = np.column_stack([x_datapoints, y_datapoints, z_datapoints])
         else:
-            datapoints = np.floor((points + self.spacing * self.grid_offsets) / self.spacing).astype(int) % self.N
+            # handles all other variables of the "diurnal_windfarm" dataset as well as all other datasets.
+            # convert the points to the center point position within their own bucket.
+            center_points = ((points / self.spacing) % 1) + self.cube_min_index
+            # convert the points to gridded datapoints. there is a +0.5 point shift because the finite differencing methods would otherwise add +0.5 to center_points when
+            # interpolating the values. shifting the datapoints up by +0.5 adjusts the bucket up one grid point so the center_points do not needed to be shifted up by +0.5.
+            if self.sint in ['fd4noint_gradient', 'fd6noint_gradient', 'fd8noint_gradient',
+                             'fd4noint_laplacian', 'fd6noint_laplacian', 'fd8noint_laplacian',
+                             'fd4noint_hessian', 'fd6noint_hessian', 'fd8noint_hessian']:
+                datapoints = np.floor((points + self.spacing * 0.5) / self.spacing).astype(int) % self.N
+            else:
+                datapoints = np.floor(points / self.spacing).astype(int) % self.N
         
-        # adjust center_points and datapoints for the 'z_linear*' methods to make sure that the buckets do not wrap around the z-axis since it is not periodic. the values
-        # in buckets_info are used in the 'z_linear*' methods in the spatial_interpolate function.
-        buckets_info = np.full((len(points), 3), None)
-        if self.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
-            if self.sint == 'z_linear':
-                # adjustments for the 'z_linear' step-down method for the interpolation functions (i.e. lag4/6/8, m1q4, m2q8). 
-                if self.var_offsets == 'sgsenergy':
-                    # ground boundary condition of the 'sgsenergy' variable.
-                    # condition to test the points against.
-                    where_condition = points[:, 2] < self.dz
-                    # update center_points z-axis because the points are below self.dz, which is the first gridpoint for the 'sgsenergy' variable.
-                    center_points[:, 2] = np.where(where_condition, np.floor(center_points[:, 2]), center_points[:, 2])
-                    # shift datapoints up by 1 gridpoint because points < self.dz are below the first gridpoint. the ground boundary condition will be applied for the
-                    # 'sgsenergy' variable, which is that e(z = 0) = e(z = self.dz).
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N[2], datapoints[:, 2])
-                elif self.var_offsets == 'velocity_w':
-                    # ground boundary condition of the w-component of the 'velocity' variable.
-                    where_condition = points[:, 2] < self.dz
-                    # update the z_bottom_flag of buckets_info for points that satisfy where_condition. 'zero_ground' is handled inside the spatial_interpolate function.
-                    buckets_info[np.where(where_condition), 0] = 'zero_ground'
-                    # shift datapoints up by 1 gridpoint because points < self.dz are below the first gridpoint. the ground boundary condition will be applied for the
-                    # w-component of the 'velocity' variable, which is that w(z = 0) = 0.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] + 1) % self.N[2], datapoints[:, 2])
-                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
-                    # sky boundary condition of the 'pressure', 'temperature', and (u,v)-components of the 'velocity variables.
-                    where_condition = points[:, 2] == (2047.5 * self.dz)
-                    # update center_points z-axis because datapoints will be shifted down by 1 gridpoint.
-                    center_points[:, 2] = np.where(where_condition, center_points[:, 2] + 1, center_points[:, 2])
-                    # shift datapoints down by 1 gridpoint to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-            elif self.sint in ['z_linear_gradient', 'z_linear_laplacian']:
-                # adjustments for the 'z_linear_gradient' and 'z_linear_laplacian' step-down methods for the finite differencing functions (i.e. fd4/6/8noint, fd4lag4).
-                if self.var_offsets in ['sgsenergy', 'velocity_w']:
-                    # fd2 ground boundary condition.
-                    if self.var_offsets == 'sgsenergy':
-                        where_condition = points[:, 2] < (1.5 * self.dz)
-                        buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    else:
-                        where_condition = points[:, 2] < (1.5 * self.dz)
-                        buckets_info[np.where(where_condition), :] = ['zero_ground', 2, 2]
-                    
-                    # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
-                    # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dz), points[:, 2] < (2047.5 * self.dz))
-                    buckets_info[np.where(where_condition), :] = [0, 2, 2]
-                    # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-                    
-                    # fd1 sky region.
-                    where_condition = points[:, 2] == (2047.5 * self.dz)
-                    buckets_info[np.where(where_condition), :] = [1, 2, 1]
-                    # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
-                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
-                    # fd1 ground region.
-                    where_condition = points[:, 2] < self.dz
-                    buckets_info[np.where(where_condition), :] = [0, 1, 1]
-                    
-                    # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
-                    # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= self.dz, points[:, 2] < (2047 * self.dz))
-                    buckets_info[np.where(where_condition), :] = [0, 2, 2]
-                    # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-                    
-                    # fd1 sky region.
-                    where_condition = points[:, 2] >= (2047 * self.dz)
-                    buckets_info[np.where(where_condition), :] = [1, 2, 1]
-                    # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
-            elif self.sint == 'z_linear_hessian':
-                # adjustments for the 'z_linear_hessian' step-down methods for the finite differencing functions (i.e. fd4/6/8noint, m2q8).
-                if self.var_offsets in ['sgsenergy', 'velocity_w']:
-                    # fd2 ground boundary condition.
-                    if self.var_offsets == 'sgsenergy':
-                        where_condition = points[:, 2] < (1.5 * self.dz)
-                        buckets_info[np.where(where_condition), :] = [0, 0, 1]
-                    else:
-                        where_condition = points[:, 2] < (1.5 * self.dz)
-                        buckets_info[np.where(where_condition), :] = ['zero_ground', 0, 1]
-                    
-                    # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
-                    # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= (1.5 * self.dz), points[:, 2] < (2047.5 * self.dz))
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-                    
-                    # fd2 sky boundary condition.
-                    where_condition = points[:, 2] == (2047.5 * self.dz)
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 2 gridpoints to make sure that the bucket does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
-                elif self.var_offsets in ['pressure', 'temperature', 'velocity_uv']:
-                    # fd2 ground boundary condition.
-                    where_condition = points[:, 2] < self.dz
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    
-                    # fd2 ground and sky regions. the fd2 region is left open to the entire dataset because it is a step-down method for specified methods
-                    # that have different bucket sizes. only points assigned to the linear method will be interpolated inside this region.
-                    where_condition = np.logical_and(points[:, 2] >= self.dz, points[:, 2] < (2046 * self.dz))
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # # shift datapoints down by 1 gridpoint to make sure that the correct bucket is being read and does not needlessly wrap around the z-axis.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-                    
-                    # fd2 sky boundary conditions.
-                    where_condition = np.logical_and(points[:, 2] >= (2046 * self.dz), points[:, 2] < (2047 * self.dz))
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 1 gridpoint because points >= (2046 * self.dz) do not satisfy having one z-gridpoint above and below the datapoint
-                    # for calculating the linear fd2 hessian in the boundary region.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 1) % self.N[2], datapoints[:, 2])
-                    
-                    where_condition = points[:, 2] >= (2047 * self.dz)
-                    buckets_info[np.where(where_condition), :] = [0, 1, 2]
-                    # shift datapoints down by 2 gridpoints because points >= (2047 * self.dz) do not satisfy having one z-gridpoint above and below the datapoint
-                    # for calculating the linear fd2 hessian in the boundary region.
-                    datapoints[:, 2] = np.where(where_condition, (datapoints[:, 2] - 2) % self.N[2], datapoints[:, 2])
+        # determine if we need to insert a 0-plane of gridpoints to handle the velocity-w and sgsenergy boundary condition at z = 0.
+        z_min_boundary_flags = np.full(len(datapoints), fill_value = False)
+        if self.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and self.var in ['velocity', 'sgsenergy']:
+            if self.var == 'velocity':
+                # the points array is duplicated to query the velocity-uv and velocity-w components together. we only want to apply the
+                # boundary condition, w = 0 at z = 0, to the copy of points that correspond to the velocity-w component query. 
+                num_unique_points = int(len(points) / 2)
+                z_min_boundary_flags[num_unique_points:][points[num_unique_points:, 2] < ((self.cube_min_index + 1) * self.dz)] = True
+            elif self.var == 'sgsenergy':
+                # apply the boundary condition, e = 0 at z = 0.
+                z_min_boundary_flags[points[:, 2] < ((self.cube_min_index + 1) * self.dz)] = True
+            
+            # adjust the datapoints +1 along the z-axis to account for inserting a zero-plane of gridpoints at z = 0.
+            datapoints[z_min_boundary_flags, 2] = (datapoints[z_min_boundary_flags, 2] + 1) % self.N[2]
         
         # calculate the minimum and maximum chunk (x, y, z) corner point for each point in datapoints.
         chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size))
@@ -1468,40 +957,42 @@ class turb_dataset():
         # chunk volumes.
         chunk_volumes = np.prod(chunk_max_xyzs - chunk_min_xyzs + 1, axis = 1)        
         # create the chunk keys for each chunk group.
-        chunk_keys = [chunk_origin_group.tobytes() for chunk_origin_group in np.stack([chunk_min_xyzs, chunk_max_xyzs], axis = 1)]
+        chunk_keys = [f'{chunk_origin_group[0][0]}_{chunk_origin_group[0][1]}_{chunk_origin_group[0][2]}_' + \
+                      f'{chunk_origin_group[1][0]}_{chunk_origin_group[1][1]}_{chunk_origin_group[1][2]}_{z_min_boundary_flag}'
+                      for chunk_origin_group, z_min_boundary_flag in zip(np.stack([chunk_min_xyzs, chunk_max_xyzs], axis = 1), z_min_boundary_flags)]
         
         # save the original indices for points, which corresponds to the orderering of the user-specified
         # points. these indices will be used for sorting output_data back to the user-specified points ordering.
         original_points_indices = np.arange(len(points))
         # zip the data. sort by volume first so that all fully overlapped chunk groups can be easily found.
-        zipped_data = sorted(zip(chunk_volumes, chunk_keys, points, datapoints, center_points,
+        zipped_data = sorted(zip(chunk_volumes, chunk_keys, points, datapoints, center_points, z_min_boundary_flags,
                                  chunk_min_xyzs, chunk_max_xyzs, chunk_min_mod_xyzs, chunk_max_mod_xyzs,
-                                 buckets_info, original_points_indices), key = lambda x: (-1 * x[0], x[1]))
+                                 original_points_indices), key = lambda x: (-1 * x[0], x[1]))
         
         # map the bucket points to their chunks.
         chunk_data_map = defaultdict(list)
         # chunk key map used for storing all subdivided chunk groups to find fully overlapped chunk groups.
         chunk_map = {}
         
-        for chunk_volume, chunk_key, point, datapoint, center_point, \
+        for chunk_volume, chunk_key, point, datapoint, center_point, z_min_boundary_flag, \
             chunk_min_xyz, chunk_max_xyz, chunk_min_mod_xyz, chunk_max_mod_xyz, \
-            bucket_info, original_point_index in zipped_data:
+            original_point_index in zipped_data:
             # update the chunk key if the chunk group is fully contained in another larger chunk group.
             updated_chunk_key = chunk_key
             if chunk_key in chunk_map:
                 updated_chunk_key = chunk_map[chunk_key]
             elif chunk_volume != chunk_cube_size:
-                chunk_map = self.subdivide_chunk_group(chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, chunk_size_array, empty_array)
+                chunk_map = self.subdivide_chunk_group(chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, z_min_boundary_flag, chunk_size_array, empty_array)
 
             # assign to chunk_data_map.
             if updated_chunk_key not in chunk_data_map:
-                chunk_data_map[updated_chunk_key].append((chunk_min_xyz, chunk_max_xyz, chunk_min_mod_xyz, chunk_max_mod_xyz))
+                chunk_data_map[updated_chunk_key].append((chunk_min_xyz, chunk_max_xyz, chunk_min_mod_xyz, chunk_max_mod_xyz, z_min_boundary_flag))
 
-            chunk_data_map[updated_chunk_key].append((point, datapoint, center_point, bucket_info, original_point_index))
+            chunk_data_map[updated_chunk_key].append((point, datapoint, center_point, original_point_index))
         
         return np.array(list(chunk_data_map.values()), dtype = object)
     
-    def subdivide_chunk_group(self, chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, chunk_size_array, empty_array):
+    def subdivide_chunk_group(self, chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, z_min_boundary_flag, chunk_size_array, empty_array):
         """
         map all subset chunk groups to chunk_key.
         """
@@ -1760,7 +1251,9 @@ class turb_dataset():
         chunk_maxs = np.array(chunk_maxs)
 
         # update chunk_map with all of the new keys.
-        chunk_keys = [chunk_origin_group.tobytes() for chunk_origin_group in np.stack([chunk_mins, chunk_maxs], axis = 1)]
+        chunk_keys = [f'{chunk_origin_group[0][0]}_{chunk_origin_group[0][1]}_{chunk_origin_group[0][2]}_' + \
+                      f'{chunk_origin_group[1][0]}_{chunk_origin_group[1][1]}_{chunk_origin_group[1][2]}_{z_min_boundary_flag}'
+                      for chunk_origin_group in np.stack([chunk_mins, chunk_maxs], axis = 1)]
         for key in chunk_keys:
             chunk_map[key] = chunk_key
 
@@ -1771,7 +1264,7 @@ class turb_dataset():
         submit the points for reading and interpolation.
         """
         num_chunks = len(chunk_data_map)
-        num_processes = min(self.dask_maximum_processes, num_chunks)
+        num_processes = min(self.maximum_processes, num_chunks)
         
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getdata,
@@ -1791,8 +1284,8 @@ class turb_dataset():
         reads and interpolates the user-requested points in a zarr store.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, sint_specified = interpolate_vars[:4]
-        dataset_title, num_values_per_datapoint, N, chunk_size = getdata_vars
+        cube_min_index, cube_max_index, sint = interpolate_vars[:3]
+        dataset_title, num_values_per_datapoint, N, chunk_size, nonperiodic_regular_axes = getdata_vars
         
         def single_timepoint(chunk_min_ranges, chunk_max_ranges, chunk_step = (1, 1, 1)):
             # cutout data from the specified chunk.
@@ -1811,12 +1304,11 @@ class turb_dataset():
                               chunk_min_ranges[0] : chunk_max_ranges[0] + chunk_step[0]]
         
         # read zarr function map.
-        read_zarr_functions = defaultdict(lambda: single_timepoint, {'diurnal_windfarm': windfarm_timepoint})
+        read_zarr_functions = defaultdict(lambda: single_timepoint,
+                                          {'diurnal_windfarm': windfarm_timepoint, 'nbl_windfarm': windfarm_timepoint})
         read_zarr_function = read_zarr_functions[dataset_title]
         
-        # initialize the interpolation lookup table. use sint_specified when one of the 'z_linear*' step-down methods is being used.
-        sint_lookup_table = sint_specified if 'z_linear' in sint else sint
-        self.init_interpolation_lookup_table(sint = sint_lookup_table, read_metadata = True)
+        self.init_interpolation_lookup_table(sint = sint, read_metadata = True)
         
         # empty chunk group array (up to eight 64-cube chunks).
         zarr_matrix = np.zeros((chunk_size[2] * 2, chunk_size[1] * 2, chunk_size[0] * 2, num_values_per_datapoint))
@@ -1828,10 +1320,12 @@ class turb_dataset():
         chunk_max_xyz = map_data[0][1]
         chunk_min_mod_xyz = map_data[0][2]
         chunk_max_mod_xyz = map_data[0][3]
+        z_min_boundary_flag = map_data[0][4]
+        
         chunk_min_x, chunk_min_y, chunk_min_z = chunk_min_xyz[0], chunk_min_xyz[1], chunk_min_xyz[2]
         chunk_max_x, chunk_max_y, chunk_max_z = chunk_max_xyz[0], chunk_max_xyz[1], chunk_max_xyz[2]
 
-        # read in the chunks separately if they wrap around periodic boundaries.
+        # read in the chunks separately if they wrap around dataset boundaries.
         if any(chunk_min_xyz < 0) or any(chunk_max_xyz >= N):
             # get the origin points for each chunk in the bucket.
             chunk_origin_groups = np.array([[x, y, z]
@@ -1844,13 +1338,60 @@ class turb_dataset():
 
             # get the chunk origin group inside the dataset domain.
             chunk_origin_groups = chunk_origin_groups % N
-
+            
             for chunk_origin_point, chunk_origin_group in zip(chunk_origin_points, chunk_origin_groups):
                 zarr_matrix[chunk_origin_point[2] : chunk_origin_point[2] + chunk_size[2],
                             chunk_origin_point[1] : chunk_origin_point[1] + chunk_size[1],
                             chunk_origin_point[0] : chunk_origin_point[0] + chunk_size[0]] = read_zarr_function(chunk_min_ranges = chunk_origin_group,
                                                                                                                 chunk_max_ranges = chunk_origin_group,
                                                                                                                 chunk_step = chunk_size)
+            
+            # insert 0-plane values at the z = 0 boundary to handle the velocity-w and sgsenergy boundary condition of the sabl datasets.
+            if z_min_boundary_flag:
+                zarr_matrix = np.insert(zarr_matrix, chunk_size[2], 0, axis = 0)
+            
+            # extrapolate points near the boundary of the non-periodic axes, so that the full spatial interpolation method can be applied correctly.
+            for nonperiodic_axis in nonperiodic_regular_axes:
+                if chunk_min_xyz[nonperiodic_axis] < 0:
+                    # handle extrapolations at the lower axis boundary.
+                    boundary_index = chunk_size[nonperiodic_axis]
+                    
+                    # create empty slices for each axis.
+                    first_gridpoint = [slice(None)] * 4
+                    second_gridpoint = [slice(None)] * 4
+                    # update the slices to point to the first and second gridpoints.
+                    first_gridpoint[2 - nonperiodic_axis] = boundary_index
+                    second_gridpoint[2 - nonperiodic_axis] = boundary_index + 1
+                    # convert to tuples for array slicing.
+                    first_gridpoint = tuple(first_gridpoint)
+                    second_gridpoint = tuple(second_gridpoint)
+                    
+                    for cube_index in range(cube_min_index):
+                        extrapolated_gridpoint = [slice(None)] * 4
+                        extrapolated_gridpoint[2 - nonperiodic_axis] = boundary_index - (cube_index + 1)
+                        extrapolated_gridpoint = tuple(extrapolated_gridpoint)
+                        
+                        zarr_matrix[extrapolated_gridpoint] = zarr_matrix[first_gridpoint] - (cube_index + 1) * (zarr_matrix[second_gridpoint] - zarr_matrix[first_gridpoint])
+                elif chunk_max_xyz[nonperiodic_axis] > N[nonperiodic_axis]:
+                    # handle extrapolations at the upper axis boundary.
+                    boundary_index = chunk_size[nonperiodic_axis] - 1
+                    
+                    # create empty slices for each axis.
+                    last_gridpoint = [slice(None)] * 4
+                    second_gridpoint = [slice(None)] * 4
+                    # update the slices to point to the last and second-to-last gridpoints.
+                    last_gridpoint[2 - nonperiodic_axis] = boundary_index
+                    second_gridpoint[2 - nonperiodic_axis] = boundary_index - 1
+                    # convert to tuples for array slicing.
+                    last_gridpoint = tuple(last_gridpoint)
+                    second_gridpoint = tuple(second_gridpoint)
+                    
+                    for cube_index in range(cube_max_index):
+                        extrapolated_gridpoint = [slice(None)] * 4
+                        extrapolated_gridpoint[2 - nonperiodic_axis] = boundary_index + (cube_index + 1)
+                        extrapolated_gridpoint = tuple(extrapolated_gridpoint)
+                        
+                        zarr_matrix[extrapolated_gridpoint] = zarr_matrix[last_gridpoint] + (cube_index + 1) * (zarr_matrix[last_gridpoint] - zarr_matrix[second_gridpoint])
         else:
             # read in all chunks at once, and use default chunk_step (1, 1, 1).
             zarr_matrix[:chunk_max_mod_xyz[2] - chunk_min_mod_xyz[2] + 1,
@@ -1858,21 +1399,21 @@ class turb_dataset():
                         :chunk_max_mod_xyz[0] - chunk_min_mod_xyz[0] + 1] = read_zarr_function(chunk_min_ranges = chunk_min_mod_xyz,
                                                                                                chunk_max_ranges = chunk_max_mod_xyz)
 
-        # iterate over the points to interpolate.            
-        for point, datapoint, center_point, bucket_info, original_point_index in map_data[1:]:
+        # iterate over the points to interpolate.
+        for point, datapoint, center_point, original_point_index in map_data[1:]:
             bucket_min_xyz = (datapoint - chunk_min_xyz - cube_min_index) % N
             bucket_max_xyz = (datapoint - chunk_min_xyz + cube_max_index + 1) % N
             # update bucket_max_xyz for any dimension that is less than the corresponding dimension in bucket_min_xyz. this is
             # necessary to handle points on the boundary of single-chunk dimensions in the zarr store.
             mask = bucket_max_xyz < bucket_min_xyz
             bucket_max_xyz = bucket_max_xyz + (chunk_size * mask)
-
+            
             bucket = zarr_matrix[bucket_min_xyz[2] : bucket_max_xyz[2],
                                  bucket_min_xyz[1] : bucket_max_xyz[1],
                                  bucket_min_xyz[0] : bucket_max_xyz[0]]
 
             # interpolate the points and use a lookup table for faster interpolations.
-            local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, bucket_info, interpolate_vars))))
+            local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, interpolate_vars))))
         
         return local_output_data
     

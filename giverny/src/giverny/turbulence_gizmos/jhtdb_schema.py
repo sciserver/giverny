@@ -25,7 +25,15 @@ from pydantic import BaseModel
 """
 the JHTDB data model: pydantic classes.
 """
-class Feature(BaseModel):
+class ForbiddenExtraBaseModel(BaseModel):
+    """
+    verify that there are not extra parameters that are not defined in the model.
+    """
+    model_config = {
+        "extra": "forbid"
+    }
+
+class Feature(ForbiddenExtraBaseModel):
     """
     general triple basically, used for listing the various featues (methods, operators etc) that are
     available on a Dataset. the code is to be used as identifier and references to a Feature in a certain collection.
@@ -53,7 +61,53 @@ class SpatialMethod(Feature):
     # number of cells to the left and right of the queried cell along each spatial axis which define the spatial interpolation bucket.
     bucketIndices: List[int]
 
-class Storage(BaseModel):
+class GivernyConstants(ForbiddenExtraBaseModel):
+    """
+    constants needed for giverny query processing.
+    """
+    # maximum number of python threads that will be allocated for parallel processing.
+    maximum_processes: int
+    # placeholder for missing values that will be used to fill the output_data array when it is initialized.
+    missing_value_placeholder: float
+    # bytes per value associated with a datapoint.
+    bytes_per_datapoint: int
+    # maximum data size allowed to be retrieved by getCutout, in gigabytes (GB).
+    max_cutout_size: float
+    # maximum number of points allowed to be queried by getData.
+    max_data_points: int
+    # maximum number of chunks that the queried points can intersect for a single query.
+    max_num_chunks: int
+    # number of decimals to round to for precision of xcoor, ycoor, and zcoor in the xarray output.
+    decimals: int
+    # current testing token for accessing datasets through pyJHTDB.
+    pyJHTDB_testing_token: str
+    # current turbulence group e-mail address for requesting an authorization token.
+    turbulence_email_address: str
+
+class Parquet(ForbiddenExtraBaseModel):
+    """
+    parquet file settings.
+    """
+    # folderpath to the parquet files for a dataset.
+    folderpath: str
+    # time offset from 0.
+    time_offset: float
+    # time offset to align with the zarr field data.
+    time_align: float
+    # time step (dt).
+    time_step: float
+    # turbine variables.
+    turbine_variables: Optional[List[str]] = None
+    # turbine numbers.
+    turbine_numbers: Optional[List[int]] = None
+    # blade variables.
+    blade_variables: Optional[List[str]] = None
+    # blade numbers.
+    blade_numbers: Optional[List[int]] = None
+    # actuator points along each blade.
+    blade_actuator_points: Optional[List[int]] = None
+
+class Storage(ForbiddenExtraBaseModel):
     """
     storage general settings.
     """
@@ -62,7 +116,7 @@ class Storage(BaseModel):
     # chunk size of each spatial axis (x, y, z) of the zarr store.
     chunks: List[int]
 
-class Dimension(BaseModel):
+class Dimension(ForbiddenExtraBaseModel):
     """
     dimension general settings.
     """
@@ -83,7 +137,7 @@ class SpaceDimension(Dimension):
     # irregular grid spacing dimensions are specified as a string and the grid coordinates are stored in python.
     spacing: Union[str, float]
 
-class TimeIndexShift(BaseModel):
+class TimeIndexShift(ForbiddenExtraBaseModel):
     """
     specifies how the user-specified time is shifted based on the query type to read from correct zarr
     time index. pchip interpolation requires a precursor time that is not queryable.
@@ -103,7 +157,7 @@ class TimeDimension(Dimension):
     # pchip time interpolation is allowed.
     timeIndexShift: TimeIndexShift
 
-class Simulation(BaseModel):
+class Simulation(ForbiddenExtraBaseModel):
     """
     simulation general settings.
     """
@@ -116,18 +170,16 @@ class Simulation(BaseModel):
     # z-spatial dimension settings.
     zlims: SpaceDimension
 
-class Offset(BaseModel):
+class Offset(ForbiddenExtraBaseModel):
     """
     offset general settings.
     """
     # variable code.
     code: str
-    # staggered offset between spatial grid axes (x, y, z).
-    grid: List[float]
     # coordinate offset from 0 along each spatial axis.
     coordinate: List[float]
     
-class VariableOperatorMethod(BaseModel):
+class VariableOperatorMethod(ForbiddenExtraBaseModel):
     """
     which spatial interpolation methods can be applied to the result of which operator applied to which variable.
     all represented by their codes pointing to the variables/operators/spatial methods in the database definition.
@@ -160,6 +212,8 @@ class Dataset(Feature):
     """
     dataset general settings.
     """
+    # parquet file settings if the dataset has parquet files, e.g. the windfarm datasets.
+    parquet: Optional[Parquet] = None
     # storage settings, e.g. zarr filepath and chunk size of each spatial axis (x, y, z).
     storage: Storage
     # simulation settings.
@@ -167,7 +221,7 @@ class Dataset(Feature):
     # list of codes of variables, and their associated parameters, available in this dataset.
     physicalVariables: List[PhysicalVariable]
 
-class TurbulenceDB(BaseModel):
+class TurbulenceDB(ForbiddenExtraBaseModel):
     """
     database general settings.
     """
@@ -188,5 +242,7 @@ class TurbulenceDB(BaseModel):
     # time interpolation methods.
     # examples are none, pchip.
     temporal_methods: List[Feature]
+    # giverny constants needed for query processing.
+    giverny_constants: GivernyConstants
     # datasets included in the database.
     datasets: List[Dataset]

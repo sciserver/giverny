@@ -27,8 +27,11 @@ from giverny.turbulence_gizmos.basic_gizmos import get_cardinality
 
 def getData_process_data(cube, metadata, points,
                          var, timepoint, tint, sint,
-                         var_offsets, timepoint_original, sint_specified, option, c,
+                         var_offsets, timepoint_original, option, c,
                          verbose = False):
+    """
+    getData query.
+    """
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
     num_values_per_datapoint = get_cardinality(metadata, var)
@@ -37,7 +40,7 @@ def getData_process_data(cube, metadata, points,
     query_type = 'getdata'
     
     # initialize cube constants.
-    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, tint, option, num_values_per_datapoint, c)
 
     # begin processing of data.
     # -----

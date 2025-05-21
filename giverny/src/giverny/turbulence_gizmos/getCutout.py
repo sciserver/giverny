@@ -28,6 +28,9 @@ from giverny.turbulence_gizmos.basic_gizmos import get_cardinality
 def getCutout_process_data(cube, metadata, axes_ranges, var, timepoint,
                            axes_ranges_original, strides, var_offsets, timepoint_original, c,
                            verbose = False):
+    """
+    getCutout query.
+    """
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
     num_values_per_datapoint = get_cardinality(metadata, var)
@@ -37,11 +40,10 @@ def getCutout_process_data(cube, metadata, axes_ranges, var, timepoint,
     
     # placeholder spatial interpolation, temporal interpolation, and option values which are not used for getCutout.
     sint = 'none'
-    sint_specified = 'none'
     tint = 'none'
     option = [-999.9, -999.9]
     # initialize cube constants.
-    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, sint_specified, tint, option, num_values_per_datapoint, c)
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original, sint, tint, option, num_values_per_datapoint, c)
 
     # used for determining the indices in the output array for each x, y, z datapoint.
     axes_min = axes_ranges[:, 0]
