@@ -18,7 +18,7 @@ function result = getBladeData(authToken, dataset, var, turbine_numbers, blade_n
     request = RequestMessage('POST', headers, json_payload);
     options = HTTPOptions('ConnectTimeout', 1000);
 
-    url = 'https://web.idies.jhu.edu/turbulence-svc-testing/blade?include_metadata=0';
+    url = 'https://web.idies.jhu.edu/turbulence-svc/blade?include_metadata=0';
     response = request.send(url, options);
 
     % parse the JSON response

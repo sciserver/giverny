@@ -37,9 +37,7 @@ from givernylocal.turbulence_gizmos.jhtdb_schema import TurbulenceDB
 """
 user-input checking gizmos.
 """
-# TESTING. replace giverny branch config path with main branch.
-# def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbulence-config/refs/heads/main/config-files/jhtdb-config.json'):
-def load_json_metadata(url = 'https://raw.githubusercontent.com/sciserver/turbulence-config/refs/heads/giverny/config-files/jhtdb-config.json'):
+def load_json_metadata(url):
     """
     load the json simulation metadata for user input verification.
     """

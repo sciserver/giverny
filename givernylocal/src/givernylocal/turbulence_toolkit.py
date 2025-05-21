@@ -111,7 +111,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
 
@@ -296,7 +296,7 @@ def getTurbineData(cube, turbine_numbers, var, original_times,
     try:
         # send http post request.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbulence-svc-testing/turbine?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbulence-svc/turbine?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000
@@ -437,7 +437,7 @@ def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blad
     try:
         # send http post request.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbulence-svc-testing/blade?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbulence-svc/blade?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000

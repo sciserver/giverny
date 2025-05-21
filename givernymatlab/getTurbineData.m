@@ -19,7 +19,7 @@ function result = getTurbineData(authToken, dataset, var, turbine_numbers, origi
     request = RequestMessage('POST', headers, json_payload);
     options = HTTPOptions('ConnectTimeout', 1000);
 
-    url = 'https://web.idies.jhu.edu/turbulence-svc-testing/turbine?include_metadata=0';
+    url = 'https://web.idies.jhu.edu/turbulence-svc/turbine?include_metadata=0';
     response = request.send(url, options);
 
     % --- Print response and raw data for debugging ---
