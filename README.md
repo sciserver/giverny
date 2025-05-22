@@ -4,8 +4,8 @@
 
 # giverny
 [![PyPI](https://img.shields.io/pypi/v/giverny.svg?color=darkgreen)](https://pypi.org/project/giverny/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-darkbrown.svg)](https://opensource.org/license/apache-2-0)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/giverny.svg?label=PyPI%20downloads&color=violet)](https://pypi.org/project/giverny/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-582913.svg)](https://opensource.org/license/apache-2-0)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/giverny.svg?label=PyPI%20downloads&color=461C6C)](https://pypi.org/project/giverny/)
 
 Library for querying the [Johns Hopkins Turbulence Database](https://turbulence.idies.jhu.edu/home).
 
