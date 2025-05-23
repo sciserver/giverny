@@ -48,6 +48,8 @@ jobs:
       
       - name: Publish giverny to PyPI
         run: |
+          echo "Waiting 15 seconds to publish giverny on PyPI..."
+          sleep 15
           cd giverny
           echo "Publishing giverny to PyPI..."
           poetry publish
@@ -69,6 +71,8 @@ jobs:
       
       - name: Publish givernylocal to PyPI
         run: |
+          echo "Waiting 15 seconds to publish givernylocal on PyPI..."
+          sleep 15
           cd givernylocal
           echo "Publishing givernylocal to PyPI..."
           poetry publish
