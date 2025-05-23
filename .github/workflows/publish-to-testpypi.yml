@@ -3,9 +3,7 @@ name: Publish giverny packages to TestPyPI
 
 on:
   push:
-    branches: [main, ceph]  # test on pushes to main.
-  pull_request:
-    branches: [main]  # test on PRs to main.
+    branches: [ceph]  # test on pushes to ceph.
   release:
     types: [prereleased]  # test on pre-releases.
   workflow_dispatch:  # allow manual triggering.
