@@ -23,7 +23,7 @@ To use `giverny` through Sciserver:
 1. Login to *SciServer*.
 2. Click on *Compute* and then *Create container*.
     * Can also run jobs in batch mode, by selecting *Compute Jobs*.
-3. Type in a *Container name*, select *SciServer Essentials 4.0* in *Compute Image*, mark *Turbulence (ceph)* and *Turbulence Windfarm (ceph)* in *Data volumes*, and then click on *Create*.
+3. Type in a *Container name*, in *Compute Image* select *SciServer Essentials 4.0*, in *Data volumes* mark *Turbulence (ceph)* and *Turbulence Windfarm (ceph)*, and then click on *Create*.
 4. Click on the container you just created to start using *giverny* with Python and JupyterLab.
 
 ## Python on local computers
