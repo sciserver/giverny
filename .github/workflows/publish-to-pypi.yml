@@ -4,7 +4,7 @@ name: Publish giverny packages to PyPI
 on:
   release:
     types: [published]  # only full releases, not pre-releases.
-  workflow_dispatch:  # allow manual triggering.
+  workflow_dispatch:  # allow manual test.
 
 jobs:
   publish-to-pypi:
