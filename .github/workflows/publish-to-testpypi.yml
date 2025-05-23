@@ -1,0 +1,131 @@
+# .github/workflows/publish-to-testpypi.yml
+name: Publish giverny packages to TestPyPI
+
+on:
+  push:
+    branches: [main, ceph]  # test on pushes to main.
+  pull_request:
+    branches: [main]  # test on PRs to main.
+  release:
+    types: [prereleased]  # test on pre-releases.
+  workflow_dispatch:  # allow manual triggering.
+
+jobs:
+  publish-to-testpypi:
+    runs-on: ubuntu-latest
+    environment: testpypi
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      # configure TestPyPI repository for both packages.
+      - name: Configure Poetry for TestPyPI
+        run: |
+          poetry config repositories.testpypi https://test.pypi.org/legacy/
+          poetry config pypi-token.testpypi ${{ secrets.TEST_PYPI_API_TOKEN }}
+      
+      # build and publish giverny package to TestPyPI.
+      - name: Install giverny dependencies
+        run: |
+          cd giverny
+          poetry install --only=main
+      
+      - name: Build giverny package
+        run: |
+          cd giverny
+          poetry build
+          poetry check
+      
+      - name: Publish giverny to TestPyPI
+        run: |
+          cd giverny
+          echo "Publishing giverny to TestPyPI..."
+          poetry publish -r testpypi
+          echo "✅ giverny published to TestPyPI"
+      
+      # build and publish givernylocal package to TestPyPI.
+      - name: Install givernylocal dependencies
+        run: |
+          cd givernylocal
+          poetry install --only=main
+      
+      - name: Build givernylocal package
+        run: |
+          cd givernylocal
+          poetry build
+          poetry check
+      
+      - name: Publish givernylocal to TestPyPI
+        run: |
+          cd givernylocal
+          echo "Publishing givernylocal to TestPyPI..."
+          poetry publish -r testpypi
+          echo "✅ givernylocal published to TestPyPI"
+      
+      # test installation from TestPyPI.
+      - name: Test installation from TestPyPI
+        run: |
+          echo "Waiting 60 seconds for packages to be available on TestPyPI..."
+          sleep 60
+          
+          # test giverny installation.
+          echo "Testing giverny installation from TestPyPI..."
+          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ giverny
+          python -c "import giverny; print('✅ giverny import successful')" || echo "❌ giverny import failed"
+          pip uninstall -y giverny
+          
+          # test givernylocal installation.
+          echo "Testing givernylocal installation from TestPyPI..."
+          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ givernylocal
+          python -c "import givernylocal; print('✅ givernylocal import successful')" || echo "❌ givernylocal import failed"
+          pip uninstall -y givernylocal
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-dist-packages
+          path: |
+            giverny/dist/
+            givernylocal/dist/
+      
+      - name: Comment on PR (if PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🧪 **TestPyPI Publication Results**
+              
+              Both packages have been successfully published to TestPyPI for testing:
+              
+              **Test Installation:**
+              \`\`\`bash
+              # test giverny.
+              pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ giverny
+              
+              # test givernylocal.  
+              pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ givernylocal
+              \`\`\`
+              
+              **TestPyPI URLs:**
+              - [giverny on TestPyPI](https://test.pypi.org/project/giverny/)
+              - [givernylocal on TestPyPI](https://test.pypi.org/project/givernylocal/)
+              
+              ✅ Ready for production release once testing is complete!`
+            })
