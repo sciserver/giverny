@@ -39,7 +39,7 @@ jobs:
       - name: Install giverny dependencies
         run: |
           cd giverny
-          poetry install --only=main
+          poetry install --only=main --no-root
       
       - name: Build giverny package
         run: |
@@ -60,7 +60,7 @@ jobs:
       - name: Install givernylocal dependencies
         run: |
           cd givernylocal
-          poetry install --only=main
+          poetry install --only=main --no-root
       
       - name: Build givernylocal package
         run: |
