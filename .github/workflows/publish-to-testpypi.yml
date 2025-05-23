@@ -44,6 +44,8 @@ jobs:
       - name: Build giverny package
         run: |
           cd giverny
+          cp ../README.md
+          cp ../LICENSE.txt
           poetry build
           poetry check
       
@@ -63,6 +65,8 @@ jobs:
       - name: Build givernylocal package
         run: |
           cd givernylocal
+          cp ../README.md
+          cp ../LICENSE.txt
           poetry build
           poetry check
       
