@@ -1,6 +1,6 @@
-[tool.poetry]
+[project]
 name = "giverny"
-version = "3.2.2.5"
+version = "3.2.2.6"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
 authors = ["Johns Hopkins Turbulence Database Group"]
 license = "Apache-2.0"
@@ -47,7 +47,7 @@ jupyter-core = ">=5.7.2,<6.0.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.urls]
+[project.urls]
 "Homepage" = "https://github.com/sciserver/giverny"
 "Bug Tracker" = "https://github.com/sciserver/giverny/issues"
 "Changelog" = "https://github.com/sciserver/giverny/blob/main/CHANGELOG.md"
