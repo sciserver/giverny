@@ -100,32 +100,3 @@ jobs:
           path: |
             giverny/dist/
             givernylocal/dist/
-      
-      - name: Comment on PR (if PR)
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `🧪 **TestPyPI Publication Results**
-              
-              Both packages have been successfully published to TestPyPI for testing:
-              
-              **Test Installation:**
-              \`\`\`bash
-              # test giverny.
-              pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ giverny
-              
-              # test givernylocal.  
-              pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ givernylocal
-              \`\`\`
-              
-              **TestPyPI URLs:**
-              - [giverny on TestPyPI](https://test.pypi.org/project/giverny/)
-              - [givernylocal on TestPyPI](https://test.pypi.org/project/givernylocal/)
-              
-              ✅ Ready for production release once testing is complete!`
-            })
