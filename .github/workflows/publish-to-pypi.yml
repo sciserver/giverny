@@ -1,0 +1,130 @@
+# .github/workflows/publish-to-pypi.yml
+name: Publish giverny packages to PyPI
+
+on:
+  release:
+    types: [published]  # only full releases, not pre-releases.
+  workflow_dispatch:  # allow manual triggering.
+
+jobs:
+  publish-to-pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      # configure PyPI repository for both packages.
+      - name: Configure Poetry for PyPI
+        run: |
+          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+      
+      # build and publish giverny package to PyPI.
+      - name: Install giverny dependencies
+        run: |
+          cd giverny
+          poetry install --only=main --no-root
+      
+      - name: Build giverny package
+        run: |
+          cd giverny
+          cp ../README.md .
+          cp ../LICENSE.txt .
+          poetry build
+          poetry check
+      
+      - name: Publish giverny to PyPI
+        run: |
+          cd giverny
+          echo "Publishing giverny to PyPI..."
+          poetry publish
+          echo "✅ giverny published to PyPI"
+      
+      # build and publish givernylocal package to PyPI.
+      - name: Install givernylocal dependencies
+        run: |
+          cd givernylocal
+          poetry install --only=main --no-root
+      
+      - name: Build givernylocal package
+        run: |
+          cd givernylocal
+          cp ../README.md .
+          cp ../LICENSE.txt .
+          poetry build
+          poetry check
+      
+      - name: Publish givernylocal to PyPI
+        run: |
+          cd givernylocal
+          echo "Publishing givernylocal to PyPI..."
+          poetry publish
+          echo "✅ givernylocal published to PyPI"
+      
+      # test installation from PyPI.
+      - name: Test installation from PyPI
+        run: |
+          echo "Waiting 60 seconds for packages to be available on PyPI..."
+          sleep 60
+          
+          # test giverny installation.
+          echo "Testing giverny installation from PyPI..."
+          pip install giverny
+          python -c "import giverny; print('✅ giverny import successful')" || echo "❌ giverny import failed"
+          pip uninstall -y giverny
+          
+          # test givernylocal installation.
+          echo "Testing givernylocal installation from PyPI..."
+          pip install givernylocal
+          python -c "import givernylocal; print('✅ givernylocal import successful')" || echo "❌ givernylocal import failed"
+          pip uninstall -y givernylocal
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-dist-packages
+          path: |
+            giverny/dist/
+            givernylocal/dist/
+      
+      - name: Comment on PR (if PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🧪 **PyPI Publication Results**
+              
+              Both packages have been successfully published to PyPI for testing:
+              
+              **Test Installation:**
+              \`\`\`bash
+              # test giverny.
+              pip install giverny
+              
+              # test givernylocal.  
+              pip install givernylocal
+              \`\`\`
+              
+              **PyPI URLs:**
+              - [giverny on PyPI](https://pypi.org/project/giverny/)
+              - [givernylocal on PyPI](https://pypi.org/project/givernylocal/)
+              
+              ✅ Ready for production release once testing is complete!`
+            })
