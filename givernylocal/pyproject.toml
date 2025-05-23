@@ -2,7 +2,9 @@
 name = "givernylocal"
 version = "3.2.2.6"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
-authors = ["Johns Hopkins Turbulence Database Group"]
+authors = [
+    {name = "Johns Hopkins Turbulence Database Group"}
+]
 license = "Apache-2.0"
 readme = "README.md"
 classifiers = [
