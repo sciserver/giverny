@@ -1,15 +1,15 @@
-# .github/workflows/publish-to-testpypi.yml
-name: Publish giverny packages to TestPyPI
+# .github/workflows/publish-to-pypi.yml
+name: Publish giverny packages to PyPI
 
 on:
-  push:
-    branches: [ceph]  # test on pushes to ceph.
+  release:
+    types: [published]  # only full releases, not pre-releases.
   workflow_dispatch:  # allow manual test.
 
 jobs:
-  publish-to-testpypi:
+  publish-to-pypi:
     runs-on: ubuntu-latest
-    environment: testpypi
+    environment: pypi
     
     steps:
       - name: Checkout code
@@ -27,13 +27,12 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
       
-      # configure TestPyPI repository for both packages.
-      - name: Configure Poetry for TestPyPI
+      # configure PyPI repository for both packages.
+      - name: Configure Poetry for PyPI
         run: |
-          poetry config repositories.testpypi https://test.pypi.org/legacy/
-          poetry config pypi-token.testpypi ${{ secrets.TEST_PYPI_API_TOKEN }}
+          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
       
-      # build and publish giverny package to TestPyPI.
+      # build and publish giverny package to PyPI.
       - name: Install giverny dependencies
         run: |
           cd giverny
@@ -47,14 +46,14 @@ jobs:
           poetry build
           poetry check
       
-      - name: Publish giverny to TestPyPI
+      - name: Publish giverny to PyPI
         run: |
           cd giverny
-          echo "Publishing giverny to TestPyPI..."
-          poetry publish -r testpypi
-          echo "✅ giverny published to TestPyPI"
+          echo "Publishing giverny to PyPI..."
+          poetry publish
+          echo "✅ giverny published to PyPI"
       
-      # build and publish givernylocal package to TestPyPI.
+      # build and publish givernylocal package to PyPI.
       - name: Install givernylocal dependencies
         run: |
           cd givernylocal
@@ -68,28 +67,28 @@ jobs:
           poetry build
           poetry check
       
-      - name: Publish givernylocal to TestPyPI
+      - name: Publish givernylocal to PyPI
         run: |
           cd givernylocal
-          echo "Publishing givernylocal to TestPyPI..."
-          poetry publish -r testpypi
-          echo "✅ givernylocal published to TestPyPI"
+          echo "Publishing givernylocal to PyPI..."
+          poetry publish
+          echo "✅ givernylocal published to PyPI"
       
-      # test installation from TestPyPI.
-      - name: Test installation from TestPyPI
+      # test installation from PyPI.
+      - name: Test installation from PyPI
         run: |
-          echo "Waiting 60 seconds for packages to be available on TestPyPI..."
+          echo "Waiting 60 seconds for packages to be available on PyPI..."
           sleep 60
           
           # test giverny installation.
-          echo "Testing giverny installation from TestPyPI..."
-          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ giverny
+          echo "Testing giverny installation from PyPI..."
+          pip install giverny
           python -c "import giverny; print('✅ giverny import successful')" || echo "❌ giverny import failed"
           pip uninstall -y giverny
           
           # test givernylocal installation.
-          echo "Testing givernylocal installation from TestPyPI..."
-          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ givernylocal
+          echo "Testing givernylocal installation from PyPI..."
+          pip install givernylocal
           python -c "import givernylocal; print('✅ givernylocal import successful')" || echo "❌ givernylocal import failed"
           pip uninstall -y givernylocal
       
