@@ -78,8 +78,8 @@ jobs:
       # test installation from TestPyPI.
       - name: Test installation from TestPyPI
         run: |
-          echo "Waiting 60 seconds for packages to be available on TestPyPI..."
-          sleep 60
+          echo "Waiting 120 seconds for packages to be available on TestPyPI..."
+          sleep 120
           
           # test giverny installation.
           echo "Testing giverny installation from TestPyPI..."
