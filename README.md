@@ -13,7 +13,7 @@ Library for querying the [Johns Hopkins Turbulence Database](https://turbulence.
 DEMO notebooks for the various compute environments are provided at the [Johns Hopkins Turbulence github](https://github.com/sciserver/giverny).
 
 ## Python on SciServer (recommended)
-`DEMO_SciServer_python_notebooks.zip`
+`DEMO_SciServer_python_notebooks.zip`\
 `DEMO_wind_SciServer_python_notebooks.zip`
 
 The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to the Johns Hopkins Turbulence Database (JHTDB) through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
@@ -28,7 +28,7 @@ To use `giverny` through Sciserver:
 4. Click on the container you just created to start using *giverny* with Python and JupyterLab.
 
 ## Python on local computers
-`DEMO_local_python_notebooks.zip`
+`DEMO_local_python_notebooks.zip`\
 `DEMO_wind_local_python_notebooks.zip`
 
 The first cell in the notebook runs the `pip` install command for the `givernylocal` library and all dependencies:
@@ -38,7 +38,7 @@ pip install --upgrade givernylocal
 If you do not have `pip` on your system, it is quite easy to get it following the instructions at: [http://pip.readthedocs.org/en/latest/installation](http://pip.readthedocs.org/en/latest/installation).
 
 ## Matlab on local computers
-`DEMO_local_matlab_notebooks.zip`
+`DEMO_local_matlab_notebooks.zip`\
 `DEMO_wind_local_matlab_notebooks.zip`
 
 ## C on local computers
