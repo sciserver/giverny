@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.2.6] - 2025-05-24
+
+### Changed
+- updated jhtdb-config.json to reduce the maximum number of allowed threads for multiprocessing.
+- modified turbulence_dataset.py to choose min(maximum_processes, cpu_count) for queries.
+
 ## [3.2.5] - 2025-05-24
 
 ### Changed

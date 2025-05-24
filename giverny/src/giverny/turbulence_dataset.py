@@ -821,8 +821,13 @@ class turb_dataset():
         """
         submit the chunks for reading.
         """
+        num_processes = self.maximum_processes
+        cpu_count = os.cpu_count()
+        if cpu_count != None:
+            num_processes = min(num_processes, cpu_count)
+        
         num_chunks = len(chunk_boxes)
-        num_processes = min(self.maximum_processes, num_chunks)
+        num_processes = min(num_processes, num_chunks)
         
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getcutout,
@@ -1263,8 +1268,13 @@ class turb_dataset():
         """
         submit the points for reading and interpolation.
         """
+        num_processes = self.maximum_processes
+        cpu_count = os.cpu_count()
+        if cpu_count != None:
+            num_processes = min(num_processes, cpu_count)
+        
         num_chunks = len(chunk_data_map)
-        num_processes = min(self.maximum_processes, num_chunks)
+        num_processes = min(num_processes, num_chunks)
         
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getdata,

@@ -208,7 +208,7 @@
     }
   ],
   "giverny_constants": {
-    "maximum_processes": 256,
+    "maximum_processes": 128,
     "missing_value_placeholder": -999.9,
     "bytes_per_datapoint": 4,
     "max_cutout_size": 16.0,
