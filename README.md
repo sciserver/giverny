@@ -14,6 +14,7 @@ DEMO notebooks for the various compute environments are provided at the [Johns H
 
 ## Python on SciServer (recommended)
 `DEMO_SciServer_python_notebooks.zip`
+`DEMO_wind_SciServer_python_notebooks.zip`
 
 The SciServer is a cloud-based data-driven cluster of The Institute for Data Intensive Engineering and Science (IDIES) at Johns Hopkins University. Users get the advantages of more reliable and faster data access since the SciServer is directly connected to the Johns Hopkins Turbulence Database (JHTDB) through a 10 Gigabit ethernet connection. SciServer provides containers with `giverny`, and all dependent libraries, pre-installed.
 
@@ -28,6 +29,7 @@ To use `giverny` through Sciserver:
 
 ## Python on local computers
 `DEMO_local_python_notebooks.zip`
+`DEMO_wind_local_python_notebooks.zip`
 
 The first cell in the notebook runs the `pip` install command for the `givernylocal` library and all dependencies:
 ```
@@ -37,6 +39,7 @@ If you do not have `pip` on your system, it is quite easy to get it following th
 
 ## Matlab on local computers
 `DEMO_local_matlab_notebooks.zip`
+`DEMO_wind_local_matlab_notebooks.zip`
 
 ## C on local computers
 `DEMO_C.tar`
