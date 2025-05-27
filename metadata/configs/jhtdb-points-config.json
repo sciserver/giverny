@@ -31,7 +31,7 @@
       "default_coordinates": [
         {
           "coordinate": "t",
-          "value": 0
+          "value": 1
         },
         {
           "coordinate": "x",
@@ -299,7 +299,7 @@
       "default_coordinates": [
         {
           "coordinate": "t",
-          "value": 0
+          "value": 1
         },
         {
           "coordinate": "x",

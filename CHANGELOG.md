@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.2.7] - 2025-05-27
+
+### Changed
+- updated the default time in jhtdb-points-config.json for 'rotstrat4096' and 'channel5200' datasets.
+- removed getTurbineData.py and getBladeData.py from the DEMO_local_matlab_notebooks.zip file.
+
 ## [3.2.6] - 2025-05-24
 
 ### Changed
