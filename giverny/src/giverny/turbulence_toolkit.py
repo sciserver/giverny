@@ -645,7 +645,7 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # check that not too many points were queried and the points are all within axes domain for the dataset.
     check_points(metadata, points, dataset_title, var, c['max_data_points'])
     # check how many chunks the queried points intersect.
-    check_points_chunks_intersection(metadata, points, dataset_title, var)
+    # check_points_chunks_intersection(metadata, points, dataset_title, var)
     # check that the user-input timepoint is a valid timepoint for the dataset.
     check_timepoint(metadata, timepoint_original, dataset_title, query_type)
     # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.

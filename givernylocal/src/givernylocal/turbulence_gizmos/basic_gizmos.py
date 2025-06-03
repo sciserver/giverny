@@ -41,8 +41,8 @@ def load_json_metadata(url):
     """
     load the json simulation metadata for user input verification.
     """
-    response = requests.get(url)
-    metadata_json = json.loads(response.text)
+    with open(url, 'r') as metadata_file:
+        metadata_json = json.load(metadata_file)
     
     # validate the json metadata file.
     try:

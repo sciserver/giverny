@@ -25,7 +25,7 @@ from givernylocal.turbulence_gizmos.basic_gizmos import *
 
 class turb_dataset():
     def __init__(self, dataset_title = '', output_path = '', auth_token = '',
-                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb-config.json'):
+                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb-config.json'):
         """
         initialize the class.
         """

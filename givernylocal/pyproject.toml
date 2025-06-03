@@ -1,6 +1,6 @@
 [project]
 name = "givernylocal"
-version = "3.2.7"
+version = "3.2.8"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
 authors = [
     {name = "Johns Hopkins Turbulence Database Group"}
