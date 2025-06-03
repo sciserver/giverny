@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.2.8] - 2025-06-03
+
+### Changed
+- updated jhtdb-config.json file to be read from local CephFS storage rather than GitHub CDN servers.
+
 ## [3.2.7] - 2025-05-27
 
 ### Changed
