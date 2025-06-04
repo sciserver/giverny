@@ -38,11 +38,11 @@ from giverny.turbulence_gizmos.jhtdb_schema import TurbulenceDB
 """
 user-input checking gizmos.
 """
-def load_json_metadata():
+def load_json_metadata(url):
     """
     load the json simulation metadata for user input verification.
     """
-    with resources.open_text('giverny.configs', 'jhtdb-config.json') as metadata_file:
+    with open(url, 'r') as metadata_file:
         metadata_json = json.load(metadata_file)
     
     # validate the json metadata file.

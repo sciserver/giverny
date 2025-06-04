@@ -38,12 +38,13 @@ from concurrent.futures import ThreadPoolExecutor
 from giverny.turbulence_gizmos.basic_gizmos import *
 
 class turb_dataset():
-    def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False):
+    def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
+                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb-config.json'):
         """
         initialize the class.
         """
         # load the json metadata.
-        self.metadata = load_json_metadata()
+        self.metadata = load_json_metadata(json_url)
         
         # check that dataset_title is a valid dataset title.
         check_dataset_title(self.metadata, dataset_title)
