@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.2.9] - 2025-06-04
+
+### Fixed
+- included the jhtdb-config.json file within the giverny and givernylocal libraries.
+
 ## [3.2.8] - 2025-06-03
 
 ### Changed

@@ -1,0 +1,4317 @@
+{
+  "name": "JHTDB",
+  "description": "The original Johns Hopkins Turbulence Database",
+  "pickled_metadata_filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_pickled",
+  "variables": [
+    {
+      "code": "pressure",
+      "name": "Pressure",
+      "description": null,
+      "component_codes": ["p"],
+      "cardinality": 1
+    },
+    {
+      "code": "temperature",
+      "name": "Temperature",
+      "description": null,
+      "component_codes": ["\u03b8"],
+      "cardinality": 1
+    },
+    {
+      "code": "soiltemperature",
+      "name": "Soil Temperature",
+      "description": null,
+      "component_codes": ["\u03b8-soil"],
+      "cardinality": 1
+    },
+    {
+      "code": "sgsenergy",
+      "name": "Subgrid-scale Energy",
+      "description": null,
+      "component_codes": ["e"],
+      "cardinality": 1
+    },
+    {
+      "code": "sgsviscosity",
+      "name": "Subgrid-scale Viscosity",
+      "description": null,
+      "component_codes": ["\u03BD"],
+      "cardinality": 1
+    },
+    {
+      "code": "density",
+      "name": "Density",
+      "description": null,
+      "component_codes": ["\u03c1"],
+      "cardinality": 1
+    },
+    {
+      "code": "velocity",
+      "name": "Velocity",
+      "description": null,
+      "component_codes": ["ux", "uy", "uz"],
+      "cardinality": 3
+    },
+    {
+      "code": "vectorpotential",
+      "name": "Vector Potential",
+      "description": null,
+      "component_codes": ["ax", "ay", "az"],
+      "cardinality": 3
+    },
+    {
+      "code": "magneticfield",
+      "name": "Magnetic Field",
+      "description": null,
+      "component_codes": ["bx", "by", "bz"],
+      "cardinality": 3
+    },
+    {
+      "code": "force",
+      "name": "Force",
+      "description": null,
+      "component_codes": ["fx", "fy", "fz"],
+      "cardinality": 3
+    },
+    {
+      "code": "position",
+      "name": "Position",
+      "description": null,
+      "component_codes": ["x", "y", "z"],
+      "cardinality": 3
+    }
+  ],
+  "spatial_operators": [
+    {
+      "code": "field",
+      "name": "Field",
+      "description": null
+    },
+    {
+      "code": "gradient",
+      "name": "Gradient",
+      "description": null
+    },
+    {
+      "code": "hessian",
+      "name": "Hessian",
+      "description": null
+    },
+    {
+      "code": "laplacian",
+      "name": "Laplacian",
+      "description": null
+    }
+  ],
+  "spatial_methods": [
+    {
+      "code": "none",
+      "name": "none",
+      "description": null,
+      "bucketIndices": [
+        0,
+        1
+      ]
+    },
+    {
+      "code": "lag4",
+      "name": "lag4",
+      "description": null,
+      "bucketIndices": [
+        1,
+        2
+      ]
+    },
+    {
+      "code": "lag6",
+      "name": "lag6",
+      "description": null,
+      "bucketIndices": [
+        2,
+        3
+      ]
+    },
+    {
+      "code": "lag8",
+      "name": "lag8",
+      "description": null,
+      "bucketIndices": [
+        3,
+        4
+      ]
+    },
+    {
+      "code": "m1q4",
+      "name": "m1q4",
+      "description": null,
+      "bucketIndices": [
+        1,
+        2
+      ]
+    },
+    {
+      "code": "m2q8",
+      "name": "m2q8",
+      "description": null,
+      "bucketIndices": [
+        3,
+        4
+      ]
+    },
+    {
+      "code": "fd4noint",
+      "name": "fd4noint",
+      "description": null,
+      "bucketIndices": [
+        2,
+        3
+      ]
+    },
+    {
+      "code": "fd6noint",
+      "name": "fd6noint",
+      "description": null,
+      "bucketIndices": [
+        3,
+        4
+      ]
+    },
+    {
+      "code": "fd8noint",
+      "name": "fd8noint",
+      "description": null,
+      "bucketIndices": [
+        4,
+        5
+      ]
+    },
+    {
+      "code": "fd4lag4",
+      "name": "fd4lag4",
+      "description": null,
+      "bucketIndices": [
+        3,
+        4
+      ]
+    }
+  ],
+  "temporal_methods": [
+    {
+      "code": "none",
+      "name": "none",
+      "description": null
+    },
+    {
+      "code": "pchip",
+      "name": "pchip",
+      "description": null
+    }
+  ],
+  "giverny_constants": {
+    "maximum_processes": 128,
+    "missing_value_placeholder": -999.9,
+    "bytes_per_datapoint": 4,
+    "max_cutout_size": 16.0,
+    "max_data_points": 2000000,
+    "max_num_chunks": 262144,
+    "decimals": 7,
+    "pyJHTDB_testing_token": "edu.jhu.pha.turbulence.testing-201406",
+    "turbulence_email_address": "turbulence@lists.johnshopkins.edu"
+  },
+  "datasets": [
+    {
+      "code": "channel",
+      "name": "Channel",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/channel/channel.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "25.9935",
+          "n": 4000,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+            "lower": "0",
+            "upper": "8pi",
+            "n": 2048,
+            "isPeriodic": true,
+            "spacing": 0.01227184630308513
+          },
+          "ylims": {
+            "lower": "-1",
+            "upper": "1",
+            "n": 512,
+            "isPeriodic": false,
+            "spacing": "irregular channel dy"
+          },
+          "zlims": {
+            "lower": "0",
+            "upper": "3pi",
+            "n": 1536,
+            "isPeriodic": true,
+            "spacing": 0.006135923151542565
+          }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "channel5200",
+      "name": "Channel 5200",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/channel5200/channel5200.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "11",
+          "n": 11,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "8pi",
+          "n": 10240,
+          "isPeriodic": true,
+          "spacing": 0.002454369260617026
+        },
+        "ylims": {
+          "lower": "-1",
+          "upper": "1",
+          "n": 1536,
+          "isPeriodic": false,
+          "spacing": "irregular channel5200 dy"
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "3pi",
+          "n": 7680,
+          "isPeriodic": true,
+          "spacing": 0.001227184630308513
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "isotropic1024coarse",
+      "name": "Isotropic 1024 Coarse",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/isotropic1024coarse/isotropic1024coarse.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "10.056",
+          "n": 5024,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        },
+        {
+          "code": "force",
+          "name": "Force",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "force",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "isotropic1024fine",
+      "name": "Isotropic 1024 Fine",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/isotropic1024fine/isotropic1024fine.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "0.0198",
+          "n": 100,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        },
+        {
+          "code": "force",
+          "name": "Force",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "force",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "isotropic4096",
+      "name": "Isotropic 4096",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/isotropic4096/isotropic4096.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "1",
+          "n": 1,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "isotropic8192",
+      "name": "Isotropic 8192",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/isotropic8192/isotropic8192.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "6",
+          "n": 6,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 8192,
+          "isPeriodic": true,
+          "spacing": 0.0007669903939428206
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 8192,
+          "isPeriodic": true,
+          "spacing": 0.0007669903939428206
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 8192,
+          "isPeriodic": true,
+          "spacing": 0.0007669903939428206
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "isotropic32768",
+      "name": "Isotropic 32768",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/isotropic32768/isotropic32768.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "1",
+          "n": 1,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 32768,
+          "isPeriodic": true,
+          "spacing": 0.00019174759848570515
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 32768,
+          "isPeriodic": true,
+          "spacing": 0.00019174759848570515
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 32768,
+          "isPeriodic": true,
+          "spacing": 0.00019174759848570515
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "sabl2048low",
+      "name": "Stably Stratified Atmospheric Boundary Layer 2048 low-frequency",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/sabl2048low/sabl2048low.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "20",
+          "n": 20,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "zlims": {
+          "lower": "0.09765625",
+          "upper": "399.90234375",
+          "n": 2048,
+          "isPeriodic": false,
+          "spacing": 0.1953125
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity_uv",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            },
+            {
+              "code": "velocity_w",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "sgsenergy",
+          "name": "Subgrid-scale Energy",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsenergy",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "sabl2048high",
+      "name": "Stably Stratified Atmospheric Boundary Layer 2048 high-frequency",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/sabl2048high/sabl2048high.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "7.425",
+          "n": 100,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": 0,
+            "getdata": 1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "zlims": {
+          "lower": "0.09765625",
+          "upper": "399.90234375",
+          "n": 2048,
+          "isPeriodic": false,
+          "spacing": 0.1953125
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity_uv",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            },
+            {
+              "code": "velocity_w",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "sgsenergy",
+          "name": "Subgrid-scale Energy",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsenergy",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "stsabl2048low",
+      "name": "Strong Stably Stratified Atmospheric Boundary Layer 2048 low-frequency",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/stsabl2048low/stsabl2048low.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "20",
+          "n": 20,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "zlims": {
+          "lower": "0.09765625",
+          "upper": "399.90234375",
+          "n": 2048,
+          "isPeriodic": false,
+          "spacing": 0.1953125
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity_uv",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            },
+            {
+              "code": "velocity_w",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "sgsenergy",
+          "name": "Subgrid-scale Energy",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsenergy",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "stsabl2048high",
+      "name": "Strong Stably Stratified Atmospheric Boundary Layer 2048 high-frequency",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph/sciserver-turbulence/stsabl2048high/stsabl2048high.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "7.425",
+          "n": 100,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": 0,
+            "getdata": 1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "400",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.1953125
+        },
+        "zlims": {
+          "lower": "0.09765625",
+          "upper": "399.90234375",
+          "n": 2048,
+          "isPeriodic": false,
+          "spacing": 0.1953125
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity_uv",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            },
+            {
+              "code": "velocity_w",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                0.09765625
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "sgsenergy",
+          "name": "Subgrid-scale Energy",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsenergy",
+              "coordinate": [
+                0,
+                0,
+                0.1953125
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "mhd1024",
+      "name": "Magneto-Hydrodynamic 1024",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/mhd1024/mhd1024.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "2.56",
+          "n": 1025,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "magneticfield",
+          "name": "Magnetic Field",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "magneticfield",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "vectorpotential",
+          "name": "Vector Potential",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "vectorpotential",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        },
+        {
+          "code": "force",
+          "name": "Force",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "force",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "mixing",
+      "name": "Homogeneous Buoyancy Driven",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/mixing/mixing.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "40.44",
+          "n": 1012,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 1024,
+          "isPeriodic": true,
+          "spacing": 0.006135923151542565
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "density",
+          "name": "Density",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "density",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4",
+                "lag6",
+                "lag8"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "rotstrat4096",
+      "name": "Rotating Stratified 4096",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/rotstrat4096/rotstrat4096.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "1",
+          "upper": "5",
+          "n": 5,
+          "isPeriodic": false,
+          "isDiscrete": true,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": -1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "2pi",
+          "n": 4096,
+          "isPeriodic": true,
+          "spacing": 0.0015339807878856412
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "transition_bl",
+      "name": "Transitional Boundary Layer",
+      "description": null,
+      "storage": {
+        "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/transition_bl/transition_bl.zarr",
+        "chunks": [
+          64,
+          64,
+          64
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "1175.0",
+          "n": 4701,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": -1,
+            "getdata": 0
+          }
+        },
+        "xlims": {
+          "lower": "30.21850",
+          "upper": "1000.065",
+          "n": 3320,
+          "isPeriodic": false,
+          "spacing": 0.292210466
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "26.48795",
+          "n": 224,
+          "isPeriodic": false,
+          "spacing": "irregular transition bl dy"
+        },
+        "zlims": {
+          "lower": "0",
+          "upper": "240",
+          "n": 2048,
+          "isPeriodic": true,
+          "spacing": 0.117244748
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                30.2185,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "fd4noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "fd4noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                30.2185,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "fd4noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "fd4noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "position",
+          "name": "Position",
+          "isPersistent": false,
+          "offsets": [
+            {
+              "code": "position",
+              "coordinate": [
+                30.2185,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "pchip"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "nbl_windfarm",
+      "name": "Neutral Boundary Layer Windfarm",
+      "description": null,
+      "parquet": {
+        "folderpath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/turbine-parquet/",
+        "time_offset": 0.025,
+        "time_align": 0.975,
+        "time_step": 0.025,
+        "turbine_variables": [
+          "power",
+          "RotSpeed",
+          "thrust",
+          "Yaw"
+        ],
+        "turbine_numbers": [
+          1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+          11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+          21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+          31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+          41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+          51, 52, 53, 54, 55, 56, 57, 58, 59, 60
+        ],
+        "blade_variables": [
+          "xPos",
+          "yPos",
+          "zPos",
+          "uy_LES1",
+          "uy_LES2",
+          "uy_opt1",
+          "uy_opt2",
+          "du1",
+          "du2",
+          "alpha",
+          "Cl",
+          "Cd",
+          "lift",
+          "drag",
+          "Vrel",
+          "Vaxial",
+          "Vtangential",
+          "axialForce",
+          "tangentialForce"
+        ],
+        "blade_numbers": [
+          1,
+          2,
+          3
+        ],
+        "blade_actuator_points": [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+          10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+          20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+          30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+          40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+          50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
+          60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+          70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+          80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+          90, 91, 92, 93, 94, 95, 96, 97, 98, 99
+        ]
+      },
+      "storage": {
+        "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/nbl_windfarm.zarr",
+        "chunks": [
+          52,
+          64,
+          80
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "3598.5",
+          "n": 7197,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": 0,
+            "getdata": 1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "22913.625",
+          "n": 1248,
+          "isPeriodic": false,
+          "spacing": 18.375
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "3780",
+          "n": 192,
+          "isPeriodic": true,
+          "spacing": 19.6875
+        },
+        "zlims": {
+          "lower": "2.5",
+          "upper": "1997.5",
+          "n": 400,
+          "isPeriodic": false,
+          "spacing": 5.0
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "sgsviscosity",
+          "name": "Subgrid-scale Viscosity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsviscosity",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "force",
+          "name": "Force",
+          "isPersistent": true,
+          "storage": {
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/nbl_windfarm/nbl_windfarm.zarr",
+            "chunks": [
+              67,
+              96,
+              40
+            ]
+          },
+          "xlims": {
+            "lower": "12320.4375",
+            "upper": "20313.5625",
+            "n": 871,
+            "isPeriodic": false,
+            "spacing": 9.1875
+          },
+          "ylims": {
+            "lower": "0",
+            "upper": "3780",
+            "n": 384,
+            "isPeriodic": true,
+            "spacing": 9.84375
+          },
+          "zlims": {
+            "lower": "2.5",
+            "upper": "197.5",
+            "n": 40,
+            "isPeriodic": false,
+            "spacing": 5.0
+          },
+          "offsets": [
+            {
+              "code": "force",
+              "coordinate": [
+                12320.4375,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "diurnal_windfarm",
+      "name": "Diurnal Windfarm",
+      "description": null,
+      "parquet": {
+        "folderpath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/turbine-parquet/",
+        "time_offset": 54000.05,
+        "time_align": 0.95,
+        "time_step": 0.05,
+        "turbine_variables": [
+          "power",
+          "RotSpeed",
+          "thrust",
+          "Yaw"
+        ],
+        "turbine_numbers": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "blade_variables": [
+          "xPos",
+          "yPos",
+          "zPos",
+          "uy_LES1",
+          "uy_LES2",
+          "uy_opt1",
+          "uy_opt2",
+          "du1",
+          "du2",
+          "alpha",
+          "Cl",
+          "Cd",
+          "lift",
+          "drag",
+          "Vrel",
+          "Vaxial",
+          "Vtangential",
+          "axialForce",
+          "tangentialForce"
+        ],
+        "blade_numbers": [
+          1,
+          2,
+          3
+        ],
+        "blade_actuator_points": [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+          10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+          20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+          30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+          40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+          50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
+          60, 61, 62, 63, 64, 65, 66, 67, 68, 69,
+          70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+          80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+          90, 91, 92, 93, 94, 95, 96, 97, 98, 99
+        ]
+      },
+      "storage": {
+        "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
+        "chunks": [
+          39,
+          72,
+          80
+        ]
+      },
+      "simulation": {
+        "tlims": {
+          "lower": "0",
+          "upper": "86398.5",
+          "n": 172797,
+          "isPeriodic": false,
+          "isDiscrete": false,
+          "timeIndexShift": {
+            "getcutout": 0,
+            "getdata": 1
+          }
+        },
+        "xlims": {
+          "lower": "0",
+          "upper": "12862.5",
+          "n": 351,
+          "isPeriodic": false,
+          "spacing": 36.75
+        },
+        "ylims": {
+          "lower": "0",
+          "upper": "1260",
+          "n": 72,
+          "isPeriodic": true,
+          "spacing": 17.5
+        },
+        "zlims": {
+          "lower": "2.5",
+          "upper": "2397.5",
+          "n": 480,
+          "isPeriodic": false,
+          "spacing": 5.0
+        }
+      },
+      "physicalVariables": [
+        {
+          "code": "velocity",
+          "name": "Velocity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "velocity",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "pressure",
+          "name": "Pressure",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "pressure",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "temperature",
+          "name": "Temperature",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "temperature",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "sgsviscosity",
+          "name": "Subgrid-scale Viscosity",
+          "isPersistent": true,
+          "offsets": [
+            {
+              "code": "sgsviscosity",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        },
+        {
+          "code": "force",
+          "name": "Force",
+          "isPersistent": true,
+          "storage": {
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
+            "chunks": [
+              151,
+              144,
+              10
+            ]
+          },
+          "xlims": {
+            "lower": "7680.75",
+            "upper": "10437",
+            "n": 151,
+            "isPeriodic": false,
+            "spacing": 18.375
+          },
+          "ylims": {
+            "lower": "0",
+            "upper": "1260",
+            "n": 144,
+            "isPeriodic": true,
+            "spacing": 8.75
+          },
+          "zlims": {
+            "lower": "2.5",
+            "upper": "197.5",
+            "n": 40,
+            "isPeriodic": false,
+            "spacing": 5.0
+          },
+          "offsets": [
+            {
+              "code": "force",
+              "coordinate": [
+                7680.75,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "soiltemperature",
+          "name": "Soil Temperature",
+          "isPersistent": true,
+          "storage": {
+            "filepath": "/home/idies/workspace/windfarm-ceph/sciserver-windfarm/diurnal_windfarm/diurnal_windfarm.zarr",
+            "chunks": [
+              117,
+              72,
+              31
+            ]
+          },
+          "xlims": {
+            "lower": "0",
+            "upper": "12862.5",
+            "n": 351,
+            "isPeriodic": false,
+            "spacing": 36.75
+          },
+          "ylims": {
+            "lower": "0",
+            "upper": "1260",
+            "n": 72,
+            "isPeriodic": true,
+            "spacing": 17.5
+          },
+          "zlims": {
+            "lower": "-1.41826",
+            "upper": "0",
+            "n": 31,
+            "isPeriodic": false,
+            "spacing": "irregular diurnal windfarm dz"
+          },
+          "offsets": [
+            {
+              "code": "soiltemperature",
+              "coordinate": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none",
+            "pchip"
+          ]
+        }
+      ]
+    }
+  ]
+}
