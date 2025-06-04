@@ -41,11 +41,6 @@ dependencies = [
     "jupyter-core>=5.7.2,<6.0.0"
 ]
 
-[tool.poetry]
-include = [
-    "src/giverny/configs/jhtdb-config.json",
-]
-
 [[tool.poetry.packages]]
 include = "giverny"
 from = "src"
