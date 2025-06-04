@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from importlib import resources
 from collections import defaultdict
 from plotly.subplots import make_subplots
 from giverny.turbulence_gizmos.variable_grids import *
@@ -37,11 +38,11 @@ from giverny.turbulence_gizmos.jhtdb_schema import TurbulenceDB
 """
 user-input checking gizmos.
 """
-def load_json_metadata(url):
+def load_json_metadata():
     """
     load the json simulation metadata for user input verification.
     """
-    with open(url, 'r') as metadata_file:
+    with resources.open_text('giverny.configs', 'jhtdb-config.json') as metadata_file:
         metadata_json = json.load(metadata_file)
     
     # validate the json metadata file.

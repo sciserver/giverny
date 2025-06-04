@@ -1,6 +1,6 @@
 [project]
 name = "giverny"
-version = "3.2.8"
+version = "3.2.8.1"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
 authors = [
     {name = "Johns Hopkins Turbulence Database Group"}
@@ -39,6 +39,11 @@ dependencies = [
     "referencing>=0.35.1,<1.0.0",
     "rpds-py>=0.19.1,<1.0.0",
     "jupyter-core>=5.7.2,<6.0.0"
+]
+
+[tool.poetry]
+include = [
+    "src/giverny/configs/jhtdb-config.json",
 ]
 
 [[tool.poetry.packages]]
