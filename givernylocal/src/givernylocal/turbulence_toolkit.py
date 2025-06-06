@@ -120,14 +120,19 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         response = requests.post(url, data = request_points, timeout = 1000)
         # catch server side errors, e.g. server side timeout.
         response.raise_for_status()
-    except Exception as e:
-        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
-        # on SciServer using giverny.
-        raise Exception(f'{e}' + \
-                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
-                        f'\n\t1) break up the points across multiple queries.' + \
-                        f'\n\t2) specify a smaller spatial domain.' + \
-                        f'\n\t3) use the giverny library on SciServer.')
+    except requests.exceptions.HTTPError:
+        try:
+            result = response.json()
+            if 'description' in result:
+                # join description list with newlines.
+                description = result['description']
+                description = '\n'.join(description) if isinstance(description, list) else description
+                raise Exception(f"HTTP Error {response.status_code}:\n{description}")
+            else:
+                raise Exception(f"HTTP Error {response.status_code}.")
+        except ValueError:
+            # response isn't JSON.
+            raise Exception(f"HTTP Error {response.status_code}.")
     
     # convert the response string to a numpy array.
     result = np.array(json.loads(response.text), dtype = np.float32)
@@ -304,13 +309,19 @@ def getTurbineData(cube, turbine_numbers, var, original_times,
         
         # catch server side errors, e.g. server side timeout.
         response.raise_for_status()
-    except Exception as e:
-        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
-        # on SciServer using giverny.
-        raise Exception(f'{e}' + \
-                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
-                        f'\n\t1) break up the times, or turbines across multiple queries.' + \
-                        f'\n\t2) use the giverny library on SciServer.')
+    except requests.exceptions.HTTPError:
+        try:
+            result = response.json()
+            if 'description' in result:
+                # join description list with newlines.
+                description = result['description']
+                description = '\n'.join(description) if isinstance(description, list) else description
+                raise Exception(f"HTTP Error {response.status_code}:\n{description}")
+            else:
+                raise Exception(f"HTTP Error {response.status_code}.")
+        except ValueError:
+            # response isn't JSON.
+            raise Exception(f"HTTP Error {response.status_code}.")
     
     # convert the response string to a pandas dataframe.
     column_names = ['time', 'turbine', var]
@@ -445,13 +456,19 @@ def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blad
         
         # catch server side errors, e.g. server side timeout.
         response.raise_for_status()
-    except Exception as e:
-        # raise the server side error and inform the user that they should try querying fewer points, a smaller spatial domain, or try their query
-        # on SciServer using giverny.
-        raise Exception(f'{e}' + \
-                        f'\n\npossible server-side timeout, please try the following typical solutions:' + \
-                        f'\n\t1) break up the times, turbines, or blades across multiple queries.' + \
-                        f'\n\t2) use the giverny library on SciServer.')
+    except requests.exceptions.HTTPError:
+        try:
+            result = response.json()
+            if 'description' in result:
+                # join description list with newlines.
+                description = result['description']
+                description = '\n'.join(description) if isinstance(description, list) else description
+                raise Exception(f"HTTP Error {response.status_code}:\n{description}")
+            else:
+                raise Exception(f"HTTP Error {response.status_code}.")
+        except ValueError:
+            # response isn't JSON.
+            raise Exception(f"HTTP Error {response.status_code}.")
     
     # convert the response string to a pandas dataframe.
     column_names = ['time', 'turbine', 'blade'] + [f'{var}_{actuator_point}' for actuator_point in blade_points]
