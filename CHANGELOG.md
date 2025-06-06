@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.3.3] - 2025-06-05
+
+### Fixed
+- removed importlib.resources library import.
+
+## [3.3.2] - 2025-06-05
+
+### Added
+- 'pip install --upgrade giverny' command for users to keep giverny up-to-date in their SciServer containers.
+
+### Changed
+- set givernylocal to read jhtdb-config.json from GitHub CDN servers.
+
+### Fixed
+- updated error handling of givernylocal REST queries to properly display informative server errors.
+
 ## [3.3.1] - 2025-06-04
 
 ### Changed
