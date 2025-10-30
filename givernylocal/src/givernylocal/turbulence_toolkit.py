@@ -62,7 +62,7 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     
     # housekeeping procedures.
     # -----
-    var_offsets, axes_ranges, timepoint = \
+    var_offsets, timepoint = \
         getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original)
     
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
@@ -185,11 +185,6 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     
     # pre-processing steps.
     # -----
-    # converts the 1-based axes ranges above to 0-based axes ranges, and truncates the ranges if they are longer than 
-    # the cube resolution (N) since the boundaries are periodic. result will be filled in with the duplicate data 
-    # for the truncated data points after processing so that the data files are not read redundantly.
-    axes_ranges = convert_to_0_based_ranges(metadata, axes_ranges_original, dataset_title, var)
-    
     # convert the original input timepoint to the correct time index.
     timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, tint = 'none', query_type = query_type)
     
@@ -200,7 +195,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     else:
         var_offsets = var
     
-    return (var_offsets, axes_ranges, timepoint)
+    return (var_offsets, timepoint)
 
 def getData(cube, var, timepoint_original, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
