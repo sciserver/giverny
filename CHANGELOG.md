@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.4.1] - 2025-10-30
+
+### Added
+- Getcutout local notebook, with a query size limit of 128-cube grid points.
+
+### Changed
+- set givernylocal to read jhtdb_config.json from GitHub CDN servers.
+- updated pydantic schema for backwards compatability.
+
 ## [3.3.3] - 2025-06-05
 
 ### Fixed

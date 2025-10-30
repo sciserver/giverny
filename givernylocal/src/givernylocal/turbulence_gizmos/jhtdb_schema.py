@@ -27,10 +27,10 @@ the JHTDB data model: pydantic classes.
 """
 class ForbiddenExtraBaseModel(BaseModel):
     """
-    verify that there are not extra parameters that are not defined in the model.
+    allow extra parameters for compatability with older versions.
     """
     model_config = {
-        "extra": "forbid"
+        "extra": "allow"
     }
 
 class Feature(ForbiddenExtraBaseModel):
@@ -73,6 +73,8 @@ class GivernyConstants(ForbiddenExtraBaseModel):
     bytes_per_datapoint: int
     # maximum data size allowed to be retrieved by getCutout, in gigabytes (GB).
     max_cutout_size: float
+    # maximum data size allowed to be retrived by local getCutout, in megabytes (MB).
+    max_local_cutout_size: float
     # maximum number of points allowed to be queried by getData.
     max_data_points: int
     # maximum number of chunks that the queried points can intersect for a single query.

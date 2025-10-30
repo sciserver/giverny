@@ -23,12 +23,184 @@ import sys
 import json
 import math
 import time
+import dill
 import requests
 import tracemalloc
 import numpy as np
 import pandas as pd
 from givernylocal.turbulence_dataset import *
 from givernylocal.turbulence_gizmos.basic_gizmos import *
+
+def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
+              trace_memory = False, verbose = True):
+    """
+    retrieve a cutout of the isotropic cube.
+    """
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetCutout is processing...')
+        sys.stdout.flush()
+        
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # set cube attributes.
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    auth_token = cube.auth_token
+    
+    # define the query type.
+    query_type = 'getcutout'
+    
+    # data constants.
+    c = metadata['constants']
+    
+    # only filter_width value of 1 is currently allowed.
+    filter_width = 1
+    
+    # retrieve the list of datasets processed by the giverny code.
+    giverny_datasets = get_giverny_datasets()
+    
+    # housekeeping procedures.
+    # -----
+    var_offsets, axes_ranges, timepoint = \
+        getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original)
+    
+    # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
+    # data this value is 3, because there is a velocity measurement along each axis.
+    num_values_per_datapoint = get_cardinality(metadata, var)
+    # number of original datapoints along each axis specified by the user. used for checking that the user did not request
+    # too much data and that result is filled correctly.
+    axes_lengths_original = axes_ranges_original[:, 1] - axes_ranges_original[:, 0] + 1
+    # total number of datapoints, used for checking if the user requested too much data..
+    num_datapoints = np.prod(axes_lengths_original)
+    # total size of data, in GBs, requested by the user's box.
+    requested_data_size = (num_datapoints * c['bytes_per_datapoint'] * num_values_per_datapoint) / float(1024**2)
+    # maximum number of datapoints that can be read in. currently set to 16 GBs worth of datapoints.
+    max_cutout_size = c['max_local_cutout_size']
+    max_datapoints = int((max_cutout_size * (1024**2)) / (c['bytes_per_datapoint'] * float(num_values_per_datapoint)))
+
+    # check the authorization token for larger queries.
+    if auth_token == c['pyJHTDB_testing_token'] and num_datapoints > 4096:
+        turb_email = c['turbulence_email_address']
+        raise Exception(f'too many points requested for the testing authorization token: {num_datapoints} > 4096\n\n' + \
+                        f'an authorization token can be requested by email from {turb_email}\n' + \
+                        f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+    
+    if requested_data_size > max_cutout_size:
+        raise ValueError(f'max local cutout size, {max_cutout_size} MB, exceeded. please specify a box with fewer than (xe - xs) * (ye - ys) * (ze - zs) = {max_datapoints + 1:,} ' + \
+                         f'data points, regardless of strides.')
+    
+    # placeholder values for getData settings.
+    spatial_method = 'none'
+    temporal_method = 'none'
+    option = [-999.9, -999.9]
+    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
+    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
+                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
+    
+    # -----
+    # starting the tracemalloc library.
+    if trace_memory:
+        tracemalloc.start()
+        # checking the memory usage of the program.
+        tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+    
+    # request url.
+    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/cutout/api/local?token={auth_token}' \
+          f'&function={var}&dataset={dataset_title}' \
+          f'&xs={axes_ranges_original[0, 0]}&xe={axes_ranges_original[0, 1]}' \
+          f'&ys={axes_ranges_original[1, 0]}&ye={axes_ranges_original[1, 1]}' \
+          f'&zs={axes_ranges_original[2, 0]}&ze={axes_ranges_original[2, 1]}' \
+          f'&ts={timepoint_original}&te={timepoint_original}' \
+          f'&stridet=1&stridex={strides[0]}&stridey={strides[1]}&stridez={strides[2]}' \
+          f'&filter_width={filter_width}'
+    
+    try:
+        # send http get request.
+        response = requests.get(url, timeout = 1000)
+        # catch server side errors, e.g. server side timeout.
+        response.raise_for_status()
+    except requests.exceptions.HTTPError:
+        try:
+            result = response.json()
+            if 'description' in result:
+                # join description list with newlines.
+                description = result['description']
+                description = '\n'.join(description) if isinstance(description, list) else description
+                raise Exception(f"HTTP Error {response.status_code}:\n{description}")
+            else:
+                raise Exception(f"HTTP Error {response.status_code}.")
+        except ValueError:
+            # response isn't JSON.
+            raise Exception(f"HTTP Error {response.status_code}.")
+            
+    # load the xarray dataset returned by giverny.
+    result = dill.loads(response.content)
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    return result
+
+def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original):
+    """
+    complete all of the getCutout housekeeping procedures before data processing.
+    """
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that the user-input timepoint is a valid timepoint for the dataset.
+    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+    # check that the user-input x-, y-, and z-axis ranges are all specified correctly as [minimum, maximum] integer values.
+    check_axes_ranges(metadata, axes_ranges_original, dataset_title, var)
+    # check that the user-input strides are all positive integers.
+    check_strides(strides)
+    
+    # pre-processing steps.
+    # -----
+    # converts the 1-based axes ranges above to 0-based axes ranges, and truncates the ranges if they are longer than 
+    # the cube resolution (N) since the boundaries are periodic. result will be filled in with the duplicate data 
+    # for the truncated data points after processing so that the data files are not read redundantly.
+    axes_ranges = convert_to_0_based_ranges(metadata, axes_ranges_original, dataset_title, var)
+    
+    # convert the original input timepoint to the correct time index.
+    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, tint = 'none', query_type = query_type)
+    
+    # set var_offsets to var for getCutout. 'velocity' is handled differently in getData for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
+    if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
+        # temporary placeholder value to initialize the dataset constants.
+        var_offsets = var + '_uv'
+    else:
+        var_offsets = var
+    
+    return (var_offsets, axes_ranges, timepoint)
 
 def getData(cube, var, timepoint_original, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
