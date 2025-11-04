@@ -158,10 +158,11 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
         # get the field (variable) integer for the legacy datasets.
         field = field_map[var]
         
+        # the strides will be applied later after retrieving the data.
         result = lJHTDB.getbigCutout(data_set = dataset_title, fields = field, t_start = timepoint_original, t_end = timepoint_original, t_step = time_step,
                                      start = np.array([axes_ranges[0, 0], axes_ranges[1, 0], axes_ranges[2, 0]], dtype = int),
                                      end = np.array([axes_ranges[0, 1], axes_ranges[1, 1], axes_ranges[2, 1]], dtype = int),
-                                     step = np.array([strides[0], strides[1], strides[2]], dtype = int),
+                                     step = np.array([1, 1, 1], dtype = int),
                                      filter_width = filter_width)
     
         # free up gSOAP resources.
