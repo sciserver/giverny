@@ -1,6 +1,6 @@
 [project]
 name = "givernylocal"
-version = "3.3.3.6"
+version = "3.3.3.7"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
 authors = [
     {name = "Johns Hopkins Turbulence Database Group"}
@@ -15,16 +15,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics"
 ]
 dependencies = [
-    "numpy>=1.23.4,<1.24.0",
+    "numpy>=1.23.4,<3.0.0",
     "scipy>=1.9.3,<2.0.0",
     "h5py>=3.8.0,<4.0.0",
     "netcdf4>=1.6.2,<2.0.0",
     "matplotlib>=3.6.2,<4.0.0",
     "pydantic>=2.10.6,<3.0.0",
-    "dill>=0.3.6,<1.0.0",
-    "pandas>=1.5.1,<2.0.0",
+    "pandas>=1.5.1,<3.0.0",
     "requests>=2.31.0,<3.0.0",
-    "xarray>=2022.11.0,<2023.1.0",
+    "xarray>=2022.11.0,<2025.4.0",
     "plotly>=5.11.0,<7.0.0",
     "attrs>=23.2.0,<26.0.0",
     "jsonschema>=4.23.0,<5.0.0",

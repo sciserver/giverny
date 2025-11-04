@@ -23,11 +23,11 @@ import sys
 import json
 import math
 import time
-import dill
 import requests
 import tracemalloc
 import numpy as np
 import pandas as pd
+import xarray as xr
 from givernylocal.turbulence_dataset import *
 from givernylocal.turbulence_gizmos.basic_gizmos import *
 
@@ -54,7 +54,8 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     # data constants.
     c = metadata['constants']
     
-    # only filter_width value of 1 is currently allowed.
+    # only time_step and filter_width values of 1 are currently allowed.
+    time_step = 1
     filter_width = 1
     
     # retrieve the list of datasets processed by the giverny code.
@@ -136,7 +137,24 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
             raise Exception(f"HTTP Error {response.status_code}.")
             
     # load the xarray dataset returned by giverny.
-    result = dill.loads(response.content)
+    json_data = json.loads(response.content)
+    
+    # parse the json data into the coords map. store the values as np.float64 for accuracy since the json data does not contain
+    # the original data type information (mostly np.float32, but sometimes np.float64).
+    coords_map = {k: np.array(v['data'], dtype = np.float64) for k, v in json_data['coords'].items()}
+    
+    # create the xarray DataArray.
+    result = xr.DataArray(data = np.array(json_data['data'], dtype = 'f'),
+                          dims = json_data['dims'])
+    
+    # create the xarray Dataset.
+    result = xr.Dataset(data_vars = {json_data['name']:result},
+                        coords = coords_map, 
+                        attrs = {'dataset':dataset_title, 't_start':timepoint_original, 't_end':timepoint_original, 't_step':time_step,
+                                 'x_start':axes_ranges_original[0][0], 'y_start':axes_ranges_original[1][0], 'z_start':axes_ranges_original[2][0], 
+                                 'x_end':axes_ranges_original[0][1], 'y_end':axes_ranges_original[1][1], 'z_end':axes_ranges_original[2][1],
+                                 'x_step':strides[0], 'y_step':strides[1], 'z_step':strides[2],
+                                 'filterWidth':filter_width})
     
     # -----
     end_time = time.perf_counter()
