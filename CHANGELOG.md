@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - set givernylocal to read jhtdb_config.json from GitHub CDN servers.
 - updated pydantic schema for backwards compatability.
 
+### Fixed
+- bug which prevented datasets processed with pyJHTDB from completing successfully with
+  a stride value > 1 for any axis.
+
 ## [3.3.3] - 2025-06-05
 
 ### Fixed

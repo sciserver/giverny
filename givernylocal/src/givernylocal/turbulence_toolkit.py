@@ -106,6 +106,11 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
         # checking the memory usage of the program.
         tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        
+    # create a small placeholder array for error checking. a full pre-filled array is created in lJHTDB.getbigCutout (pyJHTDB datasets) and
+    # getCutout_process_data (giverny datasets). initially the datatype is set to "f" (float) so that the array is filled with the
+    # missing placeholder value (-999.9).
+    result = np.array([c['missing_value_placeholder']], dtype = 'f')
     
     # request url.
     url = f'https://web.idies.jhu.edu/turbulence-svc-testing/cutout/api/local?token={auth_token}' \
@@ -142,9 +147,16 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     # parse the json data into the coords map. store the values as np.float64 for accuracy since the json data does not contain
     # the original data type information (mostly np.float32, but sometimes np.float64).
     coords_map = {k: np.array(v['data'], dtype = np.float64) for k, v in json_data['coords'].items()}
+    # result value array.
+    result = np.array(json_data['data'], dtype = 'f')
+    
+    # checks to make sure that data was received for all points.
+    strided_lengths = (axes_lengths_original + strides - 1) // strides
+    if c['missing_value_placeholder'] in result or result.shape != (strided_lengths[2], strided_lengths[1], strided_lengths[0], num_values_per_datapoint):
+        raise Exception(f'result was not filled correctly')
     
     # create the xarray DataArray.
-    result = xr.DataArray(data = np.array(json_data['data'], dtype = 'f'),
+    result = xr.DataArray(data = result,
                           dims = json_data['dims'])
     
     # create the xarray Dataset.
