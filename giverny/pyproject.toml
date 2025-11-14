@@ -1,6 +1,6 @@
 [project]
 name = "giverny"
-version = "3.3.3"
+version = "3.4.1"
 description = "library to query the Johns Hopkins Turbulence Database (JHTDB)"
 authors = [
     {name = "Johns Hopkins Turbulence Database Group"}
@@ -19,6 +19,7 @@ dependencies = [
     "scipy>=1.9.3,<2.0.0",
     "sympy>=1.12,<2.0.0",
     "h5py>=3.7.0,<4.0.0",
+    "netcdf4>=1.6.1,<2.0.0",
     "matplotlib>=3.6.2,<4.0.0",
     "wurlitzer>=3.0.3,<4.0.0",
     "pydantic>=2.10.6,<3.0.0",

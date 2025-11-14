@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.4.1] - 2025-10-30
+
+### Added
+- Getcutout local notebook, with a query size limit of 512-cube grid points.
+
+### Changed
+- set givernylocal to read jhtdb_config.json from GitHub CDN servers.
+- updated pydantic schema for backwards compatability.
+- default output filename changed to the dataset name for the cutout hdf5 and xmf files.
+
+### Fixed
+- bug which prevented datasets processed with pyJHTDB from completing successfully with
+  a stride value > 1 for any axis.
+
 ## [3.3.3] - 2025-06-05
 
 ### Fixed

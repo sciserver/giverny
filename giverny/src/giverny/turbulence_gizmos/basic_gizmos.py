@@ -866,7 +866,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     
     # the shape of the cutout. ordering of the dimensions in the xarray, output_data, is (z, y, x), so shape is reversed ([::-1]) to keep
     # consistent with the expected (x, y, z) ordering.
-    shape = [*output_data.dims.values()][:3][::-1]
+    shape = [*output_data.sizes.values()][:3][::-1]
     
     # get the output timepoint.
     xmf_timepoint = cube.timepoint_original
