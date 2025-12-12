@@ -116,20 +116,40 @@ def check_timepoint(metadata, timepoint, dataset_title, query_type, max_num_time
     time_upper = np.float64(time_metadata['upper'])
     time_steps = np.int64(time_metadata['n'])
     
-    if query_type == 'getcutout' or dataset_title in time_index_datasets:
+    if query_type == 'getcutout':
+        try:
+            list(timepoint)
+        except:
+            raise Exception(f"t_range must be specified as a python list or numpy array, e.g. [{timepoint}, {timepoint}]")
+        
+        # check that the time range is specified as minimum and maximum integer values.
+        if timepoint.dtype not in [np.int32, np.int64]:
+            raise Exception('all t_range values, [minimum, maximum], should be specified as integers')
+    
+        if len(timepoint) != 2 or timepoint[0] > timepoint[1]:
+            raise Exception(f't_range, {list(timepoint)}, is not correctly specified as [minimum, maximum]')
+            
         valid_timepoints = range(1, time_steps + 1)
         
         # handles checking datasets with time indices.
-        if timepoint not in valid_timepoints:
-            raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be an integer and in the inclusive range of " +
+        if timepoint[0] not in valid_timepoints or timepoint[1] not in valid_timepoints:
+            raise Exception(f"'t_range', [{timepoint[0]}, {timepoint[1]}], is not a valid time range for '{dataset_title}': all times must be in the inclusive range of " +
                             f'[{valid_timepoints[0]}, {valid_timepoints[-1]}]')
     elif query_type == 'getdata':
-        valid_timepoints = (time_lower, time_upper)
+        if dataset_title in time_index_datasets:
+            valid_timepoints = range(1, time_steps + 1)
         
-        # handles checking datasets with real times.
-        if timepoint < valid_timepoints[0] or timepoint > valid_timepoints[1]:
-            raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be in the inclusive range of " +
-                            f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
+            # handles checking datasets with time indices.
+            if timepoint not in valid_timepoints:
+                raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be an integer and in the inclusive range of " +
+                                f'[{valid_timepoints[0]}, {valid_timepoints[-1]}]')
+        else:
+            valid_timepoints = (time_lower, time_upper)
+
+            # handles checking datasets with real times.
+            if timepoint < valid_timepoints[0] or timepoint > valid_timepoints[1]:
+                raise Exception(f"{timepoint} is not a valid time for '{dataset_title}': must be in the inclusive range of " +
+                                f'[{valid_timepoints[0]}, {valid_timepoints[1]}]')
     elif query_type == 'getturbinedata':
         try:
             timepoint = list(timepoint)
@@ -559,7 +579,7 @@ def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, quer
         time_index = (timepoint / dt) + time_index_shift
         # round the time index the nearest time index grid point if 'none' time interpolation was specified.
         if tint == 'none':
-            time_index = int(math.floor(time_index + 0.5))
+            time_index = np.floor(time_index + 0.5).astype(int)
     else:
         # do not convert the timepoint to a time index for datasets processed by pyJHTDB.
         time_index = timepoint
@@ -954,6 +974,10 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     variable = cube.var
     dataset_title = cube.dataset_title
     
+    # remove the time axis from axes_ranges and strides.
+    axes_ranges = axes_ranges[:3]
+    strides = strides[:3]
+    
     # names for each value, e.g. value index 0 for velocity data corresponds to the x-component of the velocity ("ux").
     value_name_map = get_variable_component_names_map(metadata)
     
@@ -1127,6 +1151,10 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     metadata = cube.metadata
     variable = cube.var
     dataset_title = cube.dataset_title
+    
+    # remove the time axis from axes_ranges and strides.
+    axes_ranges = axes_ranges[:3]
+    strides = strides[:3]
     
     # minimum and maximum endpoints along each axis for the points the user requested.
     endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.int32)
