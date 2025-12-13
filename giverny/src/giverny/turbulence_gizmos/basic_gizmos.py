@@ -891,78 +891,82 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     if cube.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and cube.var == 'velocity':
         # split up "zcoor" into "zcoor_uv" and "zcoor_w" for the "velocity" variable of the "sabl" datasets.
         output_str = f"""<?xml version=\"1.0\" ?>
-        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
-        <Xdmf Version=\"2.0\">
-          <Domain>"""
+<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+<Xdmf Version=\"2.0\">
+  <Domain>
+    <Grid Name="{h5_var}" GridType="Collection" CollectionType="Temporal">"""
         
         for h5_dataset_name in h5_dataset_names:
             # get the output timepoint.
             xmf_timepoint = int(h5_dataset_name.split('_')[1].strip())
             
             output_str += f"""
-            <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
-              <Time Value=\"{xmf_timepoint}\"/>
-              <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
-              <Geometry GeometryType=\"VXVYVZ\">
-                <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/xcoor
-                </DataItem>
-                <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/ycoor
-                </DataItem>
-                <DataItem Name=\"Zcoor_uv\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/zcoor_uv
-                </DataItem>
-                <DataItem Name=\"Zcoor_w\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/zcoor_w
-                </DataItem>
-              </Geometry>
-              <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
-                <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/{h5_dataset_name}
-                </DataItem>
-              </Attribute>
-            </Grid>"""
+      <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+        <Time Value=\"{xmf_timepoint}\"/>
+        <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+        <Geometry GeometryType=\"VXVYVZ\">
+          <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/xcoor
+          </DataItem>
+          <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/ycoor
+          </DataItem>
+          <DataItem Name=\"Zcoor_uv\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor_uv
+          </DataItem>
+          <DataItem Name=\"Zcoor_w\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor_w
+          </DataItem>
+        </Geometry>
+        <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+          <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/{h5_dataset_name}
+          </DataItem>
+        </Attribute>
+      </Grid>"""
             
         output_str += f"""
-          </Domain>
-        </Xdmf>"""
+    </Grid>
+  </Domain>
+</Xdmf>"""
     else:
         # handle other datasets and variables.
         output_str = f"""<?xml version=\"1.0\" ?>
-        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
-        <Xdmf Version=\"2.0\">
-          <Domain>"""
+<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+<Xdmf Version=\"2.0\">
+  <Domain>
+    <Grid Name="{h5_var}" GridType="Collection" CollectionType="Temporal">"""
         
         for h5_dataset_name in h5_dataset_names:
             # get the output timepoint.
             xmf_timepoint = int(h5_dataset_name.split('_')[1].strip())
             
             output_str += f"""
-            <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
-              <Time Value=\"{xmf_timepoint}\"/>
-              <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
-              <Geometry GeometryType=\"VXVYVZ\">
-                <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/xcoor
-                </DataItem>
-                <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/ycoor
-                </DataItem>
-                <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/zcoor
-                </DataItem>
-              </Geometry>
-              <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
-                <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                  {output_filename}.h5:/{h5_dataset_name}
-                </DataItem>
-              </Attribute>
-            </Grid>"""
+      <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+        <Time Value=\"{xmf_timepoint}\"/>
+        <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+        <Geometry GeometryType=\"VXVYVZ\">
+          <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/xcoor
+          </DataItem>
+          <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/ycoor
+          </DataItem>
+          <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor
+          </DataItem>
+        </Geometry>
+        <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+          <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/{h5_dataset_name}
+          </DataItem>
+        </Attribute>
+      </Grid>"""
             
         output_str += f"""
-          </Domain>
-        </Xdmf>"""
+    </Grid>
+  </Domain>
+</Xdmf>"""
 
     with open(cube.output_path.joinpath(output_filename + '.xmf'), 'w') as output_file:
         output_file.write(output_str)
