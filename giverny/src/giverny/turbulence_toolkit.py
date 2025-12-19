@@ -71,7 +71,7 @@ def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
     # data constants.
     c = metadata['constants']
     
-    # only filter_width values of 1 are currently allowed.
+    # only filter_width value of 1 is currently allowed.
     filter_width = 1
     
     # field (variable) map for legacy datasets.

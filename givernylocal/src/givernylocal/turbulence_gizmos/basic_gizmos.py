@@ -882,74 +882,91 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     # get the dataset name used for the hdf5 file.
     h5_var = cube.var
     h5_attribute_type = get_cardinality_name(cube.metadata, cube.var)
-    h5_dataset_name = cube.dataset_name
+    h5_dataset_names = list(output_data.data_vars.keys())
     
     # the shape of the cutout. ordering of the dimensions in the xarray, output_data, is (z, y, x), so shape is reversed ([::-1]) to keep
     # consistent with the expected (x, y, z) ordering.
     shape = [*output_data.sizes.values()][:3][::-1]
     
-    # get the output timepoint.
-    xmf_timepoint = cube.timepoint_original
-    
     if cube.dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and cube.var == 'velocity':
         # split up "zcoor" into "zcoor_uv" and "zcoor_w" for the "velocity" variable of the "sabl" datasets.
         output_str = f"""<?xml version=\"1.0\" ?>
-        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
-        <Xdmf Version=\"2.0\">
-          <Domain>
-              <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
-                <Time Value=\"{xmf_timepoint}\"/>
-                <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
-                <Geometry GeometryType=\"VXVYVZ\">
-                  <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/xcoor
-                  </DataItem>
-                  <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/ycoor
-                  </DataItem>
-                  <DataItem Name=\"Zcoor_uv\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/zcoor_uv
-                  </DataItem>
-                  <DataItem Name=\"Zcoor_w\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/zcoor_w
-                  </DataItem>
-                </Geometry>
-                <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
-                  <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/{h5_dataset_name}
-                  </DataItem>
-                </Attribute>
-              </Grid>
-          </Domain>
-        </Xdmf>"""
+<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+<Xdmf Version=\"2.0\">
+  <Domain>
+    <Grid Name="{h5_var}" GridType="Collection" CollectionType="Temporal">"""
+        
+        for h5_dataset_name in h5_dataset_names:
+            # get the output timepoint.
+            xmf_timepoint = int(h5_dataset_name.split('_')[1].strip())
+            
+            output_str += f"""
+      <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+        <Time Value=\"{xmf_timepoint}\"/>
+        <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+        <Geometry GeometryType=\"VXVYVZ\">
+          <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/xcoor
+          </DataItem>
+          <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/ycoor
+          </DataItem>
+          <DataItem Name=\"Zcoor_uv\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor_uv
+          </DataItem>
+          <DataItem Name=\"Zcoor_w\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor_w
+          </DataItem>
+        </Geometry>
+        <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+          <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/{h5_dataset_name}
+          </DataItem>
+        </Attribute>
+      </Grid>"""
+            
+        output_str += f"""
+    </Grid>
+  </Domain>
+</Xdmf>"""
     else:
         # handle other datasets and variables.
         output_str = f"""<?xml version=\"1.0\" ?>
-        <!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
-        <Xdmf Version=\"2.0\">
-          <Domain>
-              <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
-                <Time Value=\"{xmf_timepoint}\"/>
-                <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
-                <Geometry GeometryType=\"VXVYVZ\">
-                  <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/xcoor
-                  </DataItem>
-                  <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/ycoor
-                  </DataItem>
-                  <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/zcoor
-                  </DataItem>
-                </Geometry>
-                <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
-                  <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
-                    {output_filename}.h5:/{h5_dataset_name}
-                  </DataItem>
-                </Attribute>
-              </Grid>
-          </Domain>
-        </Xdmf>"""
+<!DOCTYPE Xdmf SYSTEM \"Xdmf.dtd\" []>
+<Xdmf Version=\"2.0\">
+  <Domain>
+    <Grid Name="{h5_var}" GridType="Collection" CollectionType="Temporal">"""
+        
+        for h5_dataset_name in h5_dataset_names:
+            # get the output timepoint.
+            xmf_timepoint = int(h5_dataset_name.split('_')[1].strip())
+            
+            output_str += f"""
+      <Grid Name=\"Structured Grid\" GridType=\"Uniform\">
+        <Time Value=\"{xmf_timepoint}\"/>
+        <Topology TopologyType=\"3DRectMesh\" NumberOfElements=\"{shape[2]} {shape[1]} {shape[0]}\"/>
+        <Geometry GeometryType=\"VXVYVZ\">
+          <DataItem Name=\"Xcoor\" Dimensions=\"{shape[0]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/xcoor
+          </DataItem>
+          <DataItem Name=\"Ycoor\" Dimensions=\"{shape[1]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/ycoor
+          </DataItem>
+          <DataItem Name=\"Zcoor\" Dimensions=\"{shape[2]}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/zcoor
+          </DataItem>
+        </Geometry>
+        <Attribute Name=\"{h5_var}\" AttributeType=\"{h5_attribute_type}\" Center=\"Node\">
+          <DataItem Dimensions=\"{shape[2]} {shape[1]} {shape[0]} {cube.num_values_per_datapoint}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">
+            {output_filename}.h5:/{h5_dataset_name}
+          </DataItem>
+        </Attribute>
+      </Grid>"""
+            
+        output_str += f"""
+    </Grid>
+  </Domain>
+</Xdmf>"""
 
     with open(cube.output_path.joinpath(output_filename + '.xmf'), 'w') as output_file:
         output_file.write(output_str)
@@ -958,7 +975,7 @@ def write_cutout_hdf5_and_xmf_files(cube, output_data, output_filename):
     print('-----')
     sys.stdout.flush()
 
-def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strides, output_filename,
+def contour_plot(cube, value_index, cutout_data, time, plot_ranges, xyzt_axes_ranges, xyzt_strides, output_filename,
                  colormap = 'inferno', equal_aspect_ratio = True):
     """
     create a contour plot from the getCutout output.
@@ -973,10 +990,13 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     metadata = cube.metadata
     variable = cube.var
     dataset_title = cube.dataset_title
+    dataset_name = variable + '_' + str(time).zfill(4)
     
     # remove the time axis from axes_ranges and strides.
-    axes_ranges = axes_ranges[:3]
-    strides = strides[:3]
+    axes_ranges = xyzt_axes_ranges[:3]
+    strides = xyzt_strides[:3]
+    # get the time range.
+    time_range = xyzt_axes_ranges[3]
     
     # names for each value, e.g. value index 0 for velocity data corresponds to the x-component of the velocity ("ux").
     value_name_map = get_variable_component_names_map(metadata)
@@ -1007,6 +1027,10 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     # raise exception if all of the plot datapoints are not inside the bounds of the user box volume.
     if not(np.all(axes_min <= plot_ranges_min) and np.all(plot_ranges_max <= axes_max)):
         raise Exception(f'the specified plot ranges are not all bounded by the box volume defined by:\n{axes_ranges}')
+        
+    # raise exception if the plot time is not one of the queried timepoints.
+    if time not in range(time_range[0], time_range[1] + 1, 1):
+        raise Exception(f'the specified time ({time}) is not a queried time, t_range:\n{time_range}')
         
     # determine how many of the axis minimum values are equal to their corresponding axis maximum value.
     num_axes_equal_min_max = plot_ranges_min == plot_ranges_max
@@ -1049,15 +1073,15 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     # specify the subset (or full) axes ranges to use for plotting. cutout_data is of the format [z-range, y-range, x-range, output value index].
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and variable == 'velocity':
         # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
-        plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
-                                                       ycoor = ycoor_values, 
-                                                       zcoor_uv = zcoor_values,
-                                                       values = value_index)
+        plot_data = cutout_data[dataset_name].sel(xcoor = xcoor_values, 
+                                                  ycoor = ycoor_values, 
+                                                  zcoor_uv = zcoor_values,
+                                                  values = value_index)
     else:
-        plot_data = cutout_data[cube.dataset_name].sel(xcoor = xcoor_values, 
-                                                       ycoor = ycoor_values, 
-                                                       zcoor = zcoor_values,
-                                                       values = value_index)
+        plot_data = cutout_data[dataset_name].sel(xcoor = xcoor_values, 
+                                                  ycoor = ycoor_values, 
+                                                  zcoor = zcoor_values,
+                                                  values = value_index)
     
     # raise exception if only one point is going to be plotted along more than 1 axis. a contour plot requires more 
     # than 1 point along 2 axes. this check is required in case the user specifies a stride along an axis that 
@@ -1107,7 +1131,7 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     plane_axis = original_axis_title[0].strip()
     # plot_ranges_min = plot_ranges_max for plane_axis.
     plane_point = plot_ranges_min[axis_index_map[plane_axis]]
-    axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(cutout_data.attrs['t_start'])
+    axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(time)
     title_str = f'{output_dataset_title}\n{variable} ({value_name}) contour plot ({axis_title})'
     # remove '_uv' from the axis variable names for display in the plot.
     x_axis_variable = x_axis_variable.replace('_uv', '')
@@ -1142,7 +1166,7 @@ def contour_plot(cube, value_index, cutout_data, plot_ranges, axes_ranges, strid
     print('contour plot created successfully.')
     sys.stdout.flush()
 
-def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
+def cutout_values(cube, x, y, z, output_data, time, xyzt_axes_ranges, xyzt_strides):
     """
     retrieve data values for all of the specified points.
     """
@@ -1151,10 +1175,12 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     metadata = cube.metadata
     variable = cube.var
     dataset_title = cube.dataset_title
+    dataset_name = variable + '_' + str(time).zfill(4)
     
     # remove the time axis from axes_ranges and strides.
-    axes_ranges = axes_ranges[:3]
-    strides = strides[:3]
+    axes_ranges = xyzt_axes_ranges[:3]
+    strides = xyzt_strides[:3]
+    time_range = xyzt_axes_ranges[3]
     
     # minimum and maximum endpoints along each axis for the points the user requested.
     endpoints_min = np.array([np.min(x), np.min(y), np.min(z)], dtype = np.int32)
@@ -1165,6 +1191,10 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     # raise exception if all of the user requested datapoints are not inside the bounds of the user box volume.
     if not(np.all(axes_ranges[:, 0] <= endpoints_min) and np.all(endpoints_max <= axes_ranges[:, 1])):
         raise Exception(f'the specified point(s) are not all bounded by the box volume defined by:\n{axes_ranges}')
+        
+    # raise exception if the time is not one of the queried timepoints.
+    if time not in range(time_range[0], time_range[1] + 1, 1):
+        raise Exception(f'the specified time ({time}) is not a queried time, t_range:\n{time_range}')
     
     # datasets that have an irregular y-grid.
     irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets(metadata, variable)
@@ -1189,15 +1219,15 @@ def cutout_values(cube, x, y, z, output_data, axes_ranges, strides):
     # value(s) corresponding to the specified (x, y, z) datapoint(s).
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and variable == 'velocity':
         # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
-        output_values = output_data[cube.dataset_name].sel(xcoor = xcoor_values,
-                                                           ycoor = ycoor_values,
-                                                           zcoor_uv = zcoor_values)
+        output_values = output_data[dataset_name].sel(xcoor = xcoor_values,
+                                                      ycoor = ycoor_values,
+                                                      zcoor_uv = zcoor_values)
         
         # add the zcoor_w coordinate to the returned xarray dataarray.
         output_values = output_values.assign_coords({'zcoor_w': output_values.zcoor_uv + (cube.dz / 2)})
         
         return output_values
     else:
-        return output_data[cube.dataset_name].sel(xcoor = xcoor_values,
-                                                  ycoor = ycoor_values,
-                                                  zcoor = zcoor_values)
+        return output_data[dataset_name].sel(xcoor = xcoor_values,
+                                             ycoor = ycoor_values,
+                                             zcoor = zcoor_values)

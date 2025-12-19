@@ -1131,7 +1131,7 @@ def contour_plot(cube, value_index, cutout_data, time, plot_ranges, xyzt_axes_ra
     plane_axis = original_axis_title[0].strip()
     # plot_ranges_min = plot_ranges_max for plane_axis.
     plane_point = plot_ranges_min[axis_index_map[plane_axis]]
-    axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(cutout_data.attrs['t_start'])
+    axis_title = plane_axis + ' = ' + str(plane_point) + ', t = ' + str(time)
     title_str = f'{output_dataset_title}\n{variable} ({value_name}) contour plot ({axis_title})'
     # remove '_uv' from the axis variable names for display in the plot.
     x_axis_variable = x_axis_variable.replace('_uv', '')
