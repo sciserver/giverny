@@ -48,7 +48,7 @@ except ImportError:
 finally:
     import pyJHTDB
 
-def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
+def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
               trace_memory = False, verbose = True):
     """
     retrieve a cutout of the isotropic cube.
@@ -71,8 +71,7 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     # data constants.
     c = metadata['constants']
     
-    # only time_step and filter_width values of 1 are currently allowed.
-    time_step = 1
+    # only filter_width value of 1 is currently allowed.
     filter_width = 1
     
     # field (variable) map for legacy datasets.
@@ -88,10 +87,19 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     # retrieve the list of datasets processed by the giverny code.
     giverny_datasets = get_giverny_datasets()
     
+    # xyz original axes ranges.
+    axes_ranges_original = xyzt_axes_ranges_original[:3]
+    # time original range.
+    timepoint_range_original = xyzt_axes_ranges_original[3]
+    # xyz original axes strides.
+    strides = xyzt_strides[:3]
+    # time original stride.
+    timepoint_stride = xyzt_strides[3]
+    
     # housekeeping procedures.
     # -----
-    var_offsets, axes_ranges, timepoint = \
-        getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original)
+    var_offsets, axes_ranges, timepoint_range = \
+        getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, xyzt_strides, var, timepoint_range_original)
     
     # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
     # data this value is 3, because there is a velocity measurement along each axis.
@@ -99,8 +107,10 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     # number of original datapoints along each axis specified by the user. used for checking that the user did not request
     # too much data and that result is filled correctly.
     axes_lengths_original = axes_ranges_original[:, 1] - axes_ranges_original[:, 0] + 1
+    # number of original times queried by the user.
+    num_times = ((timepoint_range_original[1] - timepoint_range_original[0]) // timepoint_stride) + 1
     # total number of datapoints, used for checking if the user requested too much data..
-    num_datapoints = np.prod(axes_lengths_original)
+    num_datapoints = np.prod(axes_lengths_original) * num_times
     # total size of data, in GBs, requested by the user's box.
     requested_data_size = (num_datapoints * c['bytes_per_datapoint'] * num_values_per_datapoint) / float(1024**3)
     # maximum number of datapoints that can be read in. currently set to 16 GBs worth of datapoints.
@@ -122,9 +132,12 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     spatial_method = 'none'
     temporal_method = 'none'
     option = [-999.9, -999.9]
-    # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
-    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
-                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
+    
+    if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
+        # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
+        dims_list = ['zcoor_uv', 'ycoor', 'xcoor', 'values']
+    else:
+        dims_list = ['zcoor', 'ycoor', 'xcoor', 'values']
     
     # -----
     # starting the tracemalloc library.
@@ -134,54 +147,72 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
         tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
     
-    # create a small placeholder array for error checking. a full pre-filled array is created in lJHTDB.getbigCutout (pyJHTDB datasets) and
-    # getCutout_process_data (giverny datasets). initially the datatype is set to "f" (float) so that the array is filled with the
-    # missing placeholder value (-999.9).
-    result = np.array([c['missing_value_placeholder']], dtype = 'f')
-    
-    # process the data query, retrieve a cutout for the various datasets.
-    if dataset_title in giverny_datasets:
-        """
-        get the results for the datasets processed by giverny.
-        """
-        # parse the database files, generate the result matrix.
-        result = getCutout_process_data(cube, metadata, axes_ranges, var, timepoint,
-                                        axes_ranges_original, strides, var_offsets, timepoint_original, c)
-    else:
-        """
-        get the results for the legacy datasets processed by pyJHTDB.
-        """
-        # initialize lJHTDB gSOAP resources and add the user's authorization token.
-        lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
-        lJHTDB.initialize()
+    result_map = {}
+    # iterate over the timepoints to retrieve the cutouts.
+    for timepoint, timepoint_original in zip(
+        range(timepoint_range[0], timepoint_range[1] + 1, timepoint_stride),
+        range(timepoint_range_original[0], timepoint_range_original[1] + 1, timepoint_stride)
+    ):
+        # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
+        cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original,
+                            spatial_method, temporal_method, option, num_values_per_datapoint, c)
+
+        # create a small placeholder array for error checking. a full pre-filled array is created in lJHTDB.getbigCutout (pyJHTDB datasets) and
+        # getCutout_process_data (giverny datasets). initially the datatype is set to "f" (float) so that the array is filled with the
+        # missing placeholder value (-999.9).
+        result = np.array([c['missing_value_placeholder']], dtype = 'f')
+
+        # process the data query, retrieve a cutout for the various datasets.
+        if dataset_title in giverny_datasets:
+            """
+            get the results for the datasets processed by giverny.
+            """
+            # parse the database files, generate the result matrix.
+            result = getCutout_process_data(cube, metadata, axes_ranges, var, timepoint,
+                                            axes_ranges_original, strides, var_offsets, timepoint_original, c)
+        else:
+            """
+            get the results for the legacy datasets processed by pyJHTDB.
+            """
+            # initialize lJHTDB gSOAP resources and add the user's authorization token.
+            lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
+            lJHTDB.initialize()
+
+            # get the field (variable) integer for the legacy datasets.
+            field = field_map[var]
+
+            # the strides will be applied later after retrieving the data.
+            result = lJHTDB.getbigCutout(data_set = dataset_title, fields = field, t_start = timepoint_original, t_end = timepoint_original, t_step = 1,
+                                         start = np.array([axes_ranges[0, 0], axes_ranges[1, 0], axes_ranges[2, 0]], dtype = int),
+                                         end = np.array([axes_ranges[0, 1], axes_ranges[1, 1], axes_ranges[2, 1]], dtype = int),
+                                         step = np.array([1, 1, 1], dtype = int),
+                                         filter_width = filter_width)
+
+            # free up gSOAP resources.
+            lJHTDB.finalize()
+
+        # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
+        # exceeds the cube resolution (cube.N). note: no copies of the data values should be made, hence data_value_multiplier equals 1.
+        axes_multipliers = np.ceil(axes_lengths_original / cube.N).astype(int)
+        data_value_multiplier = 1
+
+        # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than the cube resolution along any axis.
+        if np.any(axes_multipliers > 1):
+            result = np.tile(result, (axes_multipliers[2], axes_multipliers[1], axes_multipliers[0], data_value_multiplier))
+            # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
+            result = np.copy(result[0 : axes_lengths_original[2], 0 : axes_lengths_original[1], 0 : axes_lengths_original[0], :])
+
+        # checks to make sure that data was read in for all points.
+        if c['missing_value_placeholder'] in result or result.shape != (axes_lengths_original[2], axes_lengths_original[1], axes_lengths_original[0], num_values_per_datapoint):
+            raise Exception(f'result was not filled correctly')
+            
+        # apply the strides to output_data.
+        result = xr.DataArray(data = result[::strides[2], ::strides[1], ::strides[0], :],
+                              dims = dims_list)
         
-        # get the field (variable) integer for the legacy datasets.
-        field = field_map[var]
-        
-        # the strides will be applied later after retrieving the data.
-        result = lJHTDB.getbigCutout(data_set = dataset_title, fields = field, t_start = timepoint_original, t_end = timepoint_original, t_step = time_step,
-                                     start = np.array([axes_ranges[0, 0], axes_ranges[1, 0], axes_ranges[2, 0]], dtype = int),
-                                     end = np.array([axes_ranges[0, 1], axes_ranges[1, 1], axes_ranges[2, 1]], dtype = int),
-                                     step = np.array([1, 1, 1], dtype = int),
-                                     filter_width = filter_width)
-    
-        # free up gSOAP resources.
-        lJHTDB.finalize()
-        
-    # determines how many copies of data need to be me made along each axis when the number of datapoints the user specified
-    # exceeds the cube resolution (cube.N). note: no copies of the data values should be made, hence data_value_multiplier equals 1.
-    axes_multipliers = np.ceil(axes_lengths_original / cube.N).astype(int)
-    data_value_multiplier = 1
-    
-    # duplicates the data along the z-, y-, and x-axes of output_data if the the user asked for more datapoints than the cube resolution along any axis.
-    if np.any(axes_multipliers > 1):
-        result = np.tile(result, (axes_multipliers[2], axes_multipliers[1], axes_multipliers[0], data_value_multiplier))
-        # truncate any extra datapoints from the duplicate data outside of the original range of the datapoints specified by the user.
-        result = np.copy(result[0 : axes_lengths_original[2], 0 : axes_lengths_original[1], 0 : axes_lengths_original[0], :])
-    
-    # checks to make sure that data was read in for all points.
-    if c['missing_value_placeholder'] in result or result.shape != (axes_lengths_original[2], axes_lengths_original[1], axes_lengths_original[0], num_values_per_datapoint):
-        raise Exception(f'result was not filled correctly')
+        # set the dataset name to be used in the hdf5 file.
+        h5_dataset_name = cube.dataset_name
+        result_map[h5_dataset_name] = result
         
     # datasets that have an irregular y-grid.
     irregular_ygrid_datasets = get_irregular_mesh_ygrid_datasets(metadata, var)
@@ -203,24 +234,15 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     x_coords = np.around(np.arange(axes_ranges_original[0][0] - 1, axes_ranges_original[0][1], strides[0], dtype = np.float32) * cube.dx, decimals = c['decimals'])
     x_coords += cube.coor_offsets[0]
     
-    # set the dataset name to be used in the hdf5 file.
-    h5_dataset_name = cube.dataset_name
-    
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
         # zcoor_uv are the default z-axis coordinates for the 'velocity' variable of the 'sabl' datasets.
         coords_map = {'zcoor_uv':z_coords, 'zcoor_w':z_coords + (0.1953125 / 2), 'ycoor':y_coords, 'xcoor':x_coords}
-        dims_list = ['zcoor_uv', 'ycoor', 'xcoor', 'values']
     else:
         coords_map = {'zcoor':z_coords, 'ycoor':y_coords, 'xcoor':x_coords}
-        dims_list = ['zcoor', 'ycoor', 'xcoor', 'values']
-        
-    # apply the strides to output_data.
-    result = xr.DataArray(data = result[::strides[2], ::strides[1], ::strides[0], :],
-                          dims = dims_list)
     
-    result = xr.Dataset(data_vars = {h5_dataset_name:result},
+    result = xr.Dataset(data_vars = result_map,
                         coords = coords_map, 
-                        attrs = {'dataset':dataset_title, 't_start':timepoint_original, 't_end':timepoint_original, 't_step':time_step,
+                        attrs = {'dataset':dataset_title, 't_start':timepoint_range_original[0], 't_end':timepoint_range_original[1], 't_step':timepoint_stride,
                                  'x_start':axes_ranges_original[0][0], 'y_start':axes_ranges_original[1][0], 'z_start':axes_ranges_original[2][0], 
                                  'x_end':axes_ranges_original[0][1], 'y_end':axes_ranges_original[1][1], 'z_end':axes_ranges_original[2][1],
                                  'x_step':strides[0], 'y_step':strides[1], 'z_step':strides[2],
@@ -256,7 +278,7 @@ def getCutout(cube, var, timepoint_original, axes_ranges_original, strides,
     
     return result
 
-def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, strides, var, timepoint_original):
+def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_ranges_original, xyzt_strides, var, timepoint_range_original):
     """
     complete all of the getCutout housekeeping procedures before data processing.
     """
@@ -265,11 +287,11 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_range_original, dataset_title, query_type)
     # check that the user-input x-, y-, and z-axis ranges are all specified correctly as [minimum, maximum] integer values.
     check_axes_ranges(metadata, axes_ranges_original, dataset_title, var)
     # check that the user-input strides are all positive integers.
-    check_strides(strides)
+    check_strides(xyzt_strides)
     
     # pre-processing steps.
     # -----
@@ -279,7 +301,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     axes_ranges = convert_to_0_based_ranges(metadata, axes_ranges_original, dataset_title, var)
     
     # convert the original input timepoint to the correct time index.
-    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, tint = 'none', query_type = query_type)
+    timepoint_range = get_time_index_from_timepoint(metadata, dataset_title, timepoint_range_original, tint = 'none', query_type = query_type)
     
     # set var_offsets to var for getCutout. 'velocity' is handled differently in getData for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
@@ -288,7 +310,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     else:
         var_offsets = var
     
-    return (var_offsets, axes_ranges, timepoint)
+    return (var_offsets, axes_ranges, timepoint_range)
 
 def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],

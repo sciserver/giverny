@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.5.1] - 2025-12-12
+
+### Added
+- multitime cutout queries.
+
+## [3.4.2] - 2025-11-18
+
+### Changed
+- Default cutout limits.
+
 ## [3.4.1] - 2025-10-30
 
 ### Added
