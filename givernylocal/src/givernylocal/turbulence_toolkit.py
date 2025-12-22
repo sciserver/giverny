@@ -124,7 +124,7 @@ def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
     
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/cutout/api/local?token={auth_token}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc/cutout/api/local?token={auth_token}' \
           f'&function={var}&dataset={dataset_title}' \
           f'&xs={axes_ranges_original[0, 0]}&xe={axes_ranges_original[0, 1]}' \
           f'&ys={axes_ranges_original[1, 0]}&ye={axes_ranges_original[1, 1]}' \
