@@ -212,7 +212,7 @@
     "missing_value_placeholder": -999.9,
     "bytes_per_datapoint": 4,
     "max_cutout_size": 16.0,
-    "max_local_cutout_size": 1536.0,
+    "max_local_cutout_size": 3072.0,
     "max_data_points": 2000000,
     "max_num_chunks": 262144,
     "decimals": 7,
