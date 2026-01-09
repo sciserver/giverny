@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.5.2] - 2026-01-09
+
+### Changed
+- local getCutout query size limit updated from 1.5 GB to 3 GB.
+
 ## [3.5.1] - 2025-12-12
 
 ### Added
