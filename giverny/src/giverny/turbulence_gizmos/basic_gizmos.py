@@ -41,8 +41,13 @@ def load_json_metadata(url):
     """
     load the json simulation metadata for user input verification.
     """
-    with open(url, 'r') as metadata_file:
-        metadata_json = json.load(metadata_file)
+    if url.startswith('http://') or url.startswith('https://'):
+        response = requests.get(url)
+        response.raise_for_status()
+        metadata_json = response.json()
+    else:
+        with open(url, 'r') as metadata_file:
+            metadata_json = json.load(metadata_file)
     
     # validate the json metadata file.
     try:
@@ -550,7 +555,7 @@ def get_time_dt(metadata, dataset_title, query_type):
             'getdata': 1.0 if time_steps == 1 else (time_upper - time_lower) / (time_steps - 1)
            }[query_type]
     
-def get_time_index_shift(metadata, dataset_title, query_type):
+def get_time_index_shift(metadata, dataset_title, query_type, code_type):
     """
     addition to map the time to a correct time index in the filenames. e.g. the first time index in the 'sabl2048high' dataset is 0; this time index
     is disallowed for queries to handle 'pchip' time interpolation queries. so, time 0 specified by the user corresponds
@@ -558,9 +563,17 @@ def get_time_index_shift(metadata, dataset_title, query_type):
     and getdata is used for converting low-resolution datasets time indices to 0-based time indices and also as a placeholder value for
     the pyJHTDB datasets.
     """
-    return metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
+    # TESTING. temporary for pyJHTDB channel flow because I updated the time index shift to be correct for giverny,
+    # and remove code_type from function header.
+    time_index_shift = metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
+    if dataset_title == 'channel' and code_type == 'pyJHTDB':
+        time_index_shift -= 1
+    return time_index_shift
+    
+    # TESTING. put just this back and delete above.
+    #return metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
 
-def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, query_type):
+def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, query_type, code_type):
     """
     get the corresponding time index for this dataset from the specified timepoint. handles datasets that allow 'pchip' time interpolation, which
     requires 2 timepoints worth of data on either side of the timepoint specified by the user.
@@ -569,7 +582,10 @@ def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, quer
     giverny_datasets = get_giverny_datasets()
     
     # addition to map the time to a correct time index in the filename.
-    time_index_shift = get_time_index_shift(metadata, dataset_title, query_type)
+    # time_index_shift = get_time_index_shift(metadata, dataset_title, query_type)
+    # TESTING. temporary for pyJHTDB channel flow because I updated the time index shift to be correct for giverny,
+    # and remove code_type from function header.
+    time_index_shift = get_time_index_shift(metadata, dataset_title, query_type, code_type)
     
     if dataset_title in giverny_datasets:
         # dt between timepoints.
@@ -598,6 +614,14 @@ def get_giverny_datasets():
     # return ['isotropic1024fine', 'isotropic1024coarse', 'mhd1024', 'isotropic8192', 'isotropic32768',
     #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
+    return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
+            'diurnal_windfarm', 'nbl_windfarm', 'channel']
+
+def get_giverny_datasets_pyjhtdb():
+    """
+    get the dataset titles that are processed by the giverny code (this backend code, *not* the legacy pyJHTDB code).
+    """
+    # TESTING, for pyJHTDB only.
     return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
             'diurnal_windfarm', 'nbl_windfarm']
 

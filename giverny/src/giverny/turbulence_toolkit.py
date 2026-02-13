@@ -312,7 +312,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     
     return (var_offsets, axes_ranges, timepoint_range)
 
-def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_method_original, spatial_operator, points,
+def getData_ORIGINAL(cube, var, timepoint_original_notebook, temporal_method, spatial_method_original, spatial_operator, points,
             option = [-999.9, -999.9],
             return_times = False, trace_memory = False, verbose = True):
     """
@@ -631,6 +631,344 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         return results
     else:
         return results, timepoint_range_original
+    
+def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_method_original, spatial_operator, points,
+            option = [-999.9, -999.9],
+            return_times = False, trace_memory = False, verbose = True):
+    """
+    interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
+    """
+    # TESTING. this version is to handle giverny and pyJHTDB requests together for plotting new nonuniform interpolation methods.
+    if verbose:
+        print('\n' + '-' * 5 + '\ngetData is processing...')
+        sys.stdout.flush()
+    
+    # calculate how much time it takes to run the code.
+    start_time = time.perf_counter()
+    
+    # giverny and pyJHTDB results.
+    combined_results = []
+    for code_type in ['giverny', 'pyJHTDB']:
+        if code_type == 'giverny':
+            # retrieve the list of datasets processed by the giverny code.
+            giverny_datasets = get_giverny_datasets()
+        elif code_type == 'pyJHTDB':
+            # retrieve the list of datasets processed by the giverny code.
+            giverny_datasets = get_giverny_datasets_pyjhtdb()
+            
+        # print(giverny_datasets)
+        # print('-')
+    
+        # set cube attributes.
+        metadata = cube.metadata
+        dataset_title = cube.dataset_title
+        auth_token = cube.auth_token
+
+        # define the query type.
+        query_type = 'getdata'
+
+        # data constants.
+        c = metadata['constants']
+
+        # spatial interpolation map for legacy datasets.
+        spatial_map = { 
+            'none': 0, 'lag4': 4, 'lag6': 6, 'lag8': 8,
+            'fd4noint': 40, 'fd6noint': 60, 'fd8noint': 80,
+            'fd4lag4': 44,
+            'm1q4': 104, 'm1q6': 106, 'm1q8': 108, 'm1q10': 110, 'm1q12': 112, 'm1q14': 114,
+            'm2q4': 204, 'm2q6': 206, 'm2q8': 208, 'm2q10': 210, 'm2q12': 212, 'm2q14': 214,
+            'm3q4': 304, 'm3q6': 306, 'm3q8': 308, 'm3q10': 310, 'm3q12': 312, 'm3q14': 314,
+            'm4q4': 404, 'm4q6': 406, 'm4q8': 408, 'm4q10': 410, 'm4q12': 412, 'm4q14': 414
+        }
+
+        # temporal interpolation map for legacy datasets.
+        temporal_map = {
+            'none': 0,
+            'pchip': 1
+        }
+
+        # make sure points is C-ordered.
+        if not points.flags.c_contiguous:
+            points = np.ascontiguousarray(points)
+
+        # number of queried points.
+        num_points = len(points)
+
+        # -----
+        # housekeeping procedures.
+        var_offsets, timepoint, spatial_method, datatype = \
+            getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original_notebook,
+                                            temporal_method, spatial_method_original, spatial_operator,
+                                            option, c, code_type)
+
+        # check the authorization token for larger queries.
+        if auth_token == c['pyJHTDB_testing_token'] and num_points > 4096:
+            turb_email = c['turbulence_email_address']
+            raise Exception(f'too many points requested for the testing authorization token: {num_points} > 4096\n\n' + \
+                            f'an authorization token can be requested by email from {turb_email}\n' + \
+                            f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+
+        # option parameter values.
+        timepoint_end, delta_t = option
+
+        # default timepoint range which only queries the first timepoint for non-'position' variables and non-time series queries.
+        timepoint_range = np.arange(timepoint_original_notebook, timepoint_original_notebook + 1, 2)
+        if var != 'position' and option != [-999.9, -999.9]:
+            # timepoint range for the time series queries.
+            timepoint_range = np.arange(timepoint_original_notebook, timepoint_end, delta_t)
+
+            # add in the last timepoint if the final timepoint in the range is delta_t less than timepoint_end. np.arange is not good at handling
+            # floating point step sizes.
+            if math.isclose(timepoint_range[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
+                timepoint_range = np.append(timepoint_range, timepoint_end)
+
+        num_timepoints = len(timepoint_range)
+        # if more than one timepoint was queried, then checks if ({number of points} * {number of timepoints}) <= c['max_data_points'].
+        if (num_points * num_timepoints) > c['max_data_points']:
+            raise Exception(f"too many 'points' and 'times' queried together, please limit the number of (points * times) to <= {c['max_data_points']:,}")
+
+        if return_times:
+            # make a copy of timepoint_range to return to users when requested.
+            timepoint_range_original = timepoint_range.copy()
+
+        # only print the progress bar if verbose output.
+        if verbose:
+            timepoint_range = tqdm(timepoint_range, desc = f'times completed (n = {len(timepoint_range)}) ')
+
+        # the number of values to read per datapoint. for pressure data this value is 1.  for velocity
+        # data this value is 3, because there is a velocity measurement along each axis.
+        num_values_per_datapoint = get_cardinality(metadata, var)
+        # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data.
+        cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                            spatial_method, temporal_method, option, num_values_per_datapoint, c)
+
+        # get the result header, which only contains the names for each column of the data values.
+        output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+        result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
+
+        # -----
+        # starting the tracemalloc library.
+        if trace_memory:
+            tracemalloc.start()
+            # checking the memory usage of the program.
+            tracemem_start = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+            tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
+
+        results = []
+        # process the data query, retrieve interpolation/differentiation results for the various datasets.
+        if dataset_title in giverny_datasets:
+            """
+            get the results for the datasets processed by giverny.
+            """
+            print('processing query with giverny...\n')
+
+            for timepoint_original in timepoint_range:
+                # check that the user-input timepoint is a valid timepoint for the dataset.
+                check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+                # convert the original input timepoint to the correct time index.
+                timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type, code_type)
+
+                # update all the timepoints that need to be read.
+                timepoints = [timepoint]
+                if temporal_method == 'pchip':
+                    floor_timepoint = math.floor(timepoint)
+                    timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+
+                # results and their corresponding specified order.
+                result = []
+                # fill original_points_indices.
+                original_points_indices = [q for q in range(num_points)]
+
+                for timepoint_i, timepoint_tmp in enumerate(timepoints):
+                    if dataset_title not in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
+                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                        points_offset = points - cube.coor_offsets
+
+                        # get the results.
+                        result.append(getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                           var_offsets, timepoint_original, option, c))
+                    else:
+                        # handles the *sabl* datasets.
+                        if var == 'velocity':
+                            # handles the velocity variable for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets. makes a duplicate
+                            # of the points array so that the velocity-uv and velocity-w components can be queried together despite being offset by 0.5 * dz.
+                            coor_offsets_uv = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_uv', var)
+                            points_offset_uv = points.copy()
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset_uv -= coor_offsets_uv
+
+                            coor_offsets_w = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_w', var)
+                            points_offset_w = points.copy()
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset_w -= coor_offsets_w
+
+                            points_offset = np.vstack((points_offset_uv, points_offset_w))
+                            # get the results.
+                            result_uvw = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                              var_offsets, timepoint_original, option, c)
+
+                            # split up the velocity-uv and velocity-w components from the query results.
+                            result_tmp = result_uvw[:num_points]
+                            result_tmp_w = result_uvw[num_points:]
+
+                            # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
+                            if '_gradient' in spatial_method:
+                                # handles the velocity gradient differentiations.
+                                result_tmp[:, 6:] = result_tmp_w[:, 6:]
+                            elif '_hessian' in spatial_method:
+                                # handles the velocity hessian differentiations.
+                                result_tmp[:, 12:] = result_tmp_w[:, 12:]
+                            else:
+                                # handles the velocity field interpolations and laplacian differentiations.
+                                result_tmp[:, 2] = result_tmp_w[:, 2]
+                        # handles all non-velocity variables for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high' datasets.
+                        else:
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset = points - cube.coor_offsets
+
+                            # get the results.
+                            result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                              var_offsets, timepoint_original, option, c)
+
+                        # append the result for timepoint_tmp.
+                        result.append(result_tmp)
+
+                    # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
+                    # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
+                    # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
+                    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
+
+                if temporal_method == 'pchip':
+                    # dt between timepoints.
+                    dt = get_time_dt(metadata, dataset_title, query_type)
+                    # addition to map the time index back to the real time.
+                    time_index_shift = get_time_index_shift(metadata, dataset_title, query_type, code_type)
+                    
+                    # convert the timepoints (time indices) back to real time.
+                    times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
+
+                    # pchip interpolation.
+                    result = pchip(timepoint_original, times, result, dt)
+
+                # stack all of the results together.
+                result = np.vstack(result)
+
+                # re-sort result to match the original ordering of points.
+                original_points_indices, result = zip(*sorted(zip(original_points_indices, result), key = lambda x: x[0]))
+
+                # convert the result list to a numpy array.
+                result = np.array(result)
+
+                # checks to make sure that data was read in for all points.
+                if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
+                    raise Exception(f'result was not filled correctly')
+
+                # insert the output header at the beginning of result.
+                result = pd.DataFrame(data = result, columns = result_header)
+                result.index.name = 'index'
+
+                # append the result into results.
+                results.append(result)
+        else:
+            """
+            get the results for the legacy datasets processed by pyJHTDB.
+            """
+            print('processing query with pyJHTDB...\n')
+
+            # initialize lJHTDB gSOAP resources and add the user's authorization token.
+            lJHTDB = pyJHTDB.libJHTDB(auth_token = auth_token)
+            lJHTDB.initialize()
+
+            # recast the points array as np.float32 because np.float64 does not work for the legacy datasets.
+            points_tmp = points.astype(np.float32)
+
+            for timepoint_original in timepoint_range:
+                # check that the user-input timepoint is a valid timepoint for the dataset.
+                check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+                # convert the original input timepoint to the correct time index.
+                timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type, code_type)
+
+                # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+                # so that the array is filled with the missing placeholder value (-999.9).
+                result = np.array([c['missing_value_placeholder']], dtype = 'f')
+
+                # get the spatial interpolation integer for the legacy datasets.
+                sint = spatial_map[spatial_method_original]
+
+                if datatype == 'Position':
+                    timepoint_end, delta_t = option
+
+                    # set the number of steps to keep to 1. for now this will not be a user-modifiable parameter.
+                    steps_to_keep = 1
+
+                    # formatting the output since getPosition prints output, whereas lJHTDB.getData does not.
+                    if verbose:
+                        print()
+
+                    # only returning the position array ('result') to keep consistent with other getData variables. the time array can be calculated in the notebook if needed
+                    # as t = np.linspace(timepoint, timepoint_end, steps_to_keep + 1).astype(np.float32).
+                    result, t = lJHTDB.getPosition(data_set = dataset_title,
+                                                   starttime = timepoint, endtime = timepoint_end, dt = delta_t,
+                                                   point_coords = points_tmp, sinterp = sint, steps_to_keep = steps_to_keep)
+
+                    # only return the final point positions to keep consistent with the other "get" functions.
+                    result = result[-1]
+                else:
+                    # get the temporal interpolation integer for the legacy datasets.
+                    tint = temporal_map[temporal_method]
+
+                    # get the results.
+                    result = lJHTDB.getData(timepoint, points_tmp, data_set = dataset_title, sinterp = sint, tinterp = tint, getFunction = f'get{datatype}')
+
+                # checks to make sure that data was read in for all points.
+                if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
+                    raise Exception(f'result was not filled correctly')
+
+                # insert the output header at the beginning of result.
+                result = pd.DataFrame(data = result, columns = result_header)
+                result.index.name = 'index'
+
+                # append the result into results.
+                results.append(result)
+
+            # free up gSOAP resources.
+            lJHTDB.finalize()
+            
+        combined_results.append(results)
+    
+    # -----
+    end_time = time.perf_counter()
+    
+    if verbose:
+        print(f'\ntotal time elapsed = {end_time - start_time:0.3f} seconds ({(end_time - start_time) / 60:0.3f} minutes)')
+        sys.stdout.flush()
+
+        print('\nquery completed successfully.\n' + '-' * 5)
+        sys.stdout.flush()
+    
+    # closing the tracemalloc library.
+    if trace_memory:
+        # memory used during processing as calculated by tracemalloc.
+        tracemem_end = [mem_value / (1024**3) for mem_value in tracemalloc.get_traced_memory()]
+        tracemem_used_end = tracemalloc.get_tracemalloc_memory() / (1024**3)
+        # stopping the tracemalloc library.
+        tracemalloc.stop()
+
+        # see how much memory was used during processing.
+        # memory used at program start.
+        print(f'\nstarting memory used in GBs [current, peak] = {tracemem_start}')
+        # memory used by tracemalloc.
+        print(f'starting memory used by tracemalloc in GBs = {tracemem_used_start}')
+        # memory used during processing.
+        print(f'ending memory used in GBs [current, peak] = {tracemem_end}')
+        # memory used by tracemalloc.
+        print(f'ending memory used by tracemalloc in GBs = {tracemem_used_end}')
+    
+    if not return_times:
+        return combined_results[0], combined_results[1]
+    else:
+        return combined_results[0], combined_results[1], timepoint_range_original
 
 def pchip(time, times, results, dt):
     """
@@ -655,7 +993,7 @@ def pchip(time, times, results, dt):
     
     return interpolated_results
 
-def getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
+def getData_housekeeping_procedures_ORIGINAL(query_type, metadata, dataset_title, points, var, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,
                                     option, c):
     """
@@ -689,6 +1027,60 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # -----
     # convert the original input timepoint to the correct time index.
     timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
+    
+    # set var_offsets to var. 'velocity' is handled differently for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
+    if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
+        # temporary placeholder value to initialize the dataset constants.
+        var_offsets = var + '_uv'
+    else:
+        var_offsets = var
+    
+    # get the full variable name for determining the datatype.
+    datatype_var = get_output_variable_name(metadata, var)
+    
+    # remove 'field' from operator for determining the datatype.
+    datatype_operator = spatial_operator if spatial_operator != 'field' else ''
+    
+    # define datatype from the datatype_var and datatype_operator variables.
+    datatype = f"{datatype_var.replace(' ', '')}{datatype_operator.title()}"
+    
+    return (var_offsets, timepoint, spatial_method, datatype)
+
+def getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
+                                    temporal_method, spatial_method, spatial_operator,
+                                    option, c, code_type):
+    """
+    complete all of the getData housekeeping procedures before data processing.
+    """
+    # TESTING. delete.
+    # validate user-input.
+    # -----
+    # check that the user-input variable is a valid variable name.
+    check_variable(metadata, var, dataset_title, query_type)
+    # check that not too many points were queried and the points are all within axes domain for the dataset.
+    check_points(metadata, points, dataset_title, var, c['max_data_points'])
+    # check how many chunks the queried points intersect.
+    # check_points_chunks_intersection(metadata, points, dataset_title, var)
+    # check that the user-input timepoint is a valid timepoint for the dataset.
+    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+    # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.
+    check_spatial_operator(metadata, spatial_operator, dataset_title, var)
+    # check that the user-input spatial interpolation (spatial_method) is a valid spatial interpolation method.
+    spatial_method = check_spatial_method(metadata, spatial_method, dataset_title, var, spatial_operator)
+    # check that the user-input temporal interpolation (temporal_method) is a valid temporal interpolation method.
+    check_temporal_method(metadata, temporal_method, dataset_title, var)
+    # check that option parameters are valid if specified (applies to getPosition and time series queries).
+    if var == 'position' or option != [-999.9, -999.9]:
+        check_option_parameter(metadata, option, dataset_title, timepoint_original)
+        
+        # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
+        timepoint_end = option[0]
+        check_timepoint(metadata, timepoint_end, dataset_title, query_type)
+    
+    # pre-processing steps.
+    # -----
+    # convert the original input timepoint to the correct time index.
+    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type, code_type)
     
     # set var_offsets to var. 'velocity' is handled differently for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':

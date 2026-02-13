@@ -36,13 +36,20 @@ from collections import defaultdict
 from SciServer import Authentication
 from concurrent.futures import ThreadPoolExecutor
 from giverny.turbulence_gizmos.basic_gizmos import *
+from giverny.turbulence_gizmos.variable_grids_interpolation_weights import channel_y_interpolation_weights
 
 class turb_dataset():
+    # def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
+    #              json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+    # def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
+    #              json_url = '/home/idies/workspace/Storage/mschnau1/persistent/giverny/ceph-maaz_channel_interpolation/metadata/configs/jhtdb_config.json'):
     def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
-                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/ceph/metadata/configs/jhtdb_config.json'):
         """
         initialize the class.
         """
+        # TESTING. need to change json_url back to reading from the production metadata file when we are ready to release channel flow from ceph publicly.
+        
         # load the json metadata.
         self.metadata = load_json_metadata(json_url)
         
@@ -128,6 +135,14 @@ class turb_dataset():
         # read in the interpolation lookup table for sint. the interpolation lookup tables are only read from
         # the get_points_getdata function.
         if sint != 'none' and read_metadata:
+            # read the y-interpolation weights for the 'channel' flow dataset.
+            if self.dataset_title == 'channel':
+                if sint in ['lag4', 'lag6', 'lag8']:
+                    lagrange_order = {
+                        'lag4': 4, 'lag6': 6, 'lag8': 8
+                    }[sint]
+                    self.lookup_table_nonuniform_ys = channel_y_interpolation_weights(lagrange_order = lagrange_order)
+            
             # pickled interpolation coefficient lookup table.
             self.lookup_table = self.read_pickle_file(f'{sint}_lookup_table.pickle')
             
@@ -219,11 +234,14 @@ class turb_dataset():
         
         if self.dataset_title in giverny_datasets:
             if query_type == 'getdata':
+                # initialize the interpolation lookup tables.
+                self.init_interpolation_lookup_table(sint = self.sint, read_metadata = True)
+                
                 # initialize the interpolation cube size lookup table.
                 self.init_interpolation_cube_size_lookup_table(self.metadata, self.sint)
                 
                 # interpolate function variables.
-                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.spacing, self.lookup_N]
+                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.dataset_title, self.spacing, self.lookup_N]
                 
                 # getData variables.
                 self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.nonperiodic_regular_axes]
@@ -453,15 +471,18 @@ class turb_dataset():
 
         return g
     
-    def spatial_interpolate(self, p, u, interpolate_vars):
+    def spatial_interpolate(self, qp, p, u, interpolate_vars):
         """
         spatial interpolating functions to compute the kernel, extract subcube and convolve.
         
         vars:
-         - p is an np.array(3) containing the three coordinates.
+         - qp : queried point, a np.array(3) containing the three queried coordinates.
+         - p : a np.array(3) containing the three coordinates.
+         - u : interpolation bucket.
+         - interpolate_vars : contants used for interpolation and differentiation. 
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint, spacing, lookup_N = interpolate_vars
+        cube_min_index, cube_max_index, sint, dataset_title, spacing, lookup_N = interpolate_vars
         dx, dy, dz = spacing
         
         """
@@ -482,6 +503,20 @@ class turb_dataset():
             # get the coefficients.
             gx = self.lookup_table[int(lookup_N * fr[0])]
             gy = self.lookup_table[int(lookup_N * fr[1])]
+            gz = self.lookup_table[int(lookup_N * fr[2])]
+            
+            # create the 3d kernel from the outer product of the 1d kernels.
+            gk = np.einsum('i,j,k', gz, gy, gx)
+
+            return np.einsum('ijk,ijkl->l', gk, u)
+        
+        def lag_spline_nonuniform_y():
+            ix = p.astype(np.int32)
+            fr = p - ix
+            
+            # get the coefficients.
+            gx = self.lookup_table[int(lookup_N * fr[0])]
+            gy = self.lookup_table_nonuniform_ys.get_stencil_weights(qp[1])
             gz = self.lookup_table[int(lookup_N * fr[2])]
             
             # create the 3d kernel from the outer product of the 1d kernels.
@@ -728,7 +763,9 @@ class turb_dataset():
         interpolate_functions = {
             'none': none,
             'lag4': lag_spline, 'lag6': lag_spline, 'lag8': lag_spline,
+            'lag4_channel': lag_spline_nonuniform_y, 'lag6_channel': lag_spline_nonuniform_y, 'lag8_channel': lag_spline_nonuniform_y,
             'm1q4': lag_spline, 'm2q8': lag_spline,
+            'm1q4_channel': lag_spline_nonuniform_y, 'm2q8_channel': lag_spline_nonuniform_y,
             'fd4noint_gradient': fdnoint_gradient, 'fd6noint_gradient': fdnoint_gradient, 'fd8noint_gradient': fdnoint_gradient,
             'fd4noint_laplacian': fdnoint_laplacian, 'fd6noint_laplacian': fdnoint_laplacian, 'fd8noint_laplacian': fdnoint_laplacian,
             'fd4noint_hessian': fdnoint_hessian, 'fd6noint_hessian': fdnoint_hessian, 'fd8noint_hessian': fdnoint_hessian,
@@ -739,7 +776,7 @@ class turb_dataset():
         }
         
         # interpolation function to call.
-        interpolate_function = interpolate_functions[sint]
+        interpolate_function = interpolate_functions.get(f"{sint}_{dataset_title}", interpolate_functions[sint])
         
         return interpolate_function()
         
@@ -926,12 +963,50 @@ class turb_dataset():
             
             # datapoints.
             datapoints = np.column_stack([x_datapoints, y_datapoints, z_datapoints])
+        elif self.dataset_title == 'channel':
+            # convert the points to their center points position between grid points.
+            x_center = ((points[:, 0] / self.spacing[0]) % 1) + self.cube_min_index
+            z_center = ((points[:, 2] / self.spacing[2]) % 1) + self.cube_min_index
+            
+            y_points = points[:, 1]
+            y_grid = self.spacing[1]
+            
+            # find the index in the y-gridpoint list where each of the y-points would be inserted.
+            y_lower_indices = np.searchsorted(y_grid, y_points, side = 'right') - 1
+            # handles the bottom and top boundary gridpoints. shifts the index for y_point == y_grid[-1] down by 2 to account for needing an
+            # index before and after the specified y-point (the after gridpoint in this case is the specified y-point == y_grid[-1]).
+            y_lower_indices = np.clip(y_lower_indices, 0, len(y_grid) - 2)
+            
+            y_low = y_grid[y_lower_indices]
+            y_high = y_grid[y_lower_indices + 1]
+
+            # calculate y-points centered position within each grid cell.
+            y_center = ((y_points - y_low) / (y_high - y_low)) % 1
+            # center points.
+            center_points = np.column_stack([x_center, y_center, z_center])
+            
+            # convert the points to gridded datapoints.
+            x_datapoints = np.floor(points[:, 0] / self.spacing[0]).astype(int) % self.N[0]
+            z_datapoints = np.floor(points[:, 2] / self.spacing[2]).astype(int) % self.N[2]
+            
+            # find the index in the y-gridpoint list where each of the y-points would be inserted.
+            y_datapoints = np.fromiter(
+                (self.lookup_table_nonuniform_ys.find_stencil_bounds(y) for y in y_points),
+                dtype = np.int64,
+                count = len(y_points)
+            )
+            
+            # datapoints.
+            datapoints = np.column_stack([x_datapoints, y_datapoints, z_datapoints])
+            # adjust datapoints to keep consistent with the interpolation bucket definition, [datapoint - cube_min_index, datapoint + cube_max_index].
+            datapoints[points[:, 1] > 0, 1] -= 1
         else:
             # handles all other variables of the "diurnal_windfarm" dataset as well as all other datasets.
             # convert the points to the center point position within their own bucket.
             center_points = ((points / self.spacing) % 1) + self.cube_min_index
             # convert the points to gridded datapoints. there is a +0.5 point shift because the finite differencing methods would otherwise add +0.5 to center_points when
             # interpolating the values. shifting the datapoints up by +0.5 adjusts the bucket up one grid point so the center_points do not needed to be shifted up by +0.5.
+            
             if self.sint in ['fd4noint_gradient', 'fd6noint_gradient', 'fd8noint_gradient',
                              'fd4noint_laplacian', 'fd6noint_laplacian', 'fd8noint_laplacian',
                              'fd4noint_hessian', 'fd6noint_hessian', 'fd8noint_hessian']:
@@ -957,6 +1032,16 @@ class turb_dataset():
         # calculate the minimum and maximum chunk (x, y, z) corner point for each point in datapoints.
         chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size))
         chunk_max_xyzs = ((datapoints + self.cube_max_index) + (self.chunk_size - ((datapoints + self.cube_max_index) % self.chunk_size) - 1))
+        
+        if self.dataset_title == 'channel':
+            # shift the non-periodic y-axis of datapoints and chunk_min_xyzs up to account for the barycentric weights not using wrap-around gridpoints.
+            datapoints[:, 1][datapoints[:, 1] < self.cube_min_index] = self.cube_min_index
+            chunk_min_xyzs[:, 1][chunk_min_xyzs[:, 1] < 0] = 0
+            
+            # shift the non-periodic y-axis of datapoints and chunk_max_xyzs down to account for the barycentric weights not using wrap-around gridpoints.
+            datapoints[:, 1][datapoints[:, 1] >= self.N[1] - self.cube_max_index] = self.N[1] - 1 - self.cube_max_index
+            chunk_max_xyzs[:, 1][chunk_max_xyzs[:, 1] >= self.N[1]] -= self.chunk_size[1]
+        
         chunk_min_mod_xyzs = chunk_min_xyzs % self.N
         chunk_max_mod_xyzs = chunk_max_xyzs % self.N
         # chunk volumes.
@@ -982,6 +1067,7 @@ class turb_dataset():
         for chunk_volume, chunk_key, point, datapoint, center_point, z_min_boundary_flag, \
             chunk_min_xyz, chunk_max_xyz, chunk_min_mod_xyz, chunk_max_mod_xyz, \
             original_point_index in zipped_data:
+            
             # update the chunk key if the chunk group is fully contained in another larger chunk group.
             updated_chunk_key = chunk_key
             if chunk_key in chunk_map:
@@ -1423,7 +1509,7 @@ class turb_dataset():
                                  bucket_min_xyz[0] : bucket_max_xyz[0]]
 
             # interpolate the points and use a lookup table for faster interpolations.
-            local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, interpolate_vars))))
+            local_output_data.append((original_point_index, (point, self.spatial_interpolate(point, center_point, bucket, interpolate_vars))))
         
         return local_output_data
     
