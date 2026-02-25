@@ -579,7 +579,13 @@ def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, quer
     requires 2 timepoints worth of data on either side of the timepoint specified by the user.
         - returns timepoint if the dataset is processed by the legacy pyJHTDB code because the timepoint to time index conversion is handled in pyJHTDB.
     """
-    giverny_datasets = get_giverny_datasets()
+    # TESTING.
+    if code_type == 'giverny':
+        giverny_datasets = get_giverny_datasets()
+    else:
+        giverny_datasets = get_giverny_datasets_pyjhtdb()
+    # TESTING. uncomment this after deleting above.
+    # giverny_datasets = get_giverny_datasets()
     
     # addition to map the time to a correct time index in the filename.
     # time_index_shift = get_time_index_shift(metadata, dataset_title, query_type)
