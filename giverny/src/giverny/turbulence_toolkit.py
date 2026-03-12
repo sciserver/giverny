@@ -656,7 +656,8 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             # retrieve the list of datasets processed by the giverny code.
             giverny_datasets = get_giverny_datasets()
             
-            points[:, 0] = (points[:, 0] - 0.45 * timepoint_original_notebook) % (8 * np.pi)
+            if cube.dataset_title == 'channel':
+                points[:, 0] = (points[:, 0] - 0.45 * timepoint_original_notebook) % (8 * np.pi)
         elif code_type == 'pyJHTDB':
             # retrieve the list of datasets processed by the giverny code.
             giverny_datasets = get_giverny_datasets_pyjhtdb()

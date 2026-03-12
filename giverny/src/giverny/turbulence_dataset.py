@@ -36,7 +36,7 @@ from collections import defaultdict
 from SciServer import Authentication
 from concurrent.futures import ThreadPoolExecutor
 from giverny.turbulence_gizmos.basic_gizmos import *
-from giverny.turbulence_gizmos.variable_grids_interpolation_weights import channel_y_interpolation_weights
+from giverny.turbulence_gizmos.variable_grids_interpolation_weights import irregular_y_interpolation_weights
 
 class turb_dataset():
     # def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
@@ -136,12 +136,12 @@ class turb_dataset():
         # the get_points_getdata function.
         if sint != 'none' and read_metadata:
             # read the y-interpolation weights for the 'channel' flow dataset.
-            if self.dataset_title == 'channel':
+            if self.dataset_title in ['channel', 'channel5200', 'transition_bl']:
                 if sint in ['lag4', 'lag6', 'lag8']:
                     lagrange_order = {
                         'lag4': 4, 'lag6': 6, 'lag8': 8
                     }[sint]
-                    self.lookup_table_nonuniform_ys = channel_y_interpolation_weights(lagrange_order = lagrange_order)
+                    self.lookup_table_nonuniform_ys = irregular_y_interpolation_weights(lagrange_order = lagrange_order, dataset_title = self.dataset_title)
             
             # pickled interpolation coefficient lookup table.
             self.lookup_table = self.read_pickle_file(f'{sint}_lookup_table.pickle')
@@ -764,8 +764,9 @@ class turb_dataset():
             'none': none,
             'lag4': lag_spline, 'lag6': lag_spline, 'lag8': lag_spline,
             'lag4_channel': lag_spline_nonuniform_y, 'lag6_channel': lag_spline_nonuniform_y, 'lag8_channel': lag_spline_nonuniform_y,
+            'lag4_channel5200': lag_spline_nonuniform_y, 'lag6_channel5200': lag_spline_nonuniform_y, 'lag8_channel5200': lag_spline_nonuniform_y,
+            'lag4_transition_bl': lag_spline_nonuniform_y, 'lag6_transition_bl': lag_spline_nonuniform_y, 'lag8_transition_bl': lag_spline_nonuniform_y,
             'm1q4': lag_spline, 'm2q8': lag_spline,
-            'm1q4_channel': lag_spline_nonuniform_y, 'm2q8_channel': lag_spline_nonuniform_y,
             'fd4noint_gradient': fdnoint_gradient, 'fd6noint_gradient': fdnoint_gradient, 'fd8noint_gradient': fdnoint_gradient,
             'fd4noint_laplacian': fdnoint_laplacian, 'fd6noint_laplacian': fdnoint_laplacian, 'fd8noint_laplacian': fdnoint_laplacian,
             'fd4noint_hessian': fdnoint_hessian, 'fd6noint_hessian': fdnoint_hessian, 'fd8noint_hessian': fdnoint_hessian,
@@ -963,7 +964,7 @@ class turb_dataset():
             
             # datapoints.
             datapoints = np.column_stack([x_datapoints, y_datapoints, z_datapoints])
-        elif self.dataset_title == 'channel':
+        elif self.dataset_title in ['channel', 'channel5200', 'transition_bl']:
             # convert the points to their center points position between grid points.
             x_center = ((points[:, 0] / self.spacing[0]) % 1) + self.cube_min_index
             z_center = ((points[:, 2] / self.spacing[2]) % 1) + self.cube_min_index
@@ -1033,7 +1034,7 @@ class turb_dataset():
         chunk_min_xyzs = ((datapoints - self.cube_min_index) - ((datapoints - self.cube_min_index) % self.chunk_size))
         chunk_max_xyzs = ((datapoints + self.cube_max_index) + (self.chunk_size - ((datapoints + self.cube_max_index) % self.chunk_size) - 1))
         
-        if self.dataset_title == 'channel':
+        if self.dataset_title in ['channel', 'channel5200', 'transition_bl']:
             # shift the non-periodic y-axis of datapoints and chunk_min_xyzs up to account for the barycentric weights not using wrap-around gridpoints.
             datapoints[:, 1][datapoints[:, 1] < self.cube_min_index] = self.cube_min_index
             chunk_min_xyzs[:, 1][chunk_min_xyzs[:, 1] < 0] = 0
