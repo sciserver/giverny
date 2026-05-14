@@ -3271,8 +3271,8 @@
       "storage": {
         "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/transition_bl/transition_bl.zarr",
         "chunks": [
-          64,
-          64,
+          83,
+          56,
           64
         ]
       },
@@ -3284,8 +3284,8 @@
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": -1,
-            "getdata": 0
+            "getcutout": 0,
+            "getdata": 1
           }
         },
         "xlims": {
@@ -3330,7 +3330,9 @@
               "operator": "field",
               "methods": [
                 "none",
-                "lag4"
+                "lag4",
+                "lag6",
+                "lag8"
               ]
             },
             {
@@ -3379,7 +3381,9 @@
               "operator": "field",
               "methods": [
                 "none",
-                "lag4"
+                "lag4",
+                "lag6",
+                "lag8"
               ]
             },
             {

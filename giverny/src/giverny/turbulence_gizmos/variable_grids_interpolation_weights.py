@@ -23,8 +23,9 @@
 calculate the interpolation weights for the non-constant step grids.
     - channel, channel5200, transition_bl datasets.
 """
-import math
 import numpy as np
+import math
+import giverny.turbulence_gizmos.barycentric_weights as barycentric_weights
 from giverny.turbulence_gizmos.variable_grids import *
 
 class irregular_y_interpolation_weights():
@@ -34,49 +35,24 @@ class irregular_y_interpolation_weights():
         self.y_values = np.array([], dtype = np.float64)
         if dataset_title == 'channel':
             self.y_values = get_channel_ys()
+            self.find_stencil_bounds = self.find_stencil_bounds_for_channel
+            self.find_stencil_endpoints = self.find_stencil_endpoints_for_channel
         elif dataset_title == 'channel5200':
             self.y_values = get_channel5200_ys()
+            self.find_stencil_bounds = self.find_stencil_bounds_for_channel
+            self.find_stencil_endpoints = self.find_stencil_endpoints_for_channel
         elif dataset_title == 'transition_bl':
             self.y_values = get_transition_bl_ys()
-        
-        self.barycentric_weights = self.calculate_barycentric_weights()
-    
-    def calculate_barycentric_weights(self):
-        """
-        Precompute barycentric interpolation weights for all grid points.
+            self.find_stencil_bounds = self.find_stencil_bounds_for_transition_bl
+            self.find_stencil_endpoints = self.find_stencil_endpoints_for_transition_bl
 
-        For each grid index in 'self.y_values', this method computes the
-        corresponding first-form barycentric weights, and caches them for
-        later reuse during interpolation.
+        dictionary_name = f"{dataset_title}_baryctrwt_y_lag{lagrange_order}"
+        try:
+            self.barycentric_weights = getattr(barycentric_weights, dictionary_name)
+        except AttributeError:
+            raise ValueError(f"barycentric weights not found for {dataset_title} lag{lagrange_order}")
 
-        Returns
-        -------
-        dict
-            Dictionary mapping '(j_s, j_o)' to a NumPy array of barycentric
-            weights, where:
-            - 'j_s' : int
-                Starting index of the stencil in `self.y_values`
-            - 'j_o' : int
-                Offset value
-            - 'weights' : np.ndarray
-                Barycentric weights for the corresponding stencil points.
-        """
-        barycentric_weights = {}
-        for i in range(len(self.y_values)):
-            (j_s, j_e, j_o) = self.find_stencil_endpoints(i)
-            stencil_points = self.y_values[j_s:j_e+1]
-
-            # pairwise differences matrix.
-            diff = stencil_points[:, None] - stencil_points[None, :]
-            # product of each row, skipping the diagonal (where diff == 0).
-            np.fill_diagonal(diff, 1.0)
-            weights = 1.0 / diff.prod(axis = 1)
-
-            barycentric_weights[(j_s, j_o)] = weights
-            
-        return barycentric_weights
-
-    def find_stencil_bounds(self, y_interpolate):
+    def find_stencil_bounds_for_channel(self, y_interpolate):
         """
         This method performs a binary search on 'self.y_values' to find an
         index 'n' such that 'y_interpolate' lies between neighboring grid
@@ -123,11 +99,11 @@ class irregular_y_interpolation_weights():
 
             return -1 
         else:
-            low, high = int(Ny/2), Ny - 1
+            low, high = int(Ny/2), Ny - 1 
             while low <= high:
                 mid = (low + high) // 2
 
-                if self.y_values[mid - 1] < y_interpolate <= self.y_values[mid]:
+                if self.y_values[mid - 1] <= y_interpolate <= self.y_values[mid]:
                     return mid
                 elif y_interpolate > self.y_values[mid]:
                     low = mid + 1
@@ -135,8 +111,51 @@ class irregular_y_interpolation_weights():
                     high = mid - 1
                     
             return -1 
-        
-    def find_stencil_endpoints(self, n):   
+
+    def find_stencil_bounds_for_transition_bl(self, y_interpolate):
+        """
+        This method performs a binary search on 'self.y_values' to find an
+        index 'n' such that 'y_interpolate' lies between neighboring grid
+        points. The returned index is later used to determine stencil
+        bounds for interpolation.
+
+        Parameters
+        ----------
+        y_interpolate : float
+            The coordinate at which interpolation is requested.
+
+        Returns
+        -------
+        int
+            Index 'n' such that 'y_interpolate' lies between adjacent grid
+            points:
+            - self.y_values[n - 1] < y_interpolate <= self.y_values[n]
+            - self.y_values[0] == y_interpolate
+
+            Returns '-1' if no valid index is found.
+        """
+        Ny = len(self.y_values)
+        low, high = 0, Ny - 1
+        while low <= high:
+            mid = (low + high) // 2
+
+            if mid <= 0:
+                if y_interpolate <= self.y_values[0]:
+                    return 0
+                else:
+                    low = 1
+                    continue
+
+            if self.y_values[mid - 1] < y_interpolate <= self.y_values[mid]:
+                return mid
+            elif y_interpolate > self.y_values[mid]:
+                low = mid + 1
+            else:
+                high = mid - 1
+
+        return -1
+
+    def find_stencil_endpoints_for_channel(self, n):   
         """
         Given a reference index `n` in grid points, this method computes
         the start index 'j_s', end index 'j_e', and origin offset 'j_o'
@@ -169,6 +188,51 @@ class irregular_y_interpolation_weights():
         j_o = None
 
         if n <= ((len(self.y_values)/2) - 1):
+            j_o = max(math.ceil(self.lagrange_order/2) - n - 1, 0)
+            j_s = n - math.ceil(self.lagrange_order/2) + 1 + j_o
+        else:
+            j_o = min(len(self.y_values) - n - math.ceil(self.lagrange_order/2), 0)
+            j_s = n - math.floor(self.lagrange_order/2) + j_o
+
+        j_e = j_s + self.lagrange_order - 1
+
+        return (j_s,j_e,j_o)
+
+    def find_stencil_endpoints_for_transition_bl(self, n):   
+        """
+        Given a reference index `n` in grid points, this method computes
+        the start index 'j_s', end index 'j_e', and origin offset 'j_o'
+        defining a contiguous stencil of length 'lagrange_order' (q).
+
+        The stencil is centered about 'n' when possible. Near domain
+        boundaries, the stencil is shifted to remain within valid grid
+        bounds, and the origin offset 'j_o' records the displacement of
+        the reference index within the stencil.
+
+        Parameters
+        ----------
+        n : int
+            Reference grid index returned by the find_stencil_bounds function.
+
+        Returns
+        -------
+        tuple of int
+            (j_s, j_e, j_o) where:
+            - 'j_s' : int
+                Starting index of the stencil in grid points.
+            - 'j_e' : int
+                Ending index of the stencil in grid points.
+            - 'j_o' : int
+                Offset of the reference index within the stencil, such that
+                the reference point corresponds to stencil index 'j_o'.
+        """  
+        j_s = None
+        j_e = None
+        j_o = None
+
+        left_threshold = math.floor(self.lagrange_order / 2)
+
+        if n < left_threshold:
             j_o = max(math.ceil(self.lagrange_order/2) - n - 1, 0)
             j_s = n - math.ceil(self.lagrange_order/2) + 1 + j_o
         else:
@@ -224,11 +288,11 @@ class irregular_y_interpolation_weights():
         weights = numerators / denominator
 
         return weights
-    
+
     def get_stencil_weights(self, y_interpolate):
         n = self.find_stencil_bounds(y_interpolate)
 
-        j_s, j_e, j_o = self.find_stencil_endpoints(n)
+        j_s, j_e, j_o = self.find_stencil_endpoints(n) 
 
         stencil_points = self.y_values[j_s : j_e + 1]
         

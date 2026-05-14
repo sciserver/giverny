@@ -566,7 +566,7 @@ def get_time_index_shift(metadata, dataset_title, query_type, code_type):
     # TESTING. temporary for pyJHTDB channel flow because I updated the time index shift to be correct for giverny,
     # and remove code_type from function header.
     time_index_shift = metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
-    if dataset_title == 'channel' and code_type == 'pyJHTDB':
+    if dataset_title in ['channel', 'transition_bl'] and code_type == 'pyJHTDB':
         time_index_shift -= 1
     return time_index_shift
     
@@ -621,7 +621,7 @@ def get_giverny_datasets():
     #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
     return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
-            'diurnal_windfarm', 'nbl_windfarm', 'channel']
+            'diurnal_windfarm', 'nbl_windfarm', 'channel', 'channel5200', 'transition_bl']
 
 def get_giverny_datasets_pyjhtdb():
     """
