@@ -11,10 +11,24 @@
       "cardinality": 1
     },
     {
+      "code": "meanpressure",
+      "name": "Mean Pressure",
+      "description": null,
+      "component_codes": ["\u03BCp"],
+      "cardinality": 1
+    },
+    {
       "code": "temperature",
       "name": "Temperature",
       "description": null,
       "component_codes": ["\u03b8"],
+      "cardinality": 1
+    },
+    {
+      "code": "meantemperature",
+      "name": "Mean Temperature",
+      "description": null,
+      "component_codes": ["\u03BC\u03b8"],
       "cardinality": 1
     },
     {
@@ -53,6 +67,13 @@
       "cardinality": 3
     },
     {
+      "code": "meanvelocity",
+      "name": "Mean Velocity",
+      "description": null,
+      "component_codes": ["\u03BCux", "\u03BCuy", "\u03BCuz"],
+      "cardinality": 3
+    },
+    {
       "code": "vectorpotential",
       "name": "Vector Potential",
       "description": null,
@@ -79,6 +100,13 @@
       "description": null,
       "component_codes": ["x", "y", "z"],
       "cardinality": 3
+    },
+    {
+      "code": "reynoldsstresses",
+      "name": "Reynolds Stresses",
+      "description": null,
+      "component_codes": ["uu", "uv", "uw", "vv", "vw", "ww"],
+      "cardinality": 6
     }
   ],
   "spatial_operators": [
@@ -240,8 +268,8 @@
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -3271,8 +3299,8 @@
       "storage": {
         "filepath": "/home/idies/workspace/turbulence-ceph-staging/sciserver-turbulence/transition_bl/transition_bl.zarr",
         "chunks": [
-          83,
-          56,
+          64,
+          64,
           64
         ]
       },
@@ -3284,8 +3312,8 @@
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -3330,9 +3358,7 @@
               "operator": "field",
               "methods": [
                 "none",
-                "lag4",
-                "lag6",
-                "lag8"
+                "lag4"
               ]
             },
             {
@@ -3381,9 +3407,7 @@
               "operator": "field",
               "methods": [
                 "none",
-                "lag4",
-                "lag6",
-                "lag8"
+                "lag4"
               ]
             },
             {
@@ -3601,6 +3625,77 @@
           ]
         },
         {
+          "code": "meanvelocity",
+          "name": "Mean Velocity",
+          "isPersistent": true,
+          "tlims": {
+            "lower": "0",
+            "upper": "0",
+            "n": 1,
+            "isPeriodic": false,
+            "isDiscrete": false,
+            "timeIndexShift": {
+              "getcutout": -1,
+              "getdata": 0
+            }
+          },
+          "offsets": [
+            {
+              "code": "meanvelocity",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
           "code": "pressure",
           "name": "Pressure",
           "isPersistent": true,
@@ -3653,6 +3748,68 @@
           ]
         },
         {
+          "code": "meanpressure",
+          "name": "Mean Pressure",
+          "isPersistent": true,
+          "tlims": {
+            "lower": "0",
+            "upper": "0",
+            "n": 1,
+            "isPeriodic": false,
+            "isDiscrete": false,
+            "timeIndexShift": {
+              "getcutout": -1,
+              "getdata": 0
+            }
+          },
+          "offsets": [
+            {
+              "code": "meanpressure",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
           "code": "temperature",
           "name": "Temperature",
           "isPersistent": true,
@@ -3702,6 +3859,68 @@
           "temporalMethods": [
             "none",
             "pchip"
+          ]
+        },
+        {
+          "code": "meantemperature",
+          "name": "Mean Temperature",
+          "isPersistent": true,
+          "tlims": {
+            "lower": "0",
+            "upper": "0",
+            "n": 1,
+            "isPeriodic": false,
+            "isDiscrete": false,
+            "timeIndexShift": {
+              "getcutout": -1,
+              "getdata": 0
+            }
+          },
+          "offsets": [
+            {
+              "code": "meantemperature",
+              "coordinate": [
+                0,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
           ]
         },
         {
@@ -3794,6 +4013,77 @@
               "code": "force",
               "coordinate": [
                 12320.4375,
+                0,
+                2.5
+              ]
+            }
+          ],
+          "spatialOperatorMethods": [
+            {
+              "operator": "field",
+              "methods": [
+                "none",
+                "lag4",
+                "lag6",
+                "lag8",
+                "m1q4",
+                "m2q8"
+              ]
+            },
+            {
+              "operator": "gradient",
+              "methods": [
+                "m1q4",
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            },
+            {
+              "operator": "hessian",
+              "methods": [
+                "m2q8",
+                "fd4noint",
+                "fd6noint",
+                "fd8noint"
+              ]
+            },
+            {
+              "operator": "laplacian",
+              "methods": [
+                "fd4noint",
+                "fd6noint",
+                "fd8noint",
+                "fd4lag4"
+              ]
+            }
+          ],
+          "temporalMethods": [
+            "none"
+          ]
+        },
+        {
+          "code": "reynoldsstresses",
+          "name": "Reynolds Stresses",
+          "isPersistent": true,
+          "tlims": {
+            "lower": "0",
+            "upper": "0",
+            "n": 1,
+            "isPeriodic": false,
+            "isDiscrete": false,
+            "timeIndexShift": {
+              "getcutout": -1,
+              "getdata": 0
+            }
+          },
+          "offsets": [
+            {
+              "code": "reynoldsstresses",
+              "coordinate": [
+                0,
                 0,
                 2.5
               ]

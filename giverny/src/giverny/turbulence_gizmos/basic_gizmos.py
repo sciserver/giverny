@@ -41,13 +41,8 @@ def load_json_metadata(url):
     """
     load the json simulation metadata for user input verification.
     """
-    if url.startswith('http://') or url.startswith('https://'):
-        response = requests.get(url)
-        response.raise_for_status()
-        metadata_json = response.json()
-    else:
-        with open(url, 'r') as metadata_file:
-            metadata_json = json.load(metadata_file)
+    with open(url, 'r') as metadata_file:
+        metadata_json = json.load(metadata_file)
     
     # validate the json metadata file.
     try:
@@ -109,14 +104,17 @@ def check_variable(metadata, variable, dataset_title, query_type):
         
     return
 
-def check_timepoint(metadata, timepoint, dataset_title, query_type, max_num_timepoints = 1):
+def check_timepoint(metadata, timepoint, dataset_title, variable, query_type, max_num_timepoints = 1):
     """
     check that timepoint is a valid timepoint for the dataset.
     """
-    # list of datasets which are low-resolution and thus the timepoint is specified as a discrete time index.
-    time_index_datasets = [dataset for dataset in metadata['datasets'] if metadata['datasets'][dataset]['simulation']['tlims']['isDiscrete']]
-    
-    time_metadata = metadata['datasets'][dataset_title]['simulation']['tlims']
+    time_metadata = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
+
+    # determine if the dataset and variable are low-resolution and thus the timepoint is specified as a discrete time index.
+    time_index_dataset = time_metadata['isDiscrete']
     time_lower = np.float64(time_metadata['lower'])
     time_upper = np.float64(time_metadata['upper'])
     time_steps = np.int64(time_metadata['n'])
@@ -141,7 +139,7 @@ def check_timepoint(metadata, timepoint, dataset_title, query_type, max_num_time
             raise Exception(f"'t_range', [{timepoint[0]}, {timepoint[1]}], is not a valid time range for '{dataset_title}': all times must be in the inclusive range of " +
                             f'[{valid_timepoints[0]}, {valid_timepoints[-1]}]')
     elif query_type == 'getdata':
-        if dataset_title in time_index_datasets:
+        if time_index_dataset:
             valid_timepoints = range(1, time_steps + 1)
         
             # handles checking datasets with time indices.
@@ -322,14 +320,17 @@ def check_temporal_method(metadata, tint, dataset_title, variable):
         
     return
 
-def check_option_parameter(metadata, option, dataset_title, timepoint_start):
+def check_option_parameter(metadata, option, dataset_title, timepoint_start, variable):
     """
     check that the 'option' parameter used by getPosition was correctly specified.
     """
     timepoint_end, delta_t = option
     
-    # list of datasets which are low-resolution and thus the timepoint is specified as a discrete time index.
-    time_index_datasets = [dataset for dataset in metadata['datasets'] if metadata['datasets'][dataset]['simulation']['tlims']['isDiscrete']]
+    # determine if the dataset and variable are low-resolution and thus the timepoint is specified as a discrete time index.
+    time_index_dataset = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])['isDiscrete']
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
     
     if timepoint_end == -999.9 or delta_t == -999.9:
         focus_text = '\033[43m'
@@ -338,8 +339,8 @@ def check_option_parameter(metadata, option, dataset_title, timepoint_start):
                         f"result = getData(dataset, variable, time, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
     elif (timepoint_start + delta_t) > timepoint_end and not math.isclose(timepoint_start + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
         raise Exception(f"'time' + 'delta_t' is greater than 'time_end': {timepoint_start} + {delta_t} = {timepoint_start + delta_t} > {timepoint_end}")
-    elif dataset_title in time_index_datasets and delta_t != int(delta_t):
-        raise Exception(f"delta_t must be an integer for discrete time datasets:\n{time_index_datasets}")
+    elif time_index_dataset and delta_t != int(delta_t):
+        raise Exception(f"delta_t must be an integer for discrete time dataset variables")
         
     return
 
@@ -542,11 +543,15 @@ def get_nonperiodic_and_regular_spacing_spatial_axes(metadata, dataset_title, va
     
     return nonperiodic_axes
 
-def get_time_dt(metadata, dataset_title, query_type):
+def get_time_dt(metadata, dataset_title, variable, query_type):
     """
     dt between timepoints.
     """
-    time_metadata = metadata['datasets'][dataset_title]['simulation']['tlims']
+    time_metadata = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
+    
     time_lower = np.float64(time_metadata['lower'])
     time_upper = np.float64(time_metadata['upper'])
     time_steps = np.int64(time_metadata['n'])
@@ -555,7 +560,7 @@ def get_time_dt(metadata, dataset_title, query_type):
             'getdata': 1.0 if time_steps == 1 else (time_upper - time_lower) / (time_steps - 1)
            }[query_type]
     
-def get_time_index_shift(metadata, dataset_title, query_type, code_type):
+def get_time_index_shift(metadata, dataset_title, variable, query_type):
     """
     addition to map the time to a correct time index in the filenames. e.g. the first time index in the 'sabl2048high' dataset is 0; this time index
     is disallowed for queries to handle 'pchip' time interpolation queries. so, time 0 specified by the user corresponds
@@ -563,39 +568,25 @@ def get_time_index_shift(metadata, dataset_title, query_type, code_type):
     and getdata is used for converting low-resolution datasets time indices to 0-based time indices and also as a placeholder value for
     the pyJHTDB datasets.
     """
-    # TESTING. temporary for pyJHTDB channel flow because I updated the time index shift to be correct for giverny,
-    # and remove code_type from function header.
-    time_index_shift = metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
-    if dataset_title in ['channel', 'transition_bl'] and code_type == 'pyJHTDB':
-        time_index_shift -= 1
-    return time_index_shift
-    
-    # TESTING. put just this back and delete above.
-    #return metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type]
+    return {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])['timeIndexShift'][query_type]
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
 
-def get_time_index_from_timepoint(metadata, dataset_title, timepoint, tint, query_type, code_type):
+def get_time_index_from_timepoint(metadata, dataset_title, timepoint, variable, tint, query_type):
     """
     get the corresponding time index for this dataset from the specified timepoint. handles datasets that allow 'pchip' time interpolation, which
     requires 2 timepoints worth of data on either side of the timepoint specified by the user.
         - returns timepoint if the dataset is processed by the legacy pyJHTDB code because the timepoint to time index conversion is handled in pyJHTDB.
     """
-    # TESTING.
-    if code_type == 'giverny':
-        giverny_datasets = get_giverny_datasets()
-    else:
-        giverny_datasets = get_giverny_datasets_pyjhtdb()
-    # TESTING. uncomment this after deleting above.
-    # giverny_datasets = get_giverny_datasets()
+    giverny_datasets = get_giverny_datasets()
     
     # addition to map the time to a correct time index in the filename.
-    # time_index_shift = get_time_index_shift(metadata, dataset_title, query_type)
-    # TESTING. temporary for pyJHTDB channel flow because I updated the time index shift to be correct for giverny,
-    # and remove code_type from function header.
-    time_index_shift = get_time_index_shift(metadata, dataset_title, query_type, code_type)
+    time_index_shift = get_time_index_shift(metadata, dataset_title, variable, query_type)
     
     if dataset_title in giverny_datasets:
         # dt between timepoints.
-        dt = get_time_dt(metadata, dataset_title, query_type)
+        dt = get_time_dt(metadata, dataset_title, variable, query_type)
 
         # convert the timepoint to a time index.
         time_index = (timepoint / dt) + time_index_shift
@@ -620,14 +611,6 @@ def get_giverny_datasets():
     # return ['isotropic1024fine', 'isotropic1024coarse', 'mhd1024', 'isotropic8192', 'isotropic32768',
     #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
-    return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
-            'diurnal_windfarm', 'nbl_windfarm', 'channel', 'channel5200', 'transition_bl']
-
-def get_giverny_datasets_pyjhtdb():
-    """
-    get the dataset titles that are processed by the giverny code (this backend code, *not* the legacy pyJHTDB code).
-    """
-    # TESTING, for pyJHTDB only.
     return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
             'diurnal_windfarm', 'nbl_windfarm']
 

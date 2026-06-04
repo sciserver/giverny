@@ -199,6 +199,8 @@ class PhysicalVariable(Feature):
     isPersistent: bool
     # optional Storage settings.
     storage: Optional[Storage] = None
+    # optional TimeDimension settings.
+    tlims: Optional[TimeDimension] = None
     # optional SpaceDimension settings.
     xlims: Optional[SpaceDimension] = None
     ylims: Optional[SpaceDimension] = None

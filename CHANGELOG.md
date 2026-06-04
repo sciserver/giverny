@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.5.3] - 2026-06-04
+
+### Added
+- 'meanvelocity', 'meanpressure', 'meantemperature', and 'reynoldsstresses' variables added
+  to the nbl_windfarm dataset.
+
 ## [3.5.2] - 2026-01-09
 
 ### Changed
