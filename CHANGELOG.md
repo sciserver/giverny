@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 - 'meanvelocity', 'meanpressure', 'meantemperature', and 'reynoldsstresses' variables added
   to the nbl_windfarm dataset.
+  
+### Fixed
+- corrected the "upper" tlims for 'diurnal_windfarm' and 'nbl_windfarm', as they were incorrectly 
+  0.5 seconds too high, which caused the dt (time step) calculation to be slightly off.
 
 ## [3.5.2] - 2026-01-09
 
