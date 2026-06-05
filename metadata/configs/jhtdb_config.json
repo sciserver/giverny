@@ -3503,7 +3503,7 @@
       "simulation": {
         "tlims": {
           "lower": "0",
-          "upper": "3598.5",
+          "upper": "3598",
           "n": 7197,
           "isPeriodic": false,
           "isDiscrete": false,
@@ -3918,7 +3918,7 @@
       "simulation": {
         "tlims": {
           "lower": "0",
-          "upper": "86398.5",
+          "upper": "86398",
           "n": 172797,
           "isPeriodic": false,
           "isDiscrete": false,
