@@ -107,11 +107,11 @@ def check_variable(metadata, variable, dataset_title, query_type):
 def check_timepoint(metadata, timepoint, dataset_title, variable, query_type, max_num_timepoints = 1):
     """
     check that timepoint is a valid timepoint for the dataset.
-    """
+    """    
     time_metadata = {
         variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
-    }[variable]
+    }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims'])
 
     # determine if the dataset and variable are low-resolution and thus the timepoint is specified as a discrete time index.
     time_index_dataset = time_metadata['isDiscrete']
@@ -330,7 +330,7 @@ def check_option_parameter(metadata, option, dataset_title, timepoint_start, var
     time_index_dataset = {
         variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])['isDiscrete']
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
-    }[variable]
+    }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims']['isDiscrete'])
     
     if timepoint_end == -999.9 or delta_t == -999.9:
         focus_text = '\033[43m'
@@ -442,11 +442,16 @@ def check_strides(strides):
 """
 mapping gizmos.
 """
-def get_dataset_filepath(metadata, dataset_title):
+def get_dataset_filepath(metadata, dataset_title, variable):
     """
     get the zarr filepath of the dataset.
     """
-    return metadata['datasets'][dataset_title]['storage']['filepath']
+    storage_metadata = {
+        variable_info['code']: variable_info.get('storage', metadata['datasets'][dataset_title]['storage'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }
+    
+    return storage_metadata[variable]['filepath']
 
 def get_dataset_resolution(metadata, dataset_title, variable):
     """
@@ -550,15 +555,22 @@ def get_time_dt(metadata, dataset_title, variable, query_type):
     time_metadata = {
         variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
-    }[variable]
+    }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims'])
     
     time_lower = np.float64(time_metadata['lower'])
     time_upper = np.float64(time_metadata['upper'])
     time_steps = np.int64(time_metadata['n'])
     
-    return {'getcutout': 1,
-            'getdata': 1.0 if time_steps == 1 else (time_upper - time_lower) / (time_steps - 1)
-           }[query_type]
+    if 'dt' in time_metadata:
+        dt = {'getcutout': 1,
+              'getdata': np.float64(time_metadata['dt']),
+             }[query_type]
+    else:
+        dt = {'getcutout': 1,
+              'getdata': 1.0 if time_steps == 1 else (time_upper - time_lower) / (time_steps - 1)
+             }[query_type]
+    
+    return dt
     
 def get_time_index_shift(metadata, dataset_title, variable, query_type):
     """
@@ -571,7 +583,7 @@ def get_time_index_shift(metadata, dataset_title, variable, query_type):
     return {
         variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])['timeIndexShift'][query_type]
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
-    }[variable]
+    }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims']['timeIndexShift'][query_type])
 
 def get_time_index_from_timepoint(metadata, dataset_title, timepoint, variable, tint, query_type):
     """
@@ -589,7 +601,19 @@ def get_time_index_from_timepoint(metadata, dataset_title, timepoint, variable, 
         dt = get_time_dt(metadata, dataset_title, variable, query_type)
 
         # convert the timepoint to a time index.
-        time_index = (timepoint / dt) + time_index_shift
+        if dataset_title == 'diurnal_windfarm' and variable in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+            # these are 10-minute averages that are offset at the lower boundary and so need special handling.
+            time_metadata = {
+                variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+                for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+            }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims'])
+            time_lower = np.float64(time_metadata['lower'])
+            
+            time_index = ((timepoint - time_lower) / dt) + time_index_shift
+        else:
+            # handles all other variables of all datasets.
+            time_index = (timepoint / dt) + time_index_shift
+        
         # round the time index the nearest time index grid point if 'none' time interpolation was specified.
         if tint == 'none':
             time_index = np.floor(time_index + 0.5).astype(int)

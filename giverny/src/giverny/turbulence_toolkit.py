@@ -356,6 +356,13 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     # retrieve the list of datasets processed by the giverny code.
     giverny_datasets = get_giverny_datasets()
     
+    # get the time metadata for this variable because the minimum time limit offset is needed for pchip interpolation methods.
+    time_metadata = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[var]
+    time_lower = np.float64(time_metadata['lower'])
+    
     # make sure points is C-ordered.
     if not points.flags.c_contiguous:
         points = np.ascontiguousarray(points)
@@ -439,7 +446,20 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             timepoints = [timepoint]
             if temporal_method == 'pchip':
                 floor_timepoint = math.floor(timepoint)
-                timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+                
+                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                    if timepoint < 2 or (timepoint >= 142 and timepoint < 143):
+                        # lower boundary and upper boundary times for linear interpolation.
+                        timepoints = [floor_timepoint, floor_timepoint + 1]
+                    elif timepoint == 143:
+                        # special handling of the exact upper time limit.
+                        timepoints = [floor_timepoint - 1, floor_timepoint]
+                    else:
+                        # standard pchip interpolation timepoints.
+                        timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+                else:
+                    # standard pchip interpolation timepoints.
+                    timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
                 
             # results and their corresponding specified order.
             result = []
@@ -513,9 +533,18 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                 time_index_shift = get_time_index_shift(metadata, dataset_title, var, query_type)
                 # convert the timepoints (time indices) back to real time.
                 times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
-
-                # pchip interpolation.
-                result = pchip(timepoint_original, times, result, dt)
+                
+                # check if linear interpolation is needed for the diurnal windfarm dataset.
+                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                    if timepoint < 2 or timepoint >= 142:
+                        # linear interpolation at the lower boundary (time < the 2nd stored 10-minute interval) and the upper boundary (time >= 2nd to last stored 10-minute interval).
+                        result = linear_pchip(timepoint_original, time_lower, times, result)
+                    else:
+                        # pchip interpolation
+                        result = pchip(timepoint_original, time_lower, times, result, dt)
+                else:
+                    # pchip interpolation.
+                    result = pchip(timepoint_original, time_lower, times, result, dt)
 
             # stack all of the results together.
             result = np.vstack(result)
@@ -632,10 +661,27 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     else:
         return results, timepoint_range_original
 
-def pchip(time, times, results, dt):
+def linear_pchip(time, time_lower, times, results):
+    """
+    linear temporal interpolation.
+    """
+    # adjust for the minimum time offset for this dataset and variable.
+    time -= time_lower
+    
+    time1, time2 = times
+    result1, result2 = results
+    
+    interpolated_results = result1 + (((result2 - result1) * (time - time1)) / (time2 - time1))
+    
+    return interpolated_results
+    
+def pchip(time, time_lower, times, results, dt):
     """
     pchip temporal interpolation.
     """
+    # adjust for the minimum time offset for this dataset and variable.
+    time -= time_lower
+    
     # separate times and results for each time index.
     time0, time1, time2, time3 = times
     result0, result1, result2, result3 = results

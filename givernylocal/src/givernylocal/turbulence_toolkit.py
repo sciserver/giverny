@@ -230,7 +230,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_range_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_range_original, dataset_title, var, query_type)
     # check that the user-input x-, y-, and z-axis ranges are all specified correctly as [minimum, maximum] integer values.
     check_axes_ranges(metadata, axes_ranges_original, dataset_title, var)
     # check that the user-input strides are all positive integers.
@@ -239,7 +239,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     # pre-processing steps.
     # -----
     # convert the original input timepoint to the correct time index.
-    timepoint_range = get_time_index_from_timepoint(metadata, dataset_title, timepoint_range_original, tint = 'none', query_type = query_type)
+    timepoint_range = get_time_index_from_timepoint(metadata, dataset_title, timepoint_range_original, var, tint = 'none', query_type = query_type)
     
     # set var_offsets to var for getCutout. 'velocity' is handled differently in getData for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
@@ -427,7 +427,7 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # check how many chunks the queried points intersect.
     # check_points_chunks_intersection(metadata, points, dataset_title, var)
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
     # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.
     check_spatial_operator(metadata, spatial_operator, dataset_title, var)
     # check that the user-input spatial interpolation (spatial_method) is a valid spatial interpolation method.
@@ -436,16 +436,16 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     check_temporal_method(metadata, temporal_method, dataset_title, var)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
     if var == 'position' or option != [-999.9, -999.9]:
-        check_option_parameter(metadata, option, dataset_title, timepoint_original)
+        check_option_parameter(metadata, option, dataset_title, timepoint_original, var)
         
         # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
         timepoint_end = option[0]
-        check_timepoint(metadata, timepoint_end, dataset_title, query_type)
+        check_timepoint(metadata, timepoint_end, dataset_title, var, query_type)
     
     # pre-processing steps.
     # -----
     # convert the original input timepoint to the correct time index.
-    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
+    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
     
     # set var_offsets to var. 'velocity' is handled differently for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
@@ -593,7 +593,7 @@ def getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, 
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input times are valid times for the dataset.
-    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    check_timepoint(metadata, times, dataset_title, var, query_type, max_num_timepoints = c['max_data_points'])
     # check that the user-input turbine numbers are valid turbines.
     turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
     
@@ -741,7 +741,7 @@ def getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, va
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input times are valid times for the dataset.
-    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    check_timepoint(metadata, times, dataset_title, var, query_type, max_num_timepoints = c['max_data_points'])
     # check that the user-input turbine numbers are valid turbines.
     turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
     # check that the user-input blade numbers are valid blades.
