@@ -135,7 +135,7 @@ def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
     #       f'&filter_width={filter_width}'
     
     # TESTING.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/cutout/api/local?token={auth_token}' \
+    url = f'https://web.idies.jhu.edu/turbsvc-testing/cutout/api/local?token={auth_token}' \
           f'&function={var}&dataset={dataset_title}' \
           f'&xs={axes_ranges_original[0, 0]}&xe={axes_ranges_original[0, 1]}' \
           f'&ys={axes_ranges_original[1, 0]}&ye={axes_ranges_original[1, 1]}' \
@@ -348,7 +348,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     #       f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
 
     # TESTING.
-    url = f'https://web.idies.jhu.edu/turbulence-svc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    url = f'https://web.idies.jhu.edu/turbsvc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
     
@@ -547,7 +547,7 @@ def getTurbineData(cube, turbine_numbers, var, original_times,
         
         # TESTING.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbulence-svc-testing/turbine?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbsvc-testing/turbine?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000
@@ -703,7 +703,7 @@ def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blad
         
         # TESTING.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbulence-svc-testing/blade?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbsvc-testing/blade?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000
