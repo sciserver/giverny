@@ -601,7 +601,7 @@ def get_time_index_from_timepoint(metadata, dataset_title, timepoint, variable, 
         dt = get_time_dt(metadata, dataset_title, variable, query_type)
 
         # convert the timepoint to a time index.
-        if dataset_title == 'diurnal_windfarm' and variable in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+        if dataset_title == 'diurnal_windfarm' and query_type == 'getdata' and variable in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
             # these are 10-minute averages that are offset at the lower boundary and so need special handling.
             time_metadata = {
                 variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
