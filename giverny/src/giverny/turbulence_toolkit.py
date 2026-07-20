@@ -287,7 +287,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_range_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_range_original, dataset_title, var, query_type)
     # check that the user-input x-, y-, and z-axis ranges are all specified correctly as [minimum, maximum] integer values.
     check_axes_ranges(metadata, axes_ranges_original, dataset_title, var)
     # check that the user-input strides are all positive integers.
@@ -301,7 +301,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     axes_ranges = convert_to_0_based_ranges(metadata, axes_ranges_original, dataset_title, var)
     
     # convert the original input timepoint to the correct time index.
-    timepoint_range = get_time_index_from_timepoint(metadata, dataset_title, timepoint_range_original, tint = 'none', query_type = query_type)
+    timepoint_range = get_time_index_from_timepoint(metadata, dataset_title, timepoint_range_original, var, tint = 'none', query_type = query_type)
     
     # set var_offsets to var for getCutout. 'velocity' is handled differently in getData for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
@@ -355,6 +355,13 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     
     # retrieve the list of datasets processed by the giverny code.
     giverny_datasets = get_giverny_datasets()
+    
+    # get the time metadata for this variable because the minimum time limit offset is needed for pchip interpolation methods.
+    time_metadata = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[var]
+    time_lower = np.float64(time_metadata['lower'])
     
     # make sure points is C-ordered.
     if not points.flags.c_contiguous:
@@ -431,15 +438,28 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         """
         for timepoint_original in timepoint_range:
             # check that the user-input timepoint is a valid timepoint for the dataset.
-            check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+            check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
             # convert the original input timepoint to the correct time index.
-            timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
+            timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
 
             # update all the timepoints that need to be read.
             timepoints = [timepoint]
             if temporal_method == 'pchip':
                 floor_timepoint = math.floor(timepoint)
-                timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+                
+                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                    if timepoint < 2 or (timepoint >= 142 and timepoint < 143):
+                        # lower boundary and upper boundary times for linear interpolation.
+                        timepoints = [floor_timepoint, floor_timepoint + 1]
+                    elif timepoint == 143:
+                        # special handling of the exact upper time limit.
+                        timepoints = [floor_timepoint - 1, floor_timepoint]
+                    else:
+                        # standard pchip interpolation timepoints.
+                        timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
+                else:
+                    # standard pchip interpolation timepoints.
+                    timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
                 
             # results and their corresponding specified order.
             result = []
@@ -508,14 +528,23 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             
             if temporal_method == 'pchip':
                 # dt between timepoints.
-                dt = get_time_dt(metadata, dataset_title, query_type)
+                dt = get_time_dt(metadata, dataset_title, var, query_type)
                 # addition to map the time index back to the real time. 
-                time_index_shift = get_time_index_shift(metadata, dataset_title, query_type)
+                time_index_shift = get_time_index_shift(metadata, dataset_title, var, query_type)
                 # convert the timepoints (time indices) back to real time.
                 times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
-
-                # pchip interpolation.
-                result = pchip(timepoint_original, times, result, dt)
+                
+                # check if linear interpolation is needed for the diurnal windfarm dataset.
+                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                    if timepoint < 2 or timepoint >= 142:
+                        # linear interpolation at the lower boundary (time < the 2nd stored 10-minute interval) and the upper boundary (time >= 2nd to last stored 10-minute interval).
+                        result = linear_pchip(timepoint_original, time_lower, times, result)
+                    else:
+                        # pchip interpolation
+                        result = pchip(timepoint_original, time_lower, times, result, dt)
+                else:
+                    # pchip interpolation.
+                    result = pchip(timepoint_original, time_lower, times, result, dt)
 
             # stack all of the results together.
             result = np.vstack(result)
@@ -549,9 +578,9 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         
         for timepoint_original in timepoint_range:
             # check that the user-input timepoint is a valid timepoint for the dataset.
-            check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+            check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
             # convert the original input timepoint to the correct time index.
-            timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
+            timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
 
             # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
             # so that the array is filled with the missing placeholder value (-999.9).
@@ -632,10 +661,27 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     else:
         return results, timepoint_range_original
 
-def pchip(time, times, results, dt):
+def linear_pchip(time, time_lower, times, results):
+    """
+    linear temporal interpolation.
+    """
+    # adjust for the minimum time offset for this dataset and variable.
+    time -= time_lower
+    
+    time1, time2 = times
+    result1, result2 = results
+    
+    interpolated_results = result1 + (((result2 - result1) * (time - time1)) / (time2 - time1))
+    
+    return interpolated_results
+    
+def pchip(time, time_lower, times, results, dt):
     """
     pchip temporal interpolation.
     """
+    # adjust for the minimum time offset for this dataset and variable.
+    time -= time_lower
+    
     # separate times and results for each time index.
     time0, time1, time2, time3 = times
     result0, result1, result2, result3 = results
@@ -670,7 +716,7 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # check how many chunks the queried points intersect.
     # check_points_chunks_intersection(metadata, points, dataset_title, var)
     # check that the user-input timepoint is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_original, dataset_title, query_type)
+    check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
     # check that the user-input interpolation spatial operator (spatial_operator) is a valid interpolation operator.
     check_spatial_operator(metadata, spatial_operator, dataset_title, var)
     # check that the user-input spatial interpolation (spatial_method) is a valid spatial interpolation method.
@@ -679,16 +725,16 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     check_temporal_method(metadata, temporal_method, dataset_title, var)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
     if var == 'position' or option != [-999.9, -999.9]:
-        check_option_parameter(metadata, option, dataset_title, timepoint_original)
+        check_option_parameter(metadata, option, dataset_title, timepoint_original, var)
         
         # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
         timepoint_end = option[0]
-        check_timepoint(metadata, timepoint_end, dataset_title, query_type)
+        check_timepoint(metadata, timepoint_end, dataset_title, var, query_type)
     
     # pre-processing steps.
     # -----
     # convert the original input timepoint to the correct time index.
-    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, temporal_method, query_type)
+    timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
     
     # set var_offsets to var. 'velocity' is handled differently for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets.
     if dataset_title in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high'] and var == 'velocity':
@@ -823,7 +869,7 @@ def getTurbineData_housekeeping_procedures(query_type, metadata, dataset_title, 
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input times are valid times for the dataset.
-    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    check_timepoint(metadata, times, dataset_title, var, query_type, max_num_timepoints = c['max_data_points'])
     # check that the user-input turbine numbers are valid turbines.
     turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
     
@@ -949,7 +995,7 @@ def getBladeData_housekeeping_procedures(query_type, metadata, dataset_title, va
     # check that the user-input variable is a valid variable name.
     check_variable(metadata, var, dataset_title, query_type)
     # check that the user-input times are valid times for the dataset.
-    check_timepoint(metadata, times, dataset_title, query_type, max_num_timepoints = c['max_data_points'])
+    check_timepoint(metadata, times, dataset_title, var, query_type, max_num_timepoints = c['max_data_points'])
     # check that the user-input turbine numbers are valid turbines.
     turbine_numbers = check_turbine_numbers(metadata, dataset_title, turbine_numbers)
     # check that the user-input blade numbers are valid blades.

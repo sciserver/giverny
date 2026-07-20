@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.6.1] - 2026-07-17
+
+### Added
+- 'meanvelocity', 'meanpressure', 'meantemperature', and 'reynoldsstresses' variables added to
+  the nbl_windfarm dataset.
+- 'meanvelocity', 'meanpressure', 'meantemperature', 'heatflux', 'tempvariance' and 'reynoldsstresses' variables
+  added to the diurnal_windfarm dataset.
+- optional 'dt' (time step) parameter to 'tlims' in the metadata.
+  
+### Changed
+- updated 'tlims' to be an optional parameter per variable.
+  
+### Fixed
+- corrected the "upper" tlims for 'diurnal_windfarm' and 'nbl_windfarm', as they were incorrectly 
+  0.5 seconds too high, which caused the dt (time step) calculation to be slightly off.
+
 ## [3.5.2] - 2026-01-09
 
 ### Changed

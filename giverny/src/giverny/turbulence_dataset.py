@@ -177,7 +177,18 @@ class turb_dataset():
         self.var = var
         self.var_offsets = var_offsets
         # convert the timepoint to [hour, minute, simulation number] for the windfarm datasets.
-        if self.dataset_title in ['diurnal_windfarm', 'nbl_windfarm']:
+        if self.dataset_title == 'diurnal_windfarm':
+            if self.var in ['force', 'pressure', 'sgsviscosity', 'soiltemperature', 'temperature', 'velocity']:
+                simulation_num = timepoint % 120
+                minute = math.floor(timepoint / 120) % 60
+                hour = math.floor((timepoint / 120) / 60)
+            elif self.var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                simulation_num = 0
+                minute = timepoint % 6
+                hour = math.floor(timepoint / 6)
+            
+            self.timepoint = [hour, minute, simulation_num]
+        elif self.dataset_title == 'nbl_windfarm':
             simulation_num = timepoint % 120
             minute = math.floor(timepoint / 120) % 60
             hour = math.floor((timepoint / 120) / 60)
@@ -229,7 +240,7 @@ class turb_dataset():
                 self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.nonperiodic_regular_axes]
             
             # open the zarr store for reading.
-            self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title)
+            self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, self.var)
             self.zarr_store = self.open_zarr_file([self.zarr_filepath, self.var, self.dt])
     
     """

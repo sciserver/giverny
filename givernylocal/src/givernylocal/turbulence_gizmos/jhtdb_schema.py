@@ -153,6 +153,8 @@ class TimeDimension(Dimension):
     """
     time dimension specific settings.
     """
+    # explicitly defined time step for the data stored in zarr.
+    dt: Optional[float] = None
     # whether the dimension is stored as discrete time steps.
     isDiscrete: bool
     # shift applied to the user-specified time index. differs based on query type and whether or not
@@ -199,6 +201,8 @@ class PhysicalVariable(Feature):
     isPersistent: bool
     # optional Storage settings.
     storage: Optional[Storage] = None
+    # optional TimeDimension settings.
+    tlims: Optional[TimeDimension] = None
     # optional SpaceDimension settings.
     xlims: Optional[SpaceDimension] = None
     ylims: Optional[SpaceDimension] = None
