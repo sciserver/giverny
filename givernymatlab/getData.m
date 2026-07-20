@@ -55,7 +55,13 @@ function result = reshapeAndPermute(data, var_original, spatial_operator_origina
         case 'magneticfield'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);      
         case 'force'
-            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);                
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'meanvelocity'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'heatflux'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [3, 9, 18, 3]);
+        case 'reynoldsstresses'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [6, 18, 36, 6]);
         case 'pressure'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
         case 'soiltemperature'
@@ -67,7 +73,13 @@ function result = reshapeAndPermute(data, var_original, spatial_operator_origina
         case 'sgsviscosity'
             result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
         case 'density'
-            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);           
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'meanpressure'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'meantemperature'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
+        case 'tempvariance'
+            result = reshapeByOperator(data, spatial_operator_original, numPoints, numTimes, [1, 3, 6, NaN]);
         
         case 'position'
             if strcmp(spatial_operator_original, 'field')

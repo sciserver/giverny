@@ -366,7 +366,7 @@
       "default_coordinates": [
         {
           "coordinate": "t",
-          "value": 1.0
+          "value": 600.0
         },
         {
           "coordinate": "x",

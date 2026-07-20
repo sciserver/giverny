@@ -124,18 +124,7 @@ def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
         tracemem_used_start = tracemalloc.get_tracemalloc_memory() / (1024**3)
     
     # request url.
-    # TESTING. uncomment.
-    # url = f'https://web.idies.jhu.edu/turbulence-svc/cutout/api/local?token={auth_token}' \
-    #       f'&function={var}&dataset={dataset_title}' \
-    #       f'&xs={axes_ranges_original[0, 0]}&xe={axes_ranges_original[0, 1]}' \
-    #       f'&ys={axes_ranges_original[1, 0]}&ye={axes_ranges_original[1, 1]}' \
-    #       f'&zs={axes_ranges_original[2, 0]}&ze={axes_ranges_original[2, 1]}' \
-    #       f'&ts={timepoint_range_original[0]}&te={timepoint_range_original[1]}' \
-    #       f'&stridet={timepoint_stride}&stridex={strides[0]}&stridey={strides[1]}&stridez={strides[2]}' \
-    #       f'&filter_width={filter_width}'
-    
-    # TESTING.
-    url = f'https://web.idies.jhu.edu/turbsvc-testing/cutout/api/local?token={auth_token}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc/cutout/api/local?token={auth_token}' \
           f'&function={var}&dataset={dataset_title}' \
           f'&xs={axes_ranges_original[0, 0]}&xe={axes_ranges_original[0, 1]}' \
           f'&ys={axes_ranges_original[1, 0]}&ye={axes_ranges_original[1, 1]}' \
@@ -342,13 +331,7 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    # TESTING. uncomment.
-    # url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
-    #       f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
-    #       f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
-
-    # TESTING.
-    url = f'https://web.idies.jhu.edu/turbsvc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
     
@@ -537,17 +520,8 @@ def getTurbineData(cube, turbine_numbers, var, original_times,
 
     try:
         # send http post request.
-        # TESTING. uncomment.
-        # response = requests.post(
-        #     "https://web.idies.jhu.edu/turbulence-svc/turbine?include_metadata=0", 
-        #     headers = {"Content-Type": "application/json"},
-        #     data = json_data,
-        #     timeout = 1000
-        # )
-        
-        # TESTING.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbsvc-testing/turbine?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbulence-svc/turbine?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000
@@ -693,17 +667,8 @@ def getBladeData(cube, turbine_numbers, blade_numbers, var, original_times, blad
 
     try:
         # send http post request.
-        # TESTING. uncomment.
-        # response = requests.post(
-        #     "https://web.idies.jhu.edu/turbulence-svc/blade?include_metadata=0", 
-        #     headers = {"Content-Type": "application/json"},
-        #     data = json_data,
-        #     timeout = 1000
-        # )
-        
-        # TESTING.
         response = requests.post(
-            "https://web.idies.jhu.edu/turbsvc-testing/blade?include_metadata=0", 
+            "https://web.idies.jhu.edu/turbulence-svc/blade?include_metadata=0", 
             headers = {"Content-Type": "application/json"},
             data = json_data,
             timeout = 1000
