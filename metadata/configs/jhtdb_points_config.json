@@ -345,7 +345,7 @@
       "default_coordinates": [
         {
           "coordinate": "t",
-          "value": 1.0
+          "value": 0.0
         },
         {
           "coordinate": "x",
