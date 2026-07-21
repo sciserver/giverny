@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.6.2] - 2026-07-21
+  
+### Changed
+- updated default point query time ('t') for nbl_windfarm to work for all variables. 
+
 ## [3.6.1] - 2026-07-17
 
 ### Added
