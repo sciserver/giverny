@@ -436,135 +436,173 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         """
         get the results for the datasets processed by giverny.
         """
-        for timepoint_original in timepoint_range:
-            # check that the user-input timepoint is a valid timepoint for the dataset.
-            check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
-            # convert the original input timepoint to the correct time index.
-            timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
+        if var == 'position':
+            # call getPosition_giverny for particle tracking.
+            trajectory, times, fully_tracked = getPosition_giverny(
+                cube, points, 
+                time_start = timepoint_original_notebook, 
+                time_end = timepoint_end, 
+                delta_time = delta_t,
+                temporal_method = temporal_method, 
+                spatial_method = spatial_method_original,
+                trace_memory = trace_memory, 
+                verbose = verbose
+            )
+            
+            # warn if any particles went out of bounds.
+            if not fully_tracked:
+                warnings.warn(
+                    'one or more particles exited the non-periodic domain boundaries during tracking. '
+                    'positions were clipped to the domain bounds.',
+                    UserWarning
+                )
+            
+            # format results as list of DataFrames (one per timestep) to match other getData outputs.
+            n_particles = trajectory.shape[0]
+            for particle_i in range(n_particles):
+                result = pd.DataFrame(
+                    data = trajectory[particle_i, :, :], 
+                    columns = ['x', 'y', 'z']
+                )
+                result.index.name = 'index'
+                results.append(result)
+            
+            # store times for return_times option
+            timepoint_range_original = times
+            
+            # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
+            cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                                spatial_method, temporal_method, option, num_values_per_datapoint, c)
+        else:
+            for timepoint_original in timepoint_range:
+                # check that the user-input timepoint is a valid timepoint for the dataset.
+                check_timepoint(metadata, timepoint_original, dataset_title, var, query_type)
+                # convert the original input timepoint to the correct time index.
+                timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
 
-            # update all the timepoints that need to be read.
-            timepoints = [timepoint]
-            if temporal_method == 'pchip':
-                floor_timepoint = math.floor(timepoint)
-                
-                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
-                    if timepoint < 2 or (timepoint >= 142 and timepoint < 143):
-                        # lower boundary and upper boundary times for linear interpolation.
-                        timepoints = [floor_timepoint, floor_timepoint + 1]
-                    elif timepoint == 143:
-                        # special handling of the exact upper time limit.
-                        timepoints = [floor_timepoint - 1, floor_timepoint]
+                # update all the timepoints that need to be read.
+                timepoints = [timepoint]
+                if temporal_method == 'pchip':
+                    floor_timepoint = math.floor(timepoint)
+
+                    if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                        if timepoint < 2 or (timepoint >= 142 and timepoint < 143):
+                            # lower boundary and upper boundary times for linear interpolation.
+                            timepoints = [floor_timepoint, floor_timepoint + 1]
+                        elif timepoint == 143:
+                            # special handling of the exact upper time limit.
+                            timepoints = [floor_timepoint - 1, floor_timepoint]
+                        else:
+                            # standard pchip interpolation timepoints.
+                            timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
                     else:
                         # standard pchip interpolation timepoints.
                         timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
-                else:
-                    # standard pchip interpolation timepoints.
-                    timepoints = [floor_timepoint - 1, floor_timepoint, floor_timepoint + 1, floor_timepoint + 2]
-                
-            # results and their corresponding specified order.
-            result = []
-            # fill original_points_indices.
-            original_points_indices = [q for q in range(num_points)]
-            
-            for timepoint_i, timepoint_tmp in enumerate(timepoints):
-                if dataset_title not in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
-                    # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
-                    points_offset = points - cube.coor_offsets
-                    
-                    # get the results.
-                    result.append(getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
-                                                       var_offsets, timepoint_original, option, c))
-                else:
-                    # handles the *sabl* datasets.
-                    if var == 'velocity':
-                        # handles the velocity variable for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets. makes a duplicate
-                        # of the points array so that the velocity-uv and velocity-w components can be queried together despite being offset by 0.5 * dz.
-                        coor_offsets_uv = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_uv', var)
-                        points_offset_uv = points.copy()
-                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
-                        points_offset_uv -= coor_offsets_uv
-                        
-                        coor_offsets_w = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_w', var)
-                        points_offset_w = points.copy()
-                        # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
-                        points_offset_w -= coor_offsets_w
-                        
-                        points_offset = np.vstack((points_offset_uv, points_offset_w))
-                        # get the results.
-                        result_uvw = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
-                                                          var_offsets, timepoint_original, option, c)
-                        
-                        # split up the velocity-uv and velocity-w components from the query results.
-                        result_tmp = result_uvw[:num_points]
-                        result_tmp_w = result_uvw[num_points:]
-                        
-                        # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
-                        if '_gradient' in spatial_method:
-                            # handles the velocity gradient differentiations.
-                            result_tmp[:, 6:] = result_tmp_w[:, 6:]
-                        elif '_hessian' in spatial_method:
-                            # handles the velocity hessian differentiations.
-                            result_tmp[:, 12:] = result_tmp_w[:, 12:]
-                        else:
-                            # handles the velocity field interpolations and laplacian differentiations.
-                            result_tmp[:, 2] = result_tmp_w[:, 2]
-                    # handles all non-velocity variables for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high' datasets.
-                    else:
+
+                # results and their corresponding specified order.
+                result = []
+                # fill original_points_indices.
+                original_points_indices = [q for q in range(num_points)]
+
+                for timepoint_i, timepoint_tmp in enumerate(timepoints):
+                    if dataset_title not in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
                         # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
                         points_offset = points - cube.coor_offsets
-                        
+
                         # get the results.
-                        result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
-                                                          var_offsets, timepoint_original, option, c)
-
-                    # append the result for timepoint_tmp.
-                    result.append(result_tmp)
-            
-                # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
-                # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
-                # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
-                cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
-                                    spatial_method, temporal_method, option, num_values_per_datapoint, c)
-            
-            if temporal_method == 'pchip':
-                # dt between timepoints.
-                dt = get_time_dt(metadata, dataset_title, var, query_type)
-                # addition to map the time index back to the real time. 
-                time_index_shift = get_time_index_shift(metadata, dataset_title, var, query_type)
-                # convert the timepoints (time indices) back to real time.
-                times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
-                
-                # check if linear interpolation is needed for the diurnal windfarm dataset.
-                if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
-                    if timepoint < 2 or timepoint >= 142:
-                        # linear interpolation at the lower boundary (time < the 2nd stored 10-minute interval) and the upper boundary (time >= 2nd to last stored 10-minute interval).
-                        result = linear_pchip(timepoint_original, time_lower, times, result)
+                        result.append(getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                           var_offsets, timepoint_original, option, c))
                     else:
-                        # pchip interpolation
+                        # handles the *sabl* datasets.
+                        if var == 'velocity':
+                            # handles the velocity variable for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', and 'stsabl2048high' datasets. makes a duplicate
+                            # of the points array so that the velocity-uv and velocity-w components can be queried together despite being offset by 0.5 * dz.
+                            coor_offsets_uv = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_uv', var)
+                            points_offset_uv = points.copy()
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset_uv -= coor_offsets_uv
+
+                            coor_offsets_w = get_dataset_coordinate_offsets(metadata, dataset_title, 'velocity_w', var)
+                            points_offset_w = points.copy()
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset_w -= coor_offsets_w
+
+                            points_offset = np.vstack((points_offset_uv, points_offset_w))
+                            # get the results.
+                            result_uvw = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                              var_offsets, timepoint_original, option, c)
+
+                            # split up the velocity-uv and velocity-w components from the query results.
+                            result_tmp = result_uvw[:num_points]
+                            result_tmp_w = result_uvw[num_points:]
+
+                            # overwrite the (w) values in result_tmp with the (w) values from result_tmp_w.
+                            if '_gradient' in spatial_method:
+                                # handles the velocity gradient differentiations.
+                                result_tmp[:, 6:] = result_tmp_w[:, 6:]
+                            elif '_hessian' in spatial_method:
+                                # handles the velocity hessian differentiations.
+                                result_tmp[:, 12:] = result_tmp_w[:, 12:]
+                            else:
+                                # handles the velocity field interpolations and laplacian differentiations.
+                                result_tmp[:, 2] = result_tmp_w[:, 2]
+                        # handles all non-velocity variables for the 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high' datasets.
+                        else:
+                            # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
+                            points_offset = points - cube.coor_offsets
+
+                            # get the results.
+                            result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                              var_offsets, timepoint_original, option, c)
+
+                        # append the result for timepoint_tmp.
+                        result.append(result_tmp)
+
+                    # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
+                    # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
+                    # the specified spatial_method. if 'pchip' temporal interpolation was specified then this will also reset cube.timepoint to match the specified timepoint.
+                    cube.init_constants(query_type, var, var_offsets, timepoint, timepoint_original_notebook,
+                                        spatial_method, temporal_method, option, num_values_per_datapoint, c)
+
+                if temporal_method == 'pchip':
+                    # dt between timepoints.
+                    dt = get_time_dt(metadata, dataset_title, var, query_type)
+                    # addition to map the time index back to the real time. 
+                    time_index_shift = get_time_index_shift(metadata, dataset_title, var, query_type)
+                    # convert the timepoints (time indices) back to real time.
+                    times = [dt * (timepoint_val - time_index_shift) for timepoint_val in timepoints]
+
+                    # check if linear interpolation is needed for the diurnal windfarm dataset.
+                    if dataset_title == 'diurnal_windfarm' and var in ['heatflux', 'meanpressure', 'meantemperature', 'meanvelocity', 'reynoldsstresses', 'tempvariance']:
+                        if timepoint < 2 or timepoint >= 142:
+                            # linear interpolation at the lower boundary (time < the 2nd stored 10-minute interval) and the upper boundary (time >= 2nd to last stored 10-minute interval).
+                            result = linear_pchip(timepoint_original, time_lower, times, result)
+                        else:
+                            # pchip interpolation
+                            result = pchip(timepoint_original, time_lower, times, result, dt)
+                    else:
+                        # pchip interpolation.
                         result = pchip(timepoint_original, time_lower, times, result, dt)
-                else:
-                    # pchip interpolation.
-                    result = pchip(timepoint_original, time_lower, times, result, dt)
 
-            # stack all of the results together.
-            result = np.vstack(result)
+                # stack all of the results together.
+                result = np.vstack(result)
 
-            # re-sort result to match the original ordering of points.
-            original_points_indices, result = zip(*sorted(zip(original_points_indices, result), key = lambda x: x[0]))
+                # re-sort result to match the original ordering of points.
+                original_points_indices, result = zip(*sorted(zip(original_points_indices, result), key = lambda x: x[0]))
 
-            # convert the result list to a numpy array.
-            result = np.array(result)
+                # convert the result list to a numpy array.
+                result = np.array(result)
 
-            # checks to make sure that data was read in for all points.
-            if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
-                raise Exception(f'result was not filled correctly')
+                # checks to make sure that data was read in for all points.
+                if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
+                    raise Exception(f'result was not filled correctly')
 
-            # insert the output header at the beginning of result.
-            result = pd.DataFrame(data = result, columns = result_header)
-            result.index.name = 'index'
+                # insert the output header at the beginning of result.
+                result = pd.DataFrame(data = result, columns = result_header)
+                result.index.name = 'index'
 
-            # append the result into results.
-            results.append(result)
+                # append the result into results.
+                results.append(result)
     else:
         """
         get the results for the legacy datasets processed by pyJHTDB.
@@ -700,6 +738,123 @@ def pchip(time, time_lower, times, results, dt):
     interpolated_results = a + b * (time - time1) + c * ((time - time1) * (time - time1)) + d * ((time - time1) * (time - time1) * (time - time2))
     
     return interpolated_results
+
+def getPosition_giverny(cube, points, time_start, time_end, delta_time,
+                        temporal_method, spatial_method,
+                        trace_memory = False, verbose = False):
+    """
+    compute particle trajectories using predictor-corrector integration.
+    
+    parameters
+    ----------
+    cube : turbulence_dataset
+        The dataset object.
+    points : np.ndarray
+        Initial particle positions, shape (N, 3).
+    time_start : float
+        Starting time of integration.
+    time_end : float
+        Ending time of integration.
+    delta_time : float
+        Integration time step (positive value).
+    temporal_method : str, default 'pchip'
+        Temporal interpolation method.
+    spatial_method : str, default 'lag4'
+        Spatial interpolation method.
+    trace_memory : bool, default False
+        Whether to trace memory usage.
+    verbose : bool, default True
+        Whether to print progress information.
+    
+    returns
+    -------
+    tuple (np.ndarray, np.ndarray, bool)
+        - Full trajectory positions, shape (N, n_steps, 3).
+        - Time values at each step, shape (n_steps,).
+        - Whether all particles stayed within bounds.
+    """
+    metadata = cube.metadata
+    dataset_title = cube.dataset_title
+    
+    # get bounds: +/- inf for periodic axes, actual limits for non-periodic.
+    mins, maxs = _getPosition_bounds(metadata, dataset_title, 'velocity')
+    
+    # setup integration.
+    dt = np.sign(time_end - time_start) * abs(delta_time)
+    current_pos = np.array(points, dtype=np.float64).copy()
+    clip_accumulator = 0.0
+    
+    # initialize trajectory storage
+    n_particles = current_pos.shape[0]
+    trajectory_list = [current_pos.copy()]
+    time_list = [time_start]
+    
+    t = time_start
+    while abs(time_end - t) > 1e-9:
+        # *** predictor step ***
+        u_m = _get_velocity_for_position(cube, current_pos, t, temporal_method, spatial_method, trace_memory = trace_memory, verbose = verbose)
+        x_star = current_pos + u_m * dt
+        
+        x_star_clipped = np.clip(x_star, mins, maxs)
+        clip_accumulator += np.sum(np.abs(x_star - x_star_clipped))
+        
+        # *** corrector step ***
+        u_star = _get_velocity_for_position(cube, x_star_clipped, t + dt, temporal_method, spatial_method, trace_memory = trace_memory, verbose = verbose)
+        next_pos = current_pos + 0.5 * (x_star_clipped - current_pos) + 0.5 * dt * u_star
+        
+        next_pos_clipped = np.clip(next_pos, mins, maxs)
+        clip_accumulator += np.sum(np.abs(next_pos - next_pos_clipped))
+        
+        current_pos = next_pos_clipped
+        t += dt
+        
+        # store trajectory
+        trajectory_list.append(current_pos.copy())
+        time_list.append(t)
+    
+    fully_tracked = bool(clip_accumulator < 1e-8)
+    
+    # convert to arrays: trajectory shape (N, n_steps, 3), times shape (n_steps,)
+    trajectory = np.stack(trajectory_list, axis=1)
+    times = np.array(time_list)
+    
+    return trajectory, times, fully_tracked
+
+def _getPosition_bounds(metadata, dataset_title, variable):
+    """
+    get min/max bounds for particle position clipping.
+    periodic axes: +/- inf (no clipping). Non-periodic axes: actual bounds.
+    """
+    variable_lims = {
+        variable_info['code']: {
+            lim: variable_info.get(lim, metadata['datasets'][dataset_title]['simulation'][lim])
+            for lim in ['xlims', 'ylims', 'zlims']
+        }
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[variable]
+    
+    mins = np.array([-np.inf, -np.inf, -np.inf], dtype = np.float64)
+    maxs = np.array([np.inf, np.inf, np.inf], dtype = np.float64)
+    
+    for axis_index, lims_key in enumerate(['xlims', 'ylims', 'zlims']):
+        lims = variable_lims[lims_key]
+        if not lims['isPeriodic']:
+            mins[axis_index] = np.float64(lims['lower'])
+            maxs[axis_index] = np.float64(lims['upper'])
+    
+    return mins, maxs
+
+def _get_velocity_for_position(cube, points, time, temporal_method, spatial_method, trace_memory = False, verbose = False):
+    """
+    get velocity values for particle tracking via getData.
+    """
+    results = getData(
+        cube, 'velocity', time, temporal_method, spatial_method, 'field', points,
+        trace_memory = trace_memory, verbose = verbose
+    )
+    
+    # getData returns list of DataFrames; extract velocity array.
+    return results[0][['ux', 'uy', 'uz']].values
 
 def getData_housekeeping_procedures(query_type, metadata, dataset_title, points, var, timepoint_original,
                                     temporal_method, spatial_method, spatial_operator,

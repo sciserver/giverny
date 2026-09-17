@@ -39,7 +39,10 @@ from giverny.turbulence_gizmos.basic_gizmos import *
 
 class turb_dataset():
     def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
-                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config-getPosition_TEST.json'):
+                 # json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+        # TESTING. put back json url.
+        
         """
         initialize the class.
         """
@@ -240,8 +243,14 @@ class turb_dataset():
                 self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.nonperiodic_regular_axes]
             
             # open the zarr store for reading.
-            self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, self.var)
-            self.zarr_store = self.open_zarr_file([self.zarr_filepath, self.var, self.dt])
+            if self.var != 'position':
+                # handles all variables except for 'position'.
+                self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, self.var)
+                self.zarr_store = self.open_zarr_file([self.zarr_filepath, self.var, self.dt])
+            else:
+                # handles 'position' variable since it requires reading the 'velocity' variable data.
+                self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, 'velocity')
+                self.zarr_store = self.open_zarr_file([self.zarr_filepath, 'velocity', self.dt])
     
     """
     interpolation functions.

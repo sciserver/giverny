@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.6.3] - 2026-09-17
+  
+### Added
+- getPosition function for isotropic1024coarse, isotropic1024fine, mhd1024, and mixing datasets. 
+
 ## [3.6.2] - 2026-07-21
   
 ### Changed

@@ -636,7 +636,7 @@ def get_giverny_datasets():
     #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
     return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
-            'diurnal_windfarm', 'nbl_windfarm']
+            'diurnal_windfarm', 'nbl_windfarm', 'isotropic1024coarse', 'isotropic1024fine', 'mhd1024', 'mixing']
 
 def get_irregular_mesh_ygrid_datasets(metadata, variable):
     """
