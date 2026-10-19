@@ -279,7 +279,6 @@
           "lower": "0",
           "upper": "25.9935",
           "n": 4000,
-          "dt": 0.0065,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
@@ -472,7 +471,6 @@
           "lower": "1",
           "upper": "11",
           "n": 11,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -635,12 +633,11 @@
           "lower": "0",
           "upper": "10.056",
           "n": 5024,
-          "dt": 0.002,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -855,12 +852,11 @@
           "lower": "0",
           "upper": "0.0198",
           "n": 100,
-          "dt": 0.0002,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -1075,7 +1071,6 @@
           "lower": "1",
           "upper": "1",
           "n": 1,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -1186,7 +1181,6 @@
           "lower": "1",
           "upper": "6",
           "n": 6,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -1347,7 +1341,6 @@
           "lower": "1",
           "upper": "1",
           "n": 1,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -1508,7 +1501,6 @@
           "lower": "1",
           "upper": "20",
           "n": 20,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -1775,7 +1767,6 @@
           "lower": "0",
           "upper": "7.425",
           "n": 100,
-          "dt": 0.075,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
@@ -2026,34 +2017,6 @@
             "none",
             "pchip"
           ]
-        },
-        {
-          "code": "position",
-          "name": "Position",
-          "isPersistent": false,
-          "offsets": [
-            {
-              "code": "position",
-              "coordinate": [
-                0,
-                0,
-                0
-              ]
-            }
-          ],
-          "spatialOperatorMethods": [
-            {
-              "operator": "field",
-              "methods": [
-                "lag4",
-                "lag6",
-                "lag8"
-              ]
-            }
-          ],
-          "temporalMethods": [
-            "pchip"
-          ]
         }
       ]
     },
@@ -2074,7 +2037,6 @@
           "lower": "1",
           "upper": "20",
           "n": 20,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -2341,7 +2303,6 @@
           "lower": "0",
           "upper": "7.425",
           "n": 100,
-          "dt": 0.075,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
@@ -2612,12 +2573,11 @@
           "lower": "0",
           "upper": "2.56",
           "n": 1025,
-          "dt": 0.0025,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -2956,12 +2916,11 @@
           "lower": "0",
           "upper": "40.44",
           "n": 1012,
-          "dt": 0.04,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
-            "getcutout": 0,
-            "getdata": 1
+            "getcutout": -1,
+            "getdata": 0
           }
         },
         "xlims": {
@@ -3202,7 +3161,6 @@
           "lower": "1",
           "upper": "5",
           "n": 5,
-          "dt": 1.0,
           "isPeriodic": false,
           "isDiscrete": true,
           "timeIndexShift": {
@@ -3365,7 +3323,6 @@
           "lower": "0",
           "upper": "1175.0",
           "n": 4701,
-          "dt": 0.25,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
@@ -3590,7 +3547,6 @@
           "lower": "0",
           "upper": "3598",
           "n": 7197,
-          "dt": 0.5,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
@@ -3690,7 +3646,6 @@
             "lower": "0",
             "upper": "0",
             "n": 1,
-            "dt": 1.0,
             "isPeriodic": false,
             "isDiscrete": false,
             "timeIndexShift": {
@@ -3814,7 +3769,6 @@
             "lower": "0",
             "upper": "0",
             "n": 1,
-            "dt": 1.0,
             "isPeriodic": false,
             "isDiscrete": false,
             "timeIndexShift": {
@@ -3929,7 +3883,6 @@
             "lower": "0",
             "upper": "0",
             "n": 1,
-            "dt": 1.0,
             "isPeriodic": false,
             "isDiscrete": false,
             "timeIndexShift": {
@@ -4133,7 +4086,6 @@
             "lower": "0",
             "upper": "0",
             "n": 1,
-            "dt": 1.0,
             "isPeriodic": false,
             "isDiscrete": false,
             "timeIndexShift": {
@@ -4276,7 +4228,6 @@
           "lower": "0",
           "upper": "86398",
           "n": 172797,
-          "dt": 0.5,
           "isPeriodic": false,
           "isDiscrete": false,
           "timeIndexShift": {
