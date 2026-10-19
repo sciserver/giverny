@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.6.3] - 2026-10-19
+  
+### Changed
+- update library dependencies.
+
 ## [3.6.2] - 2026-07-21
   
 ### Changed
