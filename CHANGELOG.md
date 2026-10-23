@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.6.4] - 2026-10-23
+  
+### Fixed
+- pyJHTDB dependency.
+
 ## [3.6.3] - 2026-10-19
   
 ### Changed
