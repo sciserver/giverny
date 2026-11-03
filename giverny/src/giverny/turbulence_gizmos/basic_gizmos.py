@@ -336,15 +336,16 @@ def check_option_parameter(metadata, option, dataset_title, timepoint_start, var
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
     }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims']['isDiscrete'])
     
-    # check that the user-input timepoint_end is a valid timepoint for the dataset.
-    check_timepoint(metadata, timepoint_end, dataset_title, variable, query_type)
-    
     if timepoint_end == -999.9 or delta_t_original == -999.9:
         focus_text = '\033[43m'
         default_text = '\033[0m'
         raise Exception(f"'time_end' and 'delta_t' (option = [time_end, delta_t]) must be specified for the 'position' variable and time series queries, e.g.:\n" \
                         f"result = getData(dataset, variable, time, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
-    elif timepoint_start == timepoint_end:
+    
+    # check that the user-input timepoint_end is a valid timepoint for the dataset.
+    check_timepoint(metadata, timepoint_end, dataset_title, variable, query_type)
+    
+    if timepoint_start == timepoint_end:
         raise Exception(f"time ({timepoint_start}) must not equal time_end ({timepoint_end})")
     elif delta_t_original <= 0.0:
         raise Exception(f"delta_t must be > 0.0")

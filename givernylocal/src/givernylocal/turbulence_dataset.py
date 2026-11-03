@@ -28,7 +28,10 @@ class for processing getCutout and getData queries of all datasets.
 """
 class turb_dataset():
     def __init__(self, dataset_title = '', output_path = '', auth_token = '',
-                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb_config.json'):
+                 json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main-test/metadata/configs/jhtdb_config-getPosition_TEST.json'):
+                 # json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb_config.json'):
+        # TESTING. put back json url.
+        
         """
         initialize the class.
         """

@@ -311,6 +311,9 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     if var != 'position':
         # handles all variables except 'position'.
         num_timepoints = len(timepoint_range)
+        
+        # number of returned timepoints.
+        num_returned_timepoints = num_timepoints
     else:
         # handles the 'position' variable.
         position_timepoints = np.arange(timepoint_original, timepoint_end, delta_t)
@@ -320,6 +323,12 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
             position_timepoints = np.append(position_timepoints, timepoint_end)
             
         num_timepoints = len(position_timepoints)
+        
+        # calculate the number of returned timepoints which depends on cadence for the 'position' variable.
+        returned_timepoint_indices = list(range(0, len(position_timepoints), cadence))
+        if returned_timepoint_indices[-1] != len(position_timepoints) - 1:
+            returned_timepoint_indices.append(len(position_timepoints) - 1)
+        num_returned_timepoints = len(returned_timepoint_indices)
     
     # if more than one timepoint was queried, then checks if ({number of points} * {number of timepoints}) <= c['max_data_points'].
     if (len(points) * num_timepoints) > c['max_data_points']:
@@ -382,11 +391,15 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     # get the result header, which only contains the names for each column of the data values.
     output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original,
                                                  cube.timepoint_end, cube.delta_t, cube.cadence, cube.sint, cube.tint)
-    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
+    # the 'position' variable does not have 'x_point', 'y_point', and 'z_point' in the output header to skip over.
+    header_skip = 3
+    if var == 'position':
+        header_skip = 0
+    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[header_skip:]
     
     # array lengths.
     points_len = len(points)
-    timepoint_range_len = len(timepoint_range)
+    timepoint_range_len = num_returned_timepoints
     result_header_len = len(result_header)
     
     # checks to make sure that data was read in for all points.

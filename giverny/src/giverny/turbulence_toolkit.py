@@ -357,13 +357,6 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     # retrieve the list of datasets processed by the giverny code.
     giverny_datasets = get_giverny_datasets()
     
-    # get the time metadata for this variable because the minimum time limit offset is needed for pchip interpolation methods.
-    time_metadata = {
-        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
-        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
-    }[var]
-    time_lower = np.float64(time_metadata['lower'])
-    
     # make sure points is C-ordered.
     if not points.flags.c_contiguous:
         points = np.ascontiguousarray(points)
@@ -388,6 +381,13 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
         raise Exception(f'too many points requested for the testing authorization token: {num_points} > 4096\n\n' + \
                         f'an authorization token can be requested by email from {turb_email}\n' + \
                         f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
+        
+    # get the time metadata for this variable because the minimum time limit offset is needed for pchip interpolation methods.
+    time_metadata = {
+        variable_info['code']: variable_info.get('tlims', metadata['datasets'][dataset_title]['simulation']['tlims'])
+        for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
+    }[var]
+    time_lower = np.float64(time_metadata['lower'])
         
     # option parameter values.
     timepoint_end, delta_t_original, cadence = option
@@ -440,7 +440,11 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
     # get the result header, which only contains the names for each column of the data values.
     output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original,
                                                  cube.timepoint_end, cube.delta_t, cube.cadence, cube.sint, cube.tint)
-    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
+    # the 'position' variable does not have 'x_point', 'y_point', and 'z_point' in the output header to skip over.
+    header_skip = 3
+    if var == 'position':
+        header_skip = 0
+    result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[header_skip:]
     
     # -----
     # starting the tracemalloc library.
@@ -492,10 +496,15 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             for step_index in selected_indices:
                 result = pd.DataFrame(
                     data = trajectory[:, step_index, :],
-                    columns = ['x', 'y', 'z'],
+                    columns = result_header,
                     index = np.arange(trajectory.shape[0]),
                 )
                 result.index.name = 'index'
+                
+                # checks to make sure that data was read in for all points.
+                if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
+                    raise Exception(f'result was not filled correctly')
+                
                 results.append(result)
                 
             # store times for return_times option.
