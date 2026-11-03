@@ -222,6 +222,8 @@ def check_points(metadata, points, dataset_title, variable, max_num_points):
     # checks if too many points were queried.
     if len(points) > max_num_points:
         raise Exception(f'too many points queried, please limit the number of points to <= {max_num_points:,}')
+    elif len(points) == 0:
+        raise Exception('query must contain at least 1 point')
 
     # minimum and maximum point values along each axis.
     points_min = np.min(points, axis = 0)
@@ -320,11 +322,13 @@ def check_temporal_method(metadata, tint, dataset_title, variable):
         
     return
 
-def check_option_parameter(metadata, option, dataset_title, timepoint_start, variable):
+def check_option_parameter(metadata, option, dataset_title, timepoint_start, variable, query_type):
     """
     check that the 'option' parameter used by getPosition was correctly specified.
     """
-    timepoint_end, delta_t = option
+    timepoint_end, delta_t_original, cadence = option
+    time_sign = np.sign(timepoint_end - timepoint_start)
+    delta_t = time_sign * abs(delta_t_original)
     
     # determine if the dataset and variable are low-resolution and thus the timepoint is specified as a discrete time index.
     time_index_dataset = {
@@ -332,15 +336,26 @@ def check_option_parameter(metadata, option, dataset_title, timepoint_start, var
         for variable_info in metadata['datasets'][dataset_title]['physicalVariables']
     }.get(variable, metadata['datasets'][dataset_title]['simulation']['tlims']['isDiscrete'])
     
-    if timepoint_end == -999.9 or delta_t == -999.9:
+    # check that the user-input timepoint_end is a valid timepoint for the dataset.
+    check_timepoint(metadata, timepoint_end, dataset_title, variable, query_type)
+    
+    if timepoint_end == -999.9 or delta_t_original == -999.9:
         focus_text = '\033[43m'
         default_text = '\033[0m'
         raise Exception(f"'time_end' and 'delta_t' (option = [time_end, delta_t]) must be specified for the 'position' variable and time series queries, e.g.:\n" \
                         f"result = getData(dataset, variable, time, temporal_method, spatial_method, spatial_operator, points, {focus_text}{'option'}{default_text})")
-    elif (timepoint_start + delta_t) > timepoint_end and not math.isclose(timepoint_start + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
+    elif timepoint_start == timepoint_end:
+        raise Exception(f"time ({timepoint_start}) must not equal time_end ({timepoint_end})")
+    elif delta_t_original <= 0.0:
+        raise Exception(f"delta_t must be > 0.0")
+    elif time_sign > 0.0 and (timepoint_start + delta_t) > timepoint_end and not math.isclose(timepoint_start + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
         raise Exception(f"'time' + 'delta_t' is greater than 'time_end': {timepoint_start} + {delta_t} = {timepoint_start + delta_t} > {timepoint_end}")
+    elif time_sign < 0.0 and (timepoint_start + delta_t) < timepoint_end and not math.isclose(timepoint_start + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
+        raise Exception(f"'time' - 'delta_t' is less than 'time_end': {timepoint_start} - {delta_t_original} = {timepoint_start + delta_t} < {timepoint_end}")
     elif time_index_dataset and delta_t != int(delta_t):
         raise Exception(f"delta_t must be an integer for discrete time dataset variables")
+    elif cadence < 1 or cadence != int(cadence):
+        raise Exception(f"cadence must be an integer >= 1")
         
     return
 
@@ -636,7 +651,7 @@ def get_giverny_datasets():
     #         'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high', 'channel', 'diurnal_windfarm', 'nbl_windfarm']
 
     return ['isotropic8192', 'isotropic32768', 'sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high',
-            'diurnal_windfarm', 'nbl_windfarm']
+            'diurnal_windfarm', 'nbl_windfarm', 'isotropic1024coarse', 'isotropic1024fine', 'mhd1024', 'mixing']
 
 def get_irregular_mesh_ygrid_datasets(metadata, variable):
     """
@@ -725,7 +740,7 @@ def get_parquet_time_info(metadata, dataset_title):
     
     return (time_offset, time_align, time_step)
 
-def get_interpolation_tsv_header(metadata, dataset_title, variable_name, timepoint, timepoint_end, delta_t, sint, tint):
+def get_interpolation_tsv_header(metadata, dataset_title, variable_name, timepoint, timepoint_end, delta_t, cadence, sint, tint):
     """
     get the interpolation tsv header.
     """
@@ -747,30 +762,39 @@ def get_interpolation_tsv_header(metadata, dataset_title, variable_name, timepoi
     # number of components for the specified variable.
     num_component_codes = len(variable_map['component_codes'])
     # number of data columns. used to determine number of '\t' characters in the header row so the tsv displays nicely.
-    # 3 columns corresponding to 'x_point', 'y_point', and 'z_point' apply to all output.
+    # 4 columns corresponding to 'time' (applies to all output), and 'x_point', 'y_point', and 'z_point' (apply to all output except 'position' queries).
+    num_point_columns = 4
+    if variable_name == 'position':
+        num_point_columns = 1
     num_data_columns = {
-        'field': 3 + num_component_codes,
-        'gradient': 3 + num_component_codes * 3,
-        'hessian': 3 + num_component_codes * 6,
-        'laplacian': 3 + num_component_codes
+        'field': num_point_columns + num_component_codes,
+        'gradient': num_point_columns + num_component_codes * 3,
+        'hessian': num_point_columns + num_component_codes * 6,
+        'laplacian': num_point_columns + num_component_codes
     }[operator]
     
-    if variable_name == 'position' or (timepoint_end != -999.9 and delta_t != -999.9):
-        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, temporal method: {tint}, ' + \
-                       f'spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
+    if variable_name == 'position':
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, cadence: {cadence}, ' + \
+                       f'temporal method: {tint}, spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
+    elif (timepoint_end != -999.9 and delta_t != -999.9):
+        point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, time end: {timepoint_end}, delta t: {delta_t}, ' + \
+                       f'temporal method: {tint}, spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
     else:
         point_header = f'dataset: {dataset_title}, variable: {variable_name}, time: {timepoint}, temporal method: {tint}, ' + \
                        f'spatial method: {method}, spatial operator: {operator}' + '\t' * num_data_columns + '\n'
-    point_header += 'x_point\ty_point\tz_point'
+    
+    # exclude x_point, y_point, and z_point columns from 'position' queries.
+    if variable_name != 'position':
+        point_header += 'x_point\ty_point\tz_point\t'
     
     return {
-        'field': point_header + '\t' + '\t'.join(variable_map['component_codes']),
-        'gradient': point_header + '\t' + '\t'.join([f'd{component_code}dx\td{component_code}dy\td{component_code}dz'
+        'field': point_header + '\t'.join(variable_map['component_codes']),
+        'gradient': point_header + '\t'.join([f'd{component_code}dx\td{component_code}dy\td{component_code}dz'
                                                      for component_code in variable_map['component_codes']]),
-        'hessian': point_header + '\t' + '\t'.join([f'd2{component_code}dxdx\td2{component_code}dxdy\td2{component_code}dxdz' + \
+        'hessian': point_header + '\t'.join([f'd2{component_code}dxdx\td2{component_code}dxdy\td2{component_code}dxdz' + \
                                                     f'\td2{component_code}dydy\td2{component_code}dydz\td2{component_code}dzdz'
                                                     for component_code in variable_map['component_codes']]),
-        'laplacian': point_header + '\t' + '\t'.join([f'grad2{component_code}'
+        'laplacian': point_header + '\t'.join([f'grad2{component_code}'
                                                       for component_code in variable_map['component_codes']])
     }[operator]
 
@@ -844,8 +868,8 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
     with open(cube.output_path.joinpath(output_filename + '.tsv'), 'w', encoding = 'utf-8', newline = '') as output_file:
         # output header.
         output_header = [header_row.split('\t') 
-                         for header_row in get_interpolation_tsv_header(cube.metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t,
-                                                                        cube.sint, cube.tint).split('\n')]
+                         for header_row in get_interpolation_tsv_header(cube.metadata, cube.dataset_title, cube.var, cube.timepoint_original,
+                                                                        cube.timepoint_end, cube.delta_t, cube.cadence, cube.sint, cube.tint).split('\n')]
         # append the timepoint column header because the output array is now multi-dimensional with time components to handle time series queries.
         output_header[-1].insert(0, 'time')
 
@@ -854,10 +878,13 @@ def write_interpolation_tsv_file(cube, points, interpolation_data, output_filena
         # write the header row to the tsv file.
         writer.writerows(output_header)
         
-        for time_index, interpolation_time_component in enumerate(interpolation_data):
+        for time_index, interpolation_time_component in zip(cube.times, interpolation_data):
             # concatenate the points and interpolation_time_component matrices together.
-            output_data = np.concatenate((points, interpolation_time_component), axis = 1)
-            output_data = np.column_stack((np.full(output_data.shape[0], cube.timepoint_original + time_index * cube.delta_t), output_data))
+            if cube.var != 'position':
+                output_data = np.concatenate((points, interpolation_time_component), axis = 1)
+            else:
+                output_data = np.asarray(interpolation_time_component)
+            output_data = np.column_stack((np.full(output_data.shape[0], time_index), output_data))
             
             # write output_data to the tsv file.
             writer.writerows(output_data)

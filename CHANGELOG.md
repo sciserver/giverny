@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - migrate datasets from SQL to CephFS storage.
 
+## [3.7.1] - 2026-11-03
+  
+### Added
+- 'force' variable calculations for 'isotropic1024coarse' and 'mhd1024' datasets.
+- 'position' variable for 'isotropic1024coarse', 'isotropic1024fine', 'mhd1024', and 'mixing' datasets.
+
+### Changed
+- removed 'force' variable for 'isotropic1024fine' dataset.
+
+## [3.6.4] - 2026-10-23
+  
+### Fixed
+- pyJHTDB dependency.
+
 ## [3.6.3] - 2026-10-19
   
 ### Changed

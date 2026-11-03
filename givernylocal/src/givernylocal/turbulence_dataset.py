@@ -23,6 +23,9 @@ import pathlib
 import numpy as np
 from givernylocal.turbulence_gizmos.basic_gizmos import *
 
+"""
+class for processing getCutout and getData queries of all datasets.
+"""
 class turb_dataset():
     def __init__(self, dataset_title = '', output_path = '', auth_token = '',
                  json_url = 'https://raw.githubusercontent.com/sciserver/giverny/refs/heads/main/metadata/configs/jhtdb_config.json'):
@@ -81,7 +84,9 @@ class turb_dataset():
         else:
             self.timepoint = timepoint
         self.timepoint_original = timepoint_original
-        self.timepoint_end, self.delta_t = option
+        self.timepoint_end, self.delta_t, self.cadence = option
+        # delta_t with sign.
+        self.delta_t_signed = np.sign(self.timepoint_end - self.timepoint_original) * abs(self.delta_t)
         # cube size.
         self.N = get_dataset_resolution(self.metadata, self.dataset_title, self.var)
         # cube spacing (dx, dy, dz).

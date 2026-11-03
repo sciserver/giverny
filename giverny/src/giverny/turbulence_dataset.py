@@ -20,6 +20,7 @@
 ########################################################################
 
 import os
+import re
 import sys
 import dill
 import glob
@@ -29,6 +30,7 @@ import zarr
 import duckdb
 import pathlib
 import itertools
+import threading
 import subprocess
 import numpy as np
 import pandas as pd
@@ -37,9 +39,15 @@ from SciServer import Authentication
 from concurrent.futures import ThreadPoolExecutor
 from giverny.turbulence_gizmos.basic_gizmos import *
 
+"""
+class for processing getCutout and getData queries of all datasets.
+"""
 class turb_dataset():
     def __init__(self, dataset_title = '', output_path = '', auth_token = '', rewrite_interpolation_metadata = False,
-                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+                 json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config-getPosition_TEST.json'):
+                 # json_url = '/home/idies/workspace/turbulence-ceph/sciserver-turbulence/jhtdb_metadata/jhtdb_configs/jhtdb_config.json'):
+        # TESTING. put back json url.
+        
         """
         initialize the class.
         """
@@ -83,25 +91,46 @@ class turb_dataset():
         # create the local pickle directory if it does not already exist.
         create_output_folder(self.pickle_dir_local)
         
+        # initialize zarr store variables so we do not repeatedly open the zarr store when it is not needed.
+        self.zarr_store = None
+        self.zarr_store_dataset_title = None
+        self.zarr_store_var = None
+        
         """
-        read/write metadata files.
+        giverny specific pre-processing steps.
         """
         # retrieve the list of datasets processed by the giverny code.
         giverny_datasets = get_giverny_datasets()
         
-        # only read/write the metadata files if the dataset being queried is handled by this code.
         if self.dataset_title in giverny_datasets:
-            # rewrite interpolation metadata files if specified.
-            if rewrite_interpolation_metadata:
-                # initialize the interpolation lookup table.
-                self.init_interpolation_lookup_table(read_metadata = False, rewrite_metadata = rewrite_interpolation_metadata)
+            # create/rewrite the interpolation lookup tables if needed.
+            self._write_interpolation_lookup_tables(rewrite_metadata = rewrite_interpolation_metadata)
+            
+            # zarr function for reading using getcutout.
+            self._zarr_read_getcutout =  defaultdict(
+                lambda: self._read_zarr_single_timepoint_getcutout, 
+                {'diurnal_windfarm': self._read_zarr_windfarm_timepoint_getcutout, 'nbl_windfarm': self._read_zarr_windfarm_timepoint_getcutout}
+            )[self.dataset_title]
+            
+            # zarr function for reading using getdata.
+            self._zarr_read_getdata = defaultdict(
+                lambda: self._read_zarr_single_timepoint_getdata, 
+                {'diurnal_windfarm': self._read_zarr_windfarm_timepoint_getdata, 'nbl_windfarm': self._read_zarr_windfarm_timepoint_getdata}
+            )[self.dataset_title]
+            
+            # constants stored for the 'force' variable of the 'isotropic1024coarse' dataset.
+            if self.dataset_title == 'isotropic1024coarse':
+                # set the force table directory by using the 'velocity' variable as a placeholder to get the zarr store directory.
+                self.force_directory = os.path.join(os.path.join(os.path.dirname(get_dataset_filepath(self.metadata, self.dataset_title, 'velocity')), 'force_tables'), '')
+                self.WAVE_MODES = 50
+                self.WAVE_MODES_ON_DISK = 50
     
     """
     initialization functions.
-    """ 
-    def init_interpolation_lookup_table(self, sint = 'none', read_metadata = False, rewrite_metadata = False):
+    """
+    def _write_interpolation_lookup_tables(self, rewrite_metadata = False):
         """
-        pickled interpolation lookup table.
+        write pickled interpolation lookup tables.
         """
         # interpolation method 'none' is omitted because there is no lookup table for 'none' interpolation.
         interp_methods = ['lag4', 'm1q4', 'lag6', 'lag8', 'm2q8',
@@ -124,10 +153,16 @@ class turb_dataset():
                 # save tmp_lookup_table to a pickled file.
                 with open(pickle_file_local, 'wb') as pickled_lookup_table:
                     dill.dump(tmp_lookup_table, pickled_lookup_table)
+    
+    def init_interpolation_lookup_table(self, sint = 'none'):
+        """
+        pickled interpolation lookup table.
+        """
+        self.lookup_table, self.field_lookup_table, self.gradient_lookup_table, self.laplacian_lookup_table = None, None, None, None
         
         # read in the interpolation lookup table for sint. the interpolation lookup tables are only read from
         # the get_points_getdata function.
-        if sint != 'none' and read_metadata:
+        if sint != 'none':
             # pickled interpolation coefficient lookup table.
             self.lookup_table = self.read_pickle_file(f'{sint}_lookup_table.pickle')
             
@@ -196,7 +231,9 @@ class turb_dataset():
         else:
             self.timepoint = timepoint
         self.timepoint_original = timepoint_original
-        self.timepoint_end, self.delta_t = option
+        self.timepoint_end, self.delta_t, self.cadence = option
+        # delta_t with sign.
+        self.delta_t_signed = np.sign(self.timepoint_end - self.timepoint_original) * abs(self.delta_t)
         # cube size.
         self.N = get_dataset_resolution(self.metadata, self.dataset_title, self.var)
         # cube spacing (dx, dy, dz).
@@ -229,19 +266,42 @@ class turb_dataset():
         giverny_datasets = get_giverny_datasets()
         
         if self.dataset_title in giverny_datasets:
-            if query_type == 'getdata':
-                # initialize the interpolation cube size lookup table.
-                self.init_interpolation_cube_size_lookup_table(self.metadata, self.sint)
+            if self.query_type == 'getdata':
+                # only create the thread-local storage for zarr matrix buffers if it has not already been initialized.
+                if not hasattr(self, '_thread_local'):
+                    self._thread_local = threading.local()
+                
+                # store the shape so threads can allocate the right size.
+                self._zarr_matrix_shape = (self.chunk_size[2] * 2, self.chunk_size[1] * 2, self.chunk_size[0] * 2, self.num_values_per_datapoint)
+                
+                # only initialize the lookup tables if they have not yet been initialized or if sint changed.
+                if getattr(self, '_cached_sint', None) != self.sint:
+                    self.init_interpolation_cube_size_lookup_table(self.metadata, self.sint)
+                    self.init_interpolation_lookup_table(sint = self.sint)
+                    self._cached_sint = self.sint
                 
                 # interpolate function variables.
-                self.interpolate_vars = [self.cube_min_index, self.cube_max_index, self.sint, self.spacing, self.lookup_N]
+                self.interpolate_vars = [self.cube_min_index, self.cube_max_index]
                 
                 # getData variables.
-                self.getdata_vars = [self.dataset_title, self.num_values_per_datapoint, self.N, self.chunk_size, self.nonperiodic_regular_axes]
+                self.getdata_vars = [self.N, self.chunk_size, self.nonperiodic_regular_axes]
             
-            # open the zarr store for reading.
-            self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, self.var)
-            self.zarr_store = self.open_zarr_file([self.zarr_filepath, self.var, self.dt])
+            # only open the zarr store for reading if it has not yet been opened or the dataset or variable changed.
+            zarr_var = self.var if self.var != 'position' else 'velocity'
+            if (
+                (self.zarr_store is None
+                or self.zarr_store_dataset_title != self.dataset_title
+                or self.zarr_store_var != zarr_var)
+                and not (self.dataset_title in ['isotropic1024coarse', 'mhd1024'] and self.var == 'force')
+            ):
+                self.zarr_filepath = get_dataset_filepath(self.metadata, self.dataset_title, zarr_var)
+                self.zarr_store = self.open_zarr_file([self.zarr_filepath, zarr_var, self.dt])
+
+                self.zarr_store_dataset_title = self.dataset_title
+                self.zarr_store_var = zarr_var
+            
+            # set the interpolation function.
+            self._interpolate_fn = self._get_interpolate_function(self.sint)
     
     """
     interpolation functions.
@@ -464,295 +524,290 @@ class turb_dataset():
 
         return g
     
-    def spatial_interpolate(self, p, u, interpolate_vars):
-        """
-        spatial interpolating functions to compute the kernel, extract subcube and convolve.
+    """
+    spatial interpolating functions to compute the kernel, extract subcube and convolve.
         
         vars:
          - p is an np.array(3) containing the three coordinates.
-        """
-        # assign the local variables.
-        cube_min_index, cube_max_index, sint, spacing, lookup_N = interpolate_vars
-        dx, dy, dz = spacing
-        
+         - u is the interpolation bucket.
+    """
+    def _interp_none(self, p, u):
         """
         'none' field interpolation.
         """
-        def none():
-            ix = np.floor(p + 0.5).astype(np.int32)
-            
-            return np.array(u[ix[2], ix[1], ix[0], :])
+        ix = np.floor(p + 0.5).astype(np.int32)
         
+        return np.array(u[ix[2], ix[1], ix[0], :])
+    
+    def _interp_lag_spline(self, p, u):
         """
         field interpolations.
         """
-        def lag_spline():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # get the coefficients.
-            gx = self.lookup_table[int(lookup_N * fr[0])]
-            gy = self.lookup_table[int(lookup_N * fr[1])]
-            gz = self.lookup_table[int(lookup_N * fr[2])]
-            
-            # create the 3d kernel from the outer product of the 1d kernels.
-            gk = np.einsum('i,j,k', gz, gy, gx)
-
-            return np.einsum('ijk,ijkl->l', gk, u)
+        ix = p.astype(np.int32)
+        fr = p - ix
         
+        # get the coefficients.
+        gx = self.lookup_table[int(self.lookup_N * fr[0])]
+        gy = self.lookup_table[int(self.lookup_N * fr[1])]
+        gz = self.lookup_table[int(self.lookup_N * fr[2])]
+        
+        # create the 3d kernel from the outer product of the 1d kernels.
+        gk = np.einsum('i,j,k', gz, gy, gx)
+
+        return np.einsum('ijk,ijkl->l', gk, u)
+    
+    def _interp_fdnoint_gradient(self, p, u):
         """
         gradient finite differences.
         """
-        def fdnoint_gradient():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
-            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
-            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
+        ix = p.astype(np.int32)
+        # diagonal coefficients.
+        fd_coeff = self.lookup_table
+        
+        # diagonal components.
+        component_x = u[ix[2], ix[1], ix[0] - self.cube_min_index : ix[0] + self.cube_max_index, :]
+        component_y = u[ix[2], ix[1] - self.cube_min_index : ix[1] + self.cube_max_index, ix[0], :]
+        component_z = u[ix[2] - self.cube_min_index : ix[2] + self.cube_max_index, ix[1], ix[0], :]
 
-            dvdx = np.inner(fd_coeff, component_x.T) / dx
-            dvdy = np.inner(fd_coeff, component_y.T) / dy
-            dvdz = np.inner(fd_coeff, component_z.T) / dz
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            
+        dvdx = np.inner(fd_coeff, component_x.T) / self.dx
+        dvdy = np.inner(fd_coeff, component_y.T) / self.dy
+        dvdz = np.inner(fd_coeff, component_z.T) / self.dz
+        
+        return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+        
+    def _interp_fdnoint_laplacian(self, p, u):
         """
         laplacian finite differences.
         """
-        def fdnoint_laplacian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff = self.lookup_table
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
-            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
-            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
-
-            dvdx = np.inner(fd_coeff, component_x.T) / dx / dx
-            dvdy = np.inner(fd_coeff, component_y.T) / dy / dy
-            dvdz = np.inner(fd_coeff, component_z.T) / dz / dz
-            
-            return dvdx + dvdy + dvdz
+        ix = p.astype(np.int32)
+        # diagonal coefficients.
+        fd_coeff = self.lookup_table
         
+        # diagonal components.
+        component_x = u[ix[2], ix[1], ix[0] - self.cube_min_index : ix[0] + self.cube_max_index, :]
+        component_y = u[ix[2], ix[1] - self.cube_min_index : ix[1] + self.cube_max_index, ix[0], :]
+        component_z = u[ix[2] - self.cube_min_index : ix[2] + self.cube_max_index, ix[1], ix[0], :]
+
+        dvdx = np.inner(fd_coeff, component_x.T) / self.dx / self.dx
+        dvdy = np.inner(fd_coeff, component_y.T) / self.dy / self.dy
+        dvdz = np.inner(fd_coeff, component_z.T) / self.dz / self.dz
+        
+        return dvdx + dvdy + dvdz
+    
+    def _interp_fdnoint_hessian(self, p, u):
         """
         hessian finite differences.
         """
-        def fdnoint_hessian():
-            ix = p.astype(np.int32)
-            # diagonal coefficients.
-            fd_coeff_laplacian = self.laplacian_lookup_table
-            # off-diagonal coefficients.
-            fd_coeff_hessian = self.lookup_table
-            
-            # diagonal components.
-            component_x = u[ix[2], ix[1], ix[0] - cube_min_index : ix[0] + cube_max_index, :]
-            component_y = u[ix[2], ix[1] - cube_min_index : ix[1] + cube_max_index, ix[0], :]
-            component_z = u[ix[2] - cube_min_index : ix[2] + cube_max_index, ix[1], ix[0], :]
-
-            uii = np.inner(fd_coeff_laplacian, component_x.T) / dx / dx
-            ujj = np.inner(fd_coeff_laplacian, component_y.T) / dy / dy
-            ukk = np.inner(fd_coeff_laplacian, component_z.T) / dz / dz
-
-            # off-diagonal components.
-            if sint == 'fd4noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-                component_xz = np.array([u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-                component_yz = np.array([u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
-            elif sint == 'fd6noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-                component_xz = np.array([u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
-                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-                component_yz = np.array([u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],
-                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
-            elif sint == 'fd8noint_hessian':
-                component_xy = np.array([u[ix[2],ix[1]+4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]-4,:],u[ix[2],ix[1]+4,ix[0]-4,:],
-                                         u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
-                                         u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
-                                         u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
-                component_xz = np.array([u[ix[2]+4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]-4,:],u[ix[2]+4,ix[1],ix[0]-4,:],
-                                         u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
-                                         u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
-                                         u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
-                component_yz = np.array([u[ix[2]+4,ix[1]+4,ix[0],:],u[ix[2]-4,ix[1]+4,ix[0],:],u[ix[2]-4,ix[1]-4,ix[0],:],u[ix[2]+4,ix[1]-4,ix[0],:],
-                                         u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],
-                                         u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
-                                         u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
-            
-            uij = np.inner(fd_coeff_hessian, component_xy.T) / dx / dy
-            uik = np.inner(fd_coeff_hessian, component_xz.T) / dx / dz
-            ujk = np.inner(fd_coeff_hessian, component_yz.T) / dy / dz
-            
-            return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
+        ix = p.astype(np.int32)
+        # diagonal coefficients.
+        fd_coeff_laplacian = self.laplacian_lookup_table
+        # off-diagonal coefficients.
+        fd_coeff_hessian = self.lookup_table
         
+        # diagonal components.
+        component_x = u[ix[2], ix[1], ix[0] - self.cube_min_index : ix[0] + self.cube_max_index, :]
+        component_y = u[ix[2], ix[1] - self.cube_min_index : ix[1] + self.cube_max_index, ix[0], :]
+        component_z = u[ix[2] - self.cube_min_index : ix[2] + self.cube_max_index, ix[1], ix[0], :]
+
+        uii = np.inner(fd_coeff_laplacian, component_x.T) / self.dx / self.dx
+        ujj = np.inner(fd_coeff_laplacian, component_y.T) / self.dy / self.dy
+        ukk = np.inner(fd_coeff_laplacian, component_z.T) / self.dz / self.dz
+
+        # off-diagonal components.
+        if self.sint == 'fd4noint_hessian':
+            component_xy = np.array([u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                     u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            component_xz = np.array([u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                     u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            component_yz = np.array([u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
+                                     u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
+        elif self.sint == 'fd6noint_hessian':
+            component_xy = np.array([u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
+                                     u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                     u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            component_xz = np.array([u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
+                                     u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                     u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            component_yz = np.array([u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],
+                                     u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
+                                     u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
+        elif self.sint == 'fd8noint_hessian':
+            component_xy = np.array([u[ix[2],ix[1]+4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]+4,:],u[ix[2],ix[1]-4,ix[0]-4,:],u[ix[2],ix[1]+4,ix[0]-4,:],
+                                     u[ix[2],ix[1]+3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]+3,:],u[ix[2],ix[1]-3,ix[0]-3,:],u[ix[2],ix[1]+3,ix[0]-3,:],
+                                     u[ix[2],ix[1]+2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]+2,:],u[ix[2],ix[1]-2,ix[0]-2,:],u[ix[2],ix[1]+2,ix[0]-2,:],
+                                     u[ix[2],ix[1]+1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]+1,:],u[ix[2],ix[1]-1,ix[0]-1,:],u[ix[2],ix[1]+1,ix[0]-1,:]])
+            component_xz = np.array([u[ix[2]+4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]+4,:],u[ix[2]-4,ix[1],ix[0]-4,:],u[ix[2]+4,ix[1],ix[0]-4,:],
+                                     u[ix[2]+3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]+3,:],u[ix[2]-3,ix[1],ix[0]-3,:],u[ix[2]+3,ix[1],ix[0]-3,:],
+                                     u[ix[2]+2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]+2,:],u[ix[2]-2,ix[1],ix[0]-2,:],u[ix[2]+2,ix[1],ix[0]-2,:],
+                                     u[ix[2]+1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]+1,:],u[ix[2]-1,ix[1],ix[0]-1,:],u[ix[2]+1,ix[1],ix[0]-1,:]])
+            component_yz = np.array([u[ix[2]+4,ix[1]+4,ix[0],:],u[ix[2]-4,ix[1]+4,ix[0],:],u[ix[2]-4,ix[1]-4,ix[0],:],u[ix[2]+4,ix[1]-4,ix[0],:],
+                                     u[ix[2]+3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]+3,ix[0],:],u[ix[2]-3,ix[1]-3,ix[0],:],u[ix[2]+3,ix[1]-3,ix[0],:],
+                                     u[ix[2]+2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]+2,ix[0],:],u[ix[2]-2,ix[1]-2,ix[0],:],u[ix[2]+2,ix[1]-2,ix[0],:],
+                                     u[ix[2]+1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]+1,ix[0],:],u[ix[2]-1,ix[1]-1,ix[0],:],u[ix[2]+1,ix[1]-1,ix[0],:]])
+        
+        uij = np.inner(fd_coeff_hessian, component_xy.T) / self.dx / self.dy
+        uik = np.inner(fd_coeff_hessian, component_xz.T) / self.dx / self.dz
+        ujk = np.inner(fd_coeff_hessian, component_yz.T) / self.dy / self.dz
+        
+        return np.stack((uii,uij,uik,ujj,ujk,ukk), axis = 1).flatten()
+    
+    def _interp_spline_gradient(self, p, u):
         """
         gradient spline differentiations.
         """
-        def spline_gradient():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # field spline coefficients.
-            gx = self.field_lookup_table[int(lookup_N * fr[0])]
-            gy = self.field_lookup_table[int(lookup_N * fr[1])]
-            gz = self.field_lookup_table[int(lookup_N * fr[2])]
-            
-            # gradient spline coefficients.
-            gx_gradient = self.lookup_table[int(lookup_N * fr[0])]
-            gy_gradient = self.lookup_table[int(lookup_N * fr[1])]
-            gz_gradient = self.lookup_table[int(lookup_N * fr[2])]
-            
-            gk_x = np.einsum('i,j,k', gz, gy, gx_gradient)
-            gk_y = np.einsum('i,j,k', gz, gy_gradient, gx)
-            gk_z = np.einsum('i,j,k', gz_gradient, gy, gx)
-            
-            # dudx, dvdx, dwdx.
-            dvdx = np.einsum('ijk,ijkl->l', gk_x, u) / dx
-            # dudy, dvdy, dwdy.
-            dvdy = np.einsum('ijk,ijkl->l', gk_y, u) / dy
-            # dudz, dvdz, dwdz.
-            dvdz = np.einsum('ijk,ijkl->l', gk_z, u) / dz
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+        ix = p.astype(np.int32)
+        fr = p - ix
         
+        # field spline coefficients.
+        gx = self.field_lookup_table[int(self.lookup_N * fr[0])]
+        gy = self.field_lookup_table[int(self.lookup_N * fr[1])]
+        gz = self.field_lookup_table[int(self.lookup_N * fr[2])]
+        
+        # gradient spline coefficients.
+        gx_gradient = self.lookup_table[int(self.lookup_N * fr[0])]
+        gy_gradient = self.lookup_table[int(self.lookup_N * fr[1])]
+        gz_gradient = self.lookup_table[int(self.lookup_N * fr[2])]
+        
+        gk_x = np.einsum('i,j,k', gz, gy, gx_gradient)
+        gk_y = np.einsum('i,j,k', gz, gy_gradient, gx)
+        gk_z = np.einsum('i,j,k', gz_gradient, gy, gx)
+        
+        # dudx, dvdx, dwdx.
+        dvdx = np.einsum('ijk,ijkl->l', gk_x, u) / self.dx
+        # dudy, dvdy, dwdy.
+        dvdy = np.einsum('ijk,ijkl->l', gk_y, u) / self.dy
+        # dudz, dvdz, dwdz.
+        dvdz = np.einsum('ijk,ijkl->l', gk_z, u) / self.dz
+        
+        return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+    
+    def _interp_spline_hessian(self, p, u):
         """
         hessian spline differentiation.
         """
-        def spline_hessian():
-            ix = p.astype(np.int32)
-            fr = p - ix
-            
-            # field spline coefficients.
-            gx = self.field_lookup_table[int(lookup_N * fr[0])]
-            gy = self.field_lookup_table[int(lookup_N * fr[1])]
-            gz = self.field_lookup_table[int(lookup_N * fr[2])]
-            
-            # gradient spline coefficients.
-            gx_gradient = self.gradient_lookup_table[int(lookup_N * fr[0])]
-            gy_gradient = self.gradient_lookup_table[int(lookup_N * fr[1])]
-            gz_gradient = self.gradient_lookup_table[int(lookup_N * fr[2])]
-            
-            # hessian spline coefficients.
-            gx_hessian = self.lookup_table[int(lookup_N * fr[0])]
-            gy_hessian = self.lookup_table[int(lookup_N * fr[1])]
-            gz_hessian = self.lookup_table[int(lookup_N * fr[2])]
-
-            gk_xx = np.einsum('i,j,k', gz, gy, gx_hessian)
-            gk_yy = np.einsum('i,j,k', gz, gy_hessian, gx)
-            gk_zz = np.einsum('i,j,k', gz_hessian, gy, gx)
-            gk_xy = np.einsum('i,j,k', gz, gy_gradient, gx_gradient)
-            gk_xz = np.einsum('i,j,k', gz_gradient, gy, gx_gradient)
-            gk_yz = np.einsum('i,j,k', gz_gradient, gy_gradient, gx)
-
-            uii = np.einsum('ijk,ijkl->l', gk_xx, u) / dx / dx
-            ujj = np.einsum('ijk,ijkl->l', gk_yy, u) / dy / dy
-            ukk = np.einsum('ijk,ijkl->l', gk_zz, u) / dz / dz
-            uij = np.einsum('ijk,ijkl->l', gk_xy, u) / dx / dy
-            uik = np.einsum('ijk,ijkl->l', gk_xz, u) / dx / dz
-            ujk = np.einsum('ijk,ijkl->l', gk_yz, u) / dy / dz                    
-
-            return np.stack((uii, uij, uik, ujj, ujk, ukk), axis = 1).flatten()
+        ix = p.astype(np.int32)
+        fr = p - ix
         
+        # field spline coefficients.
+        gx = self.field_lookup_table[int(self.lookup_N * fr[0])]
+        gy = self.field_lookup_table[int(self.lookup_N * fr[1])]
+        gz = self.field_lookup_table[int(self.lookup_N * fr[2])]
+        
+        # gradient spline coefficients.
+        gx_gradient = self.gradient_lookup_table[int(self.lookup_N * fr[0])]
+        gy_gradient = self.gradient_lookup_table[int(self.lookup_N * fr[1])]
+        gz_gradient = self.gradient_lookup_table[int(self.lookup_N * fr[2])]
+        
+        # hessian spline coefficients.
+        gx_hessian = self.lookup_table[int(self.lookup_N * fr[0])]
+        gy_hessian = self.lookup_table[int(self.lookup_N * fr[1])]
+        gz_hessian = self.lookup_table[int(self.lookup_N * fr[2])]
+
+        gk_xx = np.einsum('i,j,k', gz, gy, gx_hessian)
+        gk_yy = np.einsum('i,j,k', gz, gy_hessian, gx)
+        gk_zz = np.einsum('i,j,k', gz_hessian, gy, gx)
+        gk_xy = np.einsum('i,j,k', gz, gy_gradient, gx_gradient)
+        gk_xz = np.einsum('i,j,k', gz_gradient, gy, gx_gradient)
+        gk_yz = np.einsum('i,j,k', gz_gradient, gy_gradient, gx)
+
+        uii = np.einsum('ijk,ijkl->l', gk_xx, u) / self.dx / self.dx
+        ujj = np.einsum('ijk,ijkl->l', gk_yy, u) / self.dy / self.dy
+        ukk = np.einsum('ijk,ijkl->l', gk_zz, u) / self.dz / self.dz
+        uij = np.einsum('ijk,ijkl->l', gk_xy, u) / self.dx / self.dy
+        uik = np.einsum('ijk,ijkl->l', gk_xz, u) / self.dx / self.dz
+        ujk = np.einsum('ijk,ijkl->l', gk_yz, u) / self.dy / self.dz                    
+
+        return np.stack((uii, uij, uik, ujj, ujk, ukk), axis = 1).flatten()
+    
+    def _interp_fd4lag4_gradient(self, p, u):
         """
         gradient finite difference with field interpolation.
         """
-        def fd4lag4_gradient():
-            ix = p.astype(np.int32)
-            fr = p - ix      
-            
-            # field interpolation coefficients.
-            gx = self.field_lookup_table[int(lookup_N * fr[0])]
-            gy = self.field_lookup_table[int(lookup_N * fr[1])]
-            gz = self.field_lookup_table[int(lookup_N * fr[2])]
-            
-            # finite difference coefficients.
-            gx_gradient = self.lookup_table[int(lookup_N * fr[0])]
-            gy_gradient = self.lookup_table[int(lookup_N * fr[1])]
-            gz_gradient = self.lookup_table[int(lookup_N * fr[2])]
-            
-            gk_x = np.einsum('i,j,k', gz, gy, gx_gradient)
-            gk_y = np.einsum('i,j,k', gz, gy_gradient, gx)
-            gk_z = np.einsum('i,j,k', gz_gradient, gy, gx)
+        ix = p.astype(np.int32)
+        fr = p - ix      
+        
+        # field interpolation coefficients.
+        gx = self.field_lookup_table[int(self.lookup_N * fr[0])]
+        gy = self.field_lookup_table[int(self.lookup_N * fr[1])]
+        gz = self.field_lookup_table[int(self.lookup_N * fr[2])]
+        
+        # finite difference coefficients.
+        gx_gradient = self.lookup_table[int(self.lookup_N * fr[0])]
+        gy_gradient = self.lookup_table[int(self.lookup_N * fr[1])]
+        gz_gradient = self.lookup_table[int(self.lookup_N * fr[2])]
+        
+        gk_x = np.einsum('i,j,k', gz, gy, gx_gradient)
+        gk_y = np.einsum('i,j,k', gz, gy_gradient, gx)
+        gk_z = np.einsum('i,j,k', gz_gradient, gy, gx)
 
-            d_x = u[ix[2] - 1 : ix[2] + 3, ix[1] - 1 : ix[1] + 3, ix[0] - 3 : ix[0] + 5, :]           
-            d_y = u[ix[2] - 1 : ix[2] + 3, ix[1] - 3 : ix[1] + 5, ix[0] - 1 : ix[0] + 3, :]           
-            d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
-            
-            # dudx,dvdx,dwdx.
-            dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / dx
-            # dudy,dvdy,dwdy.
-            dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / dy
-            # dudz,dvdz,dwdz.
-            dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / dz
-            
-            return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
-            
+        d_x = u[ix[2] - 1 : ix[2] + 3, ix[1] - 1 : ix[1] + 3, ix[0] - 3 : ix[0] + 5, :]           
+        d_y = u[ix[2] - 1 : ix[2] + 3, ix[1] - 3 : ix[1] + 5, ix[0] - 1 : ix[0] + 3, :]           
+        d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
+        
+        # dudx,dvdx,dwdx.
+        dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / self.dx
+        # dudy,dvdy,dwdy.
+        dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / self.dy
+        # dudz,dvdz,dwdz.
+        dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / self.dz
+        
+        return np.stack((dvdx, dvdy, dvdz), axis = 1).flatten()
+        
+    def _interp_fd4lag4_laplacian(self, p, u):
         """
         laplacian finite difference with field interpolation.
         """
-        def fd4lag4_laplacian():
-            ix = p.astype(np.int32)
-            fr = p - ix      
-            
-            # field interpolation coefficients.
-            gx = self.field_lookup_table[int(lookup_N * fr[0])]
-            gy = self.field_lookup_table[int(lookup_N * fr[1])]
-            gz = self.field_lookup_table[int(lookup_N * fr[2])]
-            
-            # finite difference coefficients.
-            gx_laplacian = self.lookup_table[int(lookup_N * fr[0])]
-            gy_laplacian = self.lookup_table[int(lookup_N * fr[1])]
-            gz_laplacian = self.lookup_table[int(lookup_N * fr[2])]
-            
-            gk_x = np.einsum('i,j,k', gz, gy, gx_laplacian)           
-            gk_y = np.einsum('i,j,k', gz, gy_laplacian, gx)           
-            gk_z = np.einsum('i,j,k', gz_laplacian, gy, gx)
-
-            d_x = u[ix[2] - 1 : ix[2] + 3, ix[1] - 1 : ix[1] + 3, ix[0] - 3 : ix[0] + 5, :]           
-            d_y = u[ix[2] - 1 : ix[2] + 3, ix[1] - 3 : ix[1] + 5, ix[0] - 1 : ix[0] + 3, :]           
-            d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
-            
-            # dudx,dvdx,dwdx.
-            dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / dx / dx
-            # dudy,dvdy,dwdy.
-            dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / dy / dy
-            # dudz,dvdz,dwdz.
-            dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / dz / dz
-            
-            dudxyz = dvdx[0] + dvdy[0] + dvdz[0]
-            dvdxyz = dvdx[1] + dvdy[1] + dvdz[1]
-            dwdxyz = dvdx[2] + dvdy[2] + dvdz[2]
-
-            return np.array([dudxyz, dvdxyz, dwdxyz])
+        ix = p.astype(np.int32)
+        fr = p - ix      
         
-        # interpolate functions map.
-        interpolate_functions = {
-            'none': none,
-            'lag4': lag_spline, 'lag6': lag_spline, 'lag8': lag_spline,
-            'm1q4': lag_spline, 'm2q8': lag_spline,
-            'fd4noint_gradient': fdnoint_gradient, 'fd6noint_gradient': fdnoint_gradient, 'fd8noint_gradient': fdnoint_gradient,
-            'fd4noint_laplacian': fdnoint_laplacian, 'fd6noint_laplacian': fdnoint_laplacian, 'fd8noint_laplacian': fdnoint_laplacian,
-            'fd4noint_hessian': fdnoint_hessian, 'fd6noint_hessian': fdnoint_hessian, 'fd8noint_hessian': fdnoint_hessian,
-            'm1q4_gradient': spline_gradient, 'm2q8_gradient': spline_gradient,
-            'm2q8_hessian': spline_hessian,
-            'fd4lag4_gradient': fd4lag4_gradient,
-            'fd4lag4_laplacian': fd4lag4_laplacian
-        }
+        # field interpolation coefficients.
+        gx = self.field_lookup_table[int(self.lookup_N * fr[0])]
+        gy = self.field_lookup_table[int(self.lookup_N * fr[1])]
+        gz = self.field_lookup_table[int(self.lookup_N * fr[2])]
         
+        # finite difference coefficients.
+        gx_laplacian = self.lookup_table[int(self.lookup_N * fr[0])]
+        gy_laplacian = self.lookup_table[int(self.lookup_N * fr[1])]
+        gz_laplacian = self.lookup_table[int(self.lookup_N * fr[2])]
+        
+        gk_x = np.einsum('i,j,k', gz, gy, gx_laplacian)           
+        gk_y = np.einsum('i,j,k', gz, gy_laplacian, gx)           
+        gk_z = np.einsum('i,j,k', gz_laplacian, gy, gx)
+
+        d_x = u[ix[2] - 1 : ix[2] + 3, ix[1] - 1 : ix[1] + 3, ix[0] - 3 : ix[0] + 5, :]           
+        d_y = u[ix[2] - 1 : ix[2] + 3, ix[1] - 3 : ix[1] + 5, ix[0] - 1 : ix[0] + 3, :]           
+        d_z = u[ix[2] - 3 : ix[2] + 5, ix[1] - 1 : ix[1] + 3, ix[0] - 1 : ix[0] + 3, :]
+        
+        # dudx,dvdx,dwdx.
+        dvdx = np.einsum('ijk,ijkl->l', gk_x, d_x) / self.dx / self.dx
+        # dudy,dvdy,dwdy.
+        dvdy = np.einsum('ijk,ijkl->l', gk_y, d_y) / self.dy / self.dy
+        # dudz,dvdz,dwdz.
+        dvdz = np.einsum('ijk,ijkl->l', gk_z, d_z) / self.dz / self.dz
+        
+        dudxyz = dvdx[0] + dvdy[0] + dvdz[0]
+        dvdxyz = dvdx[1] + dvdy[1] + dvdz[1]
+        dwdxyz = dvdx[2] + dvdy[2] + dvdz[2]
+
+        return np.array([dudxyz, dvdxyz, dwdxyz])
+    
+    def _get_interpolate_function(self, sint):
+        """
+        return the interpolation method for sint.
+        """
         # interpolation function to call.
-        interpolate_function = interpolate_functions[sint]
-        
-        return interpolate_function()
+        return {
+            'none': self._interp_none,
+            'lag4': self._interp_lag_spline, 'lag6': self._interp_lag_spline, 'lag8': self._interp_lag_spline,
+            'm1q4': self._interp_lag_spline, 'm2q8': self._interp_lag_spline,
+            'fd4noint_gradient': self._interp_fdnoint_gradient, 'fd6noint_gradient': self._interp_fdnoint_gradient, 'fd8noint_gradient': self._interp_fdnoint_gradient,
+            'fd4noint_laplacian': self._interp_fdnoint_laplacian, 'fd6noint_laplacian': self._interp_fdnoint_laplacian, 'fd8noint_laplacian': self._interp_fdnoint_laplacian,
+            'fd4noint_hessian': self._interp_fdnoint_hessian, 'fd6noint_hessian': self._interp_fdnoint_hessian, 'fd8noint_hessian': self._interp_fdnoint_hessian,
+            'm1q4_gradient': self._interp_spline_gradient, 'm2q8_gradient': self._interp_spline_gradient,
+            'm2q8_hessian': self._interp_spline_hessian,
+            'fd4lag4_gradient': self._interp_fd4lag4_gradient,
+            'fd4lag4_laplacian': self._interp_fd4lag4_laplacian
+        }[sint]
         
     """
     common functions.
@@ -791,6 +846,49 @@ class turb_dataset():
             return zarr.open(store = f'{zarr_filepath}{os.sep}{var}', dtype = dt, mode = 'r')
         except:
             raise Exception(f'{zarr_filepath}{os.sep}{var} is not accessible.')
+            
+    def _read_zarr_single_timepoint_getcutout(self, chunk_ranges, min_xyz, max_xyz):
+        """
+        slice cutout chunks for all datasets except the windfarm datasets.
+        """
+        return [(self.zarr_store[self.timepoint,
+                                 chunk_ranges[2][0] : chunk_ranges[2][1] + 1,
+                                 chunk_ranges[1][0] : chunk_ranges[1][1] + 1,
+                                 chunk_ranges[0][0] : chunk_ranges[0][1] + 1],
+                                 min_xyz, max_xyz)]
+
+    def _read_zarr_windfarm_timepoint_getcutout(self, chunk_ranges, min_xyz, max_xyz):
+        """
+        slice cutout chunks for the windfarm datasets.
+        """
+        # cutout data from the specified chunk.
+        return [(self.zarr_store[self.timepoint[0],
+                                 self.timepoint[1],
+                                 self.timepoint[2],
+                                 chunk_ranges[2][0] : chunk_ranges[2][1] + 1,
+                                 chunk_ranges[1][0] : chunk_ranges[1][1] + 1,
+                                 chunk_ranges[0][0] : chunk_ranges[0][1] + 1],
+                                 min_xyz, max_xyz)]
+    
+    def _read_zarr_single_timepoint_getdata(self, chunk_min_ranges, chunk_max_ranges, chunk_step = (1, 1, 1)):
+        """
+        slice data from the specified chunk for all datasets except the windfarm datasets.
+        """
+        return self.zarr_store[self.timepoint,
+                               chunk_min_ranges[2] : chunk_max_ranges[2] + chunk_step[2],
+                               chunk_min_ranges[1] : chunk_max_ranges[1] + chunk_step[1],
+                               chunk_min_ranges[0] : chunk_max_ranges[0] + chunk_step[0]]
+
+    def _read_zarr_windfarm_timepoint_getdata(self, chunk_min_ranges, chunk_max_ranges, chunk_step = (1, 1, 1)):
+        """
+        slice data from the specified chunk for windfarm datasets.
+        """
+        return self.zarr_store[self.timepoint[0],
+                               self.timepoint[1],
+                               self.timepoint[2],
+                               chunk_min_ranges[2] : chunk_max_ranges[2] + chunk_step[2],
+                               chunk_min_ranges[1] : chunk_max_ranges[1] + chunk_step[1],
+                               chunk_min_ranges[0] : chunk_max_ranges[0] + chunk_step[0]]
     
     """
     getCutout functions.
@@ -843,15 +941,12 @@ class turb_dataset():
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getcutout,
                 chunk_boxes,
-                [self.timepoint] * num_chunks,
-                [self.dataset_title] * num_chunks,
-                [self.zarr_store] * num_chunks,
                 chunksize = 1))
         
         # flattens result_output_data.
         return list(itertools.chain.from_iterable(result_output_data))
     
-    def get_points_getcutout(self, chunk_data, timepoint, dataset_title, zarr_store):
+    def get_points_getcutout(self, chunk_data):
         """
         retrieve the values for the specified var(iable) in the user-specified box and at the specified timepoint.
         """
@@ -861,30 +956,8 @@ class turb_dataset():
         # retrieve the minimum and maximum (x, y, z) coordinates of the chunk that is going to be read in.
         min_xyz = [axis_range[0] for axis_range in index_ranges]
         max_xyz = [axis_range[1] for axis_range in index_ranges]
-
-        def single_timepoint():
-            # cutout data from the specified chunk.
-            return [(zarr_store[timepoint,
-                                chunk_ranges[2][0] : chunk_ranges[2][1] + 1,
-                                chunk_ranges[1][0] : chunk_ranges[1][1] + 1,
-                                chunk_ranges[0][0] : chunk_ranges[0][1] + 1],
-                                min_xyz, max_xyz)]
         
-        def windfarm_timepoint():
-            # cutout data from the specified chunk.
-            return [(zarr_store[timepoint[0],
-                                timepoint[1],
-                                timepoint[2],
-                                chunk_ranges[2][0] : chunk_ranges[2][1] + 1,
-                                chunk_ranges[1][0] : chunk_ranges[1][1] + 1,
-                                chunk_ranges[0][0] : chunk_ranges[0][1] + 1],
-                                min_xyz, max_xyz)]
-        
-        # read zarr function map.
-        read_zarr_functions = defaultdict(lambda: single_timepoint,
-                                          {'diurnal_windfarm': windfarm_timepoint, 'nbl_windfarm': windfarm_timepoint})
-        
-        return read_zarr_functions[dataset_title]()
+        return self._zarr_read_getcutout(chunk_ranges, min_xyz, max_xyz)
             
     """
     getData functions.
@@ -1007,7 +1080,7 @@ class turb_dataset():
             chunk_data_map[updated_chunk_key].append((point, datapoint, center_point, original_point_index))
         
         return np.array(list(chunk_data_map.values()), dtype = object)
-    
+
     def subdivide_chunk_group(self, chunk_map, chunk_key, chunk_min_xyz, chunk_max_xyz, z_min_boundary_flag, chunk_size_array, empty_array):
         """
         map all subset chunk groups to chunk_key.
@@ -1290,49 +1363,23 @@ class turb_dataset():
         with ThreadPoolExecutor(max_workers = num_processes) as executor:
             result_output_data = list(executor.map(self.get_points_getdata,
                 chunk_data_map,
-                [self.timepoint] * num_chunks,
-                [self.zarr_store] * num_chunks,
-                [self.getdata_vars] * num_chunks,
-                [self.interpolate_vars] * num_chunks,
                 chunksize = 1))
         
         # flattens result_output_data.
         return list(itertools.chain.from_iterable(result_output_data))
-    
-    def get_points_getdata(self, map_data, timepoint, zarr_store,
-                           getdata_vars, interpolate_vars):
+
+    def get_points_getdata(self, map_data):
         """
         reads and interpolates the user-requested points in a zarr store.
         """
         # assign the local variables.
-        cube_min_index, cube_max_index, sint = interpolate_vars[:3]
-        dataset_title, num_values_per_datapoint, N, chunk_size, nonperiodic_regular_axes = getdata_vars
-        
-        def single_timepoint(chunk_min_ranges, chunk_max_ranges, chunk_step = (1, 1, 1)):
-            # cutout data from the specified chunk.
-            return zarr_store[timepoint,
-                              chunk_min_ranges[2] : chunk_max_ranges[2] + chunk_step[2],
-                              chunk_min_ranges[1] : chunk_max_ranges[1] + chunk_step[1],
-                              chunk_min_ranges[0] : chunk_max_ranges[0] + chunk_step[0]]
-        
-        def windfarm_timepoint(chunk_min_ranges, chunk_max_ranges, chunk_step = (1, 1, 1)):
-            # cutout data from the specified chunk.
-            return zarr_store[timepoint[0],
-                              timepoint[1],
-                              timepoint[2],
-                              chunk_min_ranges[2] : chunk_max_ranges[2] + chunk_step[2],
-                              chunk_min_ranges[1] : chunk_max_ranges[1] + chunk_step[1],
-                              chunk_min_ranges[0] : chunk_max_ranges[0] + chunk_step[0]]
-        
-        # read zarr function map.
-        read_zarr_functions = defaultdict(lambda: single_timepoint,
-                                          {'diurnal_windfarm': windfarm_timepoint, 'nbl_windfarm': windfarm_timepoint})
-        read_zarr_function = read_zarr_functions[dataset_title]
-        
-        self.init_interpolation_lookup_table(sint = sint, read_metadata = True)
-        
-        # empty chunk group array (up to eight 64-cube chunks).
-        zarr_matrix = np.zeros((chunk_size[2] * 2, chunk_size[1] * 2, chunk_size[0] * 2, num_values_per_datapoint))
+        cube_min_index, cube_max_index = self.interpolate_vars
+        N, chunk_size, nonperiodic_regular_axes = self.getdata_vars
+
+        # get or create thread-local buffer for the empty chunk group array (up to eight 64-cube chunks).
+        if not hasattr(self._thread_local, 'zarr_matrix') or self._thread_local.zarr_matrix.shape != self._zarr_matrix_shape:
+            self._thread_local.zarr_matrix = np.zeros(self._zarr_matrix_shape, dtype = self.dt)
+        zarr_matrix = self._thread_local.zarr_matrix
         
         # the collection of local output data that will be returned to fill the complete output_data array.
         local_output_data = []
@@ -1363,9 +1410,9 @@ class turb_dataset():
             for chunk_origin_point, chunk_origin_group in zip(chunk_origin_points, chunk_origin_groups):
                 zarr_matrix[chunk_origin_point[2] : chunk_origin_point[2] + chunk_size[2],
                             chunk_origin_point[1] : chunk_origin_point[1] + chunk_size[1],
-                            chunk_origin_point[0] : chunk_origin_point[0] + chunk_size[0]] = read_zarr_function(chunk_min_ranges = chunk_origin_group,
-                                                                                                                chunk_max_ranges = chunk_origin_group,
-                                                                                                                chunk_step = chunk_size)
+                            chunk_origin_point[0] : chunk_origin_point[0] + chunk_size[0]] = self._zarr_read_getdata(chunk_min_ranges = chunk_origin_group,
+                                                                                                                     chunk_max_ranges = chunk_origin_group,
+                                                                                                                     chunk_step = chunk_size)
             
             # insert 0-plane values at the z = 0 boundary to handle the velocity-w and sgsenergy boundary condition of the sabl datasets.
             if z_min_boundary_flag:
@@ -1417,8 +1464,8 @@ class turb_dataset():
             # read in all chunks at once, and use default chunk_step (1, 1, 1).
             zarr_matrix[:chunk_max_mod_xyz[2] - chunk_min_mod_xyz[2] + 1,
                         :chunk_max_mod_xyz[1] - chunk_min_mod_xyz[1] + 1,
-                        :chunk_max_mod_xyz[0] - chunk_min_mod_xyz[0] + 1] = read_zarr_function(chunk_min_ranges = chunk_min_mod_xyz,
-                                                                                               chunk_max_ranges = chunk_max_mod_xyz)
+                        :chunk_max_mod_xyz[0] - chunk_min_mod_xyz[0] + 1] = self._zarr_read_getdata(chunk_min_ranges = chunk_min_mod_xyz,
+                                                                                                    chunk_max_ranges = chunk_max_mod_xyz)
 
         # iterate over the points to interpolate.
         for point, datapoint, center_point, original_point_index in map_data[1:]:
@@ -1434,7 +1481,195 @@ class turb_dataset():
                                  bucket_min_xyz[0] : bucket_max_xyz[0]]
 
             # interpolate the points and use a lookup table for faster interpolations.
-            local_output_data.append((original_point_index, (point, self.spatial_interpolate(center_point, bucket, interpolate_vars))))
+            local_output_data.append((original_point_index, (point, self._interpolate_fn(center_point, bucket))))
         
         return local_output_data
+
+    """
+    getForce functions for 'isotropic1024coarse' and 'mhd1024' datasets.
+    """
+    def _get_floored_timestep(self, time, dt, time_inc, time_off):
+        # Calculate base timestep index and floor it to the nearest increment block
+        timestep = time / dt
+        return (
+            math.floor(timestep / time_inc) * time_inc + time_off
+        )
+
+    def _get_nearest_timestep(self, time, dt, time_inc, time_off):
+        # Calculate nearest integer timestep index based on rounding
+        timestep = time / dt
+        return round(timestep / time_inc) * time_inc + time_off
+
+    def _temporal_interpolation_pchip(self, time, time0, time1, time2, time3, data0, data1, data2, data3):
+        # Compute time interval between inner bounding nodes
+        delta = time2 - time1
+        
+        # Estimate first derivatives at bounding points using central differences
+        drv1 = ((data2 - data1) / delta + (data1 - data0) / (time1 - time0)) / 2
+        drv2 = ((data3 - data2) / (time3 - time2) + (data2 - data1) / delta) / 2
+
+        # PCHIP cubic polynomial coefficients calculation
+        a = data1
+        b = drv1
+        c = ((data2 - data1) / delta - drv1) / delta
+        d = (2 / (delta**2)) * ((drv1 + drv2) / 2 - (data2 - data1) / delta)
+
+        # Time offsets from nodes 1 and 2
+        dt1 = time - time1
+        dt2 = time - time2
+
+        # Evaluate and return the cubic polynomial result
+        return a + b * dt1 + c * (dt1**2) + d * (dt1**2) * dt2
     
+    def _get_force_data_for_timestep(self, timestep):
+        # Regex pattern to capture floating-point numbers and scientific notation
+        pattern = r"([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)"
+
+        chunks = []
+        # Read from split data files (.000 and .127) for the given timestep
+        for suffix in ("000", "127"):
+            filename = f"{self.force_directory}forcing{timestep:05d}.{suffix}"
+
+            # 1. Read raw file contents as text
+            with open(filename, "r") as file:
+                content = file.read()
+
+            # 2. Extract all numerical values via regex parsing
+            values = [float(m.group(0)) for m in re.finditer(pattern, content)]
+            
+            # 3. Convert extracted values into a 1D float32 array
+            data = np.array(values, dtype=np.float32)
+            chunks.append(data)
+
+        # Concatenate file chunks into a single contiguous array
+        floats = np.concatenate(chunks)
+
+        # Validate total payload size against expected mode count (9 parameters per mode)
+        expected_count = self.WAVE_MODES_ON_DISK * 9
+        if floats.size != expected_count:
+            raise ValueError(
+                f"getForce WARNING! incorrect number of values read ({floats.size} vs {expected_count})"
+            )
+
+        # Reshape into active mode matrix: [kx, ky, kz, fxr, fxi, fyr, fyi, fzr, fzi]
+        active_modes = floats.reshape((self.WAVE_MODES_ON_DISK, 9))
+
+        # Pre-allocate full target buffer to account for mode padding limits
+        force = np.zeros((self.WAVE_MODES, 9), dtype = np.float32)
+        force[: self.WAVE_MODES_ON_DISK] = active_modes
+
+        return force
+
+    def _get_force_by_time(self, force_info, points):
+        """
+        calculates 3D force vectors at multiple spatial points via Fourier mode reconstruction.
+        """
+        modes = force_info[:50]
+        pts = np.asarray(points, dtype = np.float32)  # Shape: (N_points, 3)
+
+        # Extract wave vectors k (kx, ky, kz) -> Shape: (50, 3)
+        k = modes[:, :3]
+
+        # Combine alternating real and imaginary columns into complex 3D force components -> Shape: (50, 3)
+        f_real = modes[:, 3::2]  # [fxr, fyr, fzr]
+        f_imag = modes[:, 4::2]  # [fxi, fyi, fzi]
+        f_complex = f_real + 1j * f_imag  
+
+        # Compute dot product phase theta = k . x for all modes and points -> Shape: (50, N_points)
+        phase = k @ pts.T  
+
+        # Compute complex rotational wave factor e^(i * phase) -> Shape: (50, N_points)
+        e_i_phase = np.exp(1j * phase)
+
+        # Broadcast modes, spatial points, and vector axes: (50, N_points, 3)
+        f_mode = f_complex[:, None, :] * e_i_phase[:, :, None]
+
+        # Identify positive kx wave modes to apply Hermitian symmetry adjustments
+        mask_kx = k[:, 0] > 0.01  # Shape: (50,)
+        
+        # Build scaling multipliers for real (double where kx > 0) and imaginary parts
+        real_mult = np.where(mask_kx, 2.0, 1.0)[:, None, None]
+        imag_mult = np.where(mask_kx, 0.0, 1.0)[:, None, None]
+
+        # Sum contributions across all wave modes (axis=0) -> Yields shape (N_points, 3)
+        force_real = np.sum(f_mode.real * real_mult, axis = 0)
+        force_imag = np.sum(f_mode.imag * imag_mult, axis = 0)
+
+        # Guard check: ensure imaginary residual components are practically zero
+        if np.any(np.abs(force_imag) > 0.001):
+            raise ValueError("getForce WARNING! non-zero imaginary force residuals detected in vectorized evaluation.")
+
+        return force_real.astype(np.float32)
+
+    def get_points_getforce(self, points, time_off = 0):
+        """
+        computes and returns the force results based on the dataset and temporal interpolation method.
+        """
+        result = np.empty((len(points), 3), dtype = np.float32)
+
+        # Route execution based on target dataset specification
+        if self.dataset_title == 'isotropic1024coarse':
+            time_offset = 4800
+            # dt here refers to timestep of original simulation
+            dt = 0.0002
+            # value our force data files are separated by
+            time_inc = 10
+
+            if (self.tint == "none"):
+                # Handle non-interpolated single timestep evaluations
+                timestep = self._get_nearest_timestep(self.timepoint, dt, time_inc, time_off)
+
+                force_info = self._get_force_data_for_timestep(timestep + time_offset)
+                result = self._get_force_by_time(force_info, points)
+            elif self.tint == "pchip":
+                # Handle high-fidelity PCHIP temporal interpolation across 4 sequential bounding timesteps
+                basetime = self._get_floored_timestep(self.timepoint, dt, time_inc, time_off)
+
+                # Define 4 surrounding timesteps required for cubic Hermite interpolation
+                timesteps = [
+                    basetime - time_inc,
+                    basetime,
+                    basetime + time_inc,
+                    basetime + time_inc * 2,
+                ]
+
+                # Convert timestep indices to absolute physical times
+                times = [ts * dt for ts in timesteps]
+
+                # Fetch raw force mode data files for each bounding timestep
+                force_infos = [
+                    self._get_force_data_for_timestep(ts + time_offset)
+                    for ts in timesteps
+                ]
+
+                # Reconstruct spatial force arrays for all 4 bounding timesteps
+                forces = [self._get_force_by_time(force_info, points) for force_info in force_infos]
+
+                # Interpolate temporally across the 4 pre-computed force arrays
+                result = self._temporal_interpolation_pchip(
+                    self.timepoint,
+                    times[0],
+                    times[1],
+                    times[2],
+                    times[3],
+                    forces[0],
+                    forces[1],
+                    forces[2],
+                    forces[3],
+                )
+        elif self.dataset_title == "mhd1024":
+            # Fallback handling for analytical MHD test dataset configurations
+            for i, point in enumerate(points):
+                result[i][0] = 0.25 * (
+                    math.sin(2 * point[0])
+                    * math.cos(2 * point[1])
+                    * math.cos(2 * point[2])
+                )
+                result[i][1] = -0.25 * (
+                    math.cos(2 * point[0])
+                    * math.sin(2 * point[1])
+                    * math.cos(2 * point[2])
+                )
+                result[i][2] = 0.0
+
+        return result.astype(np.float32)

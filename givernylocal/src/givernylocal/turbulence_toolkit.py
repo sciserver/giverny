@@ -109,7 +109,7 @@ def getCutout(cube, var, xyzt_axes_ranges_original, xyzt_strides,
     # placeholder values for getData settings.
     spatial_method = 'none'
     temporal_method = 'none'
-    option = [-999.9, -999.9]
+    option = [-999.9, -999.9, 1]
     # initialize cube constants. this is done so that all of the constants are known for pre-processing of the data. use the last timepoint
     # as a placeholder to keep consistent with how giverny on SciServer works, i.e. the last queried timepoint is the timepoint stored as the instance variable.
     cube.init_constants(query_type, var, var_offsets, timepoint_range[1], timepoint_range_original[1],
@@ -251,7 +251,7 @@ def getCutout_housekeeping_procedures(query_type, metadata, dataset_title, axes_
     return (var_offsets, timepoint_range)
 
 def getData(cube, var, timepoint_original, temporal_method, spatial_method_original, spatial_operator, points,
-            option = [-999.9, -999.9],
+            option = [-999.9, -999.9, 1],
             return_times = False, trace_memory = False, verbose = True):
     """
     interpolate/differentiate the variable for the specified points from the various JHTDB datasets.
@@ -274,6 +274,10 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     # data constants.
     c = metadata['constants']
     
+    # append a cadence of 1 if the option parameter was specified but a cadence was not.
+    if len(option) == 2:
+        option.append(1)
+    
     # -----
     # housekeeping procedures. will handle multiple variables, e.g. 'pressure' and 'velocity'.
     var_offsets, timepoint, spatial_method = \
@@ -289,12 +293,12 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
                         f' include your name, email address, institutional affiliation and department, together with a short description of your intended use of the database')
     
     # option parameter values.
-    timepoint_end, delta_t = option
+    timepoint_end, delta_t, cadence = option
     
     # default timepoint range which only queries the first timepoint for non-'position' variables and non-time series queries. in the givernylocal code
     # this is only used to verify the integrity of the results retrieved through the rest service.
     timepoint_range = np.arange(timepoint_original, timepoint_original + 1, 2)
-    if var != 'position' and option != [-999.9, -999.9]:
+    if var != 'position' and option != [-999.9, -999.9, 1]:
         # timepoint range for the time series queries.
         timepoint_range = np.arange(timepoint_original, timepoint_end, delta_t)
         
@@ -302,8 +306,21 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         # floating point step sizes.
         if math.isclose(timepoint_range[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
             timepoint_range = np.append(timepoint_range, timepoint_end)
+    
+    # calculate the number of queried timepoints so we can check if too many points and timepoints were queried at once.
+    if var != 'position':
+        # handles all variables except 'position'.
+        num_timepoints = len(timepoint_range)
+    else:
+        # handles the 'position' variable.
+        position_timepoints = np.arange(timepoint_original, timepoint_end, delta_t)
+        # add in the last timepoint if the final timepoint in the range is delta_t less than timepoint_end. np.arange is not good at handling
+        # floating point step sizes.
+        if math.isclose(position_timepoints[-1] + delta_t, timepoint_end, rel_tol = 10**-9, abs_tol = 0.0):
+            position_timepoints = np.append(position_timepoints, timepoint_end)
             
-    num_timepoints = len(timepoint_range)
+        num_timepoints = len(position_timepoints)
+    
     # if more than one timepoint was queried, then checks if ({number of points} * {number of timepoints}) <= c['max_data_points'].
     if (len(points) * num_timepoints) > c['max_data_points']:
         raise Exception(f"too many 'points' and 'times' queried together, please limit the number of (points * times) to <= {c['max_data_points']:,}")
@@ -331,7 +348,12 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     request_points = "\n".join(["\t".join(["%.8f" % coord for coord in point]) for point in points])
 
     # request url.
-    url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    # url = f'https://web.idies.jhu.edu/turbulence-svc/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
+    #       f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
+    #       f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
+    
+    # TESTING. put back the url above for production.
+    url = f'https://web.idies.jhu.edu/turbsvc-testing/values?authToken={auth_token}&dataset={dataset_title}&function=GetVariable&var={var}' \
           f'&t={timepoint_original}&sint={spatial_method_original}&sop={spatial_operator}&tint={temporal_method}' \
           f'&timepoint_end={timepoint_end}&delta_t={delta_t}'
     
@@ -358,7 +380,8 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
     result = np.array(json.loads(response.text), dtype = np.float32)
     
     # get the result header, which only contains the names for each column of the data values.
-    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original, cube.timepoint_end, cube.delta_t, cube.sint, cube.tint)
+    output_header = get_interpolation_tsv_header(metadata, cube.dataset_title, cube.var, cube.timepoint_original,
+                                                 cube.timepoint_end, cube.delta_t, cube.cadence, cube.sint, cube.tint)
     result_header = np.array(output_header.split('\n')[1].strip().split('\t'))[3:]
     
     # array lengths.
@@ -378,6 +401,9 @@ def getData(cube, var, timepoint_original, temporal_method, spatial_method_origi
         # give the index column a name for each dataframe in results.
         df.index.name = 'index'
         results.append(df)
+        
+    # store the return times list as a dataset variable so that it can be used for metadata.
+    cube.times = np.round(timepoint_range, decimals = 12)
     
     # -----
     end_time = time.perf_counter()
@@ -435,12 +461,8 @@ def getData_housekeeping_procedures(query_type, metadata, dataset_title, points,
     # check that the user-input temporal interpolation (temporal_method) is a valid temporal interpolation method.
     check_temporal_method(metadata, temporal_method, dataset_title, var)
     # check that option parameters are valid if specified (applies to getPosition and time series queries).
-    if var == 'position' or option != [-999.9, -999.9]:
-        check_option_parameter(metadata, option, dataset_title, timepoint_original, var)
-        
-        # check that the user-input ending timepoint for 'position' is a valid timepoint for this dataset.
-        timepoint_end = option[0]
-        check_timepoint(metadata, timepoint_end, dataset_title, var, query_type)
+    if var == 'position' or option != [-999.9, -999.9, 1]:
+        check_option_parameter(metadata, option, dataset_title, timepoint_original, var, query_type)
     
     # pre-processing steps.
     # -----
