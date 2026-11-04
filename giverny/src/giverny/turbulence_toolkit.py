@@ -466,6 +466,10 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             """
             queries of the 'position' variable.
             """
+            # pre-fill the trajectory array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+            # so that the array is filled with the missing placeholder value (-999.9).
+            trajectory = np.array([c['missing_value_placeholder']], dtype = 'f')
+            
             # call getPosition_giverny for particle tracking.
             trajectory, times, fully_tracked = getPosition_giverny(
                 cube, points, 
@@ -477,6 +481,10 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                 trace_memory = trace_memory, 
                 verbose = verbose
             )
+            
+            # checks to make sure that data was read in for all points.
+            if c['missing_value_placeholder'] in trajectory or trajectory.shape != (num_points, num_timepoints, len(result_header)):
+                raise Exception(f'result was not filled correctly')
             
             # warn if any particles went out of bounds.
             if not fully_tracked:
@@ -500,11 +508,6 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                     index = np.arange(trajectory.shape[0]),
                 )
                 result.index.name = 'index'
-                
-                # checks to make sure that data was read in for all points.
-                if c['missing_value_placeholder'] in result or result.shape != (num_points, len(result_header)):
-                    raise Exception(f'result was not filled correctly')
-                
                 results.append(result)
                 
             # store times for return_times option.
@@ -520,6 +523,10 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
             for timepoint_original in timepoint_range:
                 # convert the original input timepoint to the correct time index.
                 timepoint = get_time_index_from_timepoint(metadata, dataset_title, timepoint_original, var, temporal_method, query_type)
+                
+                # pre-fill the result array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+                # so that the array is filled with the missing placeholder value (-999.9).
+                result = np.array([c['missing_value_placeholder']], dtype = 'f')
                 
                 # initialize cube constants.
                 cube.init_constants(query_type, var, var_offsets, timepoint_original, timepoint_original_notebook,
@@ -580,13 +587,17 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                 # results and their corresponding specified order.
                 result = []
                 for timepoint_tmp in timepoints:
+                    # pre-fill the result_tmp array that will be filled with the data that is read in. initially the datatype is set to "f" (float)
+                    # so that the array is filled with the missing placeholder value (-999.9).
+                    result_tmp = np.array([c['missing_value_placeholder']], dtype = 'f')
+                    
                     if dataset_title not in ['sabl2048low', 'sabl2048high', 'stsabl2048low', 'stsabl2048high']:
                         # subtract the coordinate offsets from the points to make sure giverny maps the points to the correct gridpoints.
                         points_offset = points - cube.coor_offsets
 
                         # get the results.
-                        result.append(getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
-                                                           var_offsets, timepoint_original, option, c))
+                        result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
+                                                          var_offsets, timepoint_original, option, c)
                     else:
                         # handles the *sabl* datasets.
                         if var == 'velocity':
@@ -630,8 +641,12 @@ def getData(cube, var, timepoint_original_notebook, temporal_method, spatial_met
                             result_tmp = getData_process_data(cube, metadata, points_offset, var, timepoint_tmp, temporal_method, spatial_method,
                                                               var_offsets, timepoint_original, option, c)
 
-                        # append the result for timepoint_tmp.
-                        result.append(result_tmp)
+                    # checks to make sure that data was read in for all points.
+                    if c['missing_value_placeholder'] in result_tmp or result_tmp.shape != (num_points, len(result_header)):
+                        raise Exception(f'result was not filled correctly')
+                    
+                    # append the result for timepoint_tmp.
+                    result.append(result_tmp)
 
                     # reset cube constants if the user-specified spatial_method was not utilized for the specific point query or 'pchip' temporal interpolation was specified.
                     # e.g. if all the points queried utilized a step-down interpolation method, then the cube constants are reset after processing so that cube.sint matches
